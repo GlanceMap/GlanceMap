@@ -33,8 +33,8 @@ class PhoneLibraryMapDataUiTest {
                 selected = elevation to routing
                 true
             })
-        compose.setContent { libraryMapDataButton(item, true, mapState.value.maps, actions) }
-        compose.onNodeWithTag("library-map-data-${item.key}").performClick()
+        compose.setContent { libraryMapDataActions(item, true, mapState.value.maps, actions) }
+        compose.onNodeWithTag("library-map-data-elevation-${item.key}").performClick()
         compose.onNodeWithTag("library-map-data-routing").performClick()
         compose.onNodeWithTag("library-map-data-start").performClick()
         compose.runOnIdle { assertEquals(true to false, selected) }
@@ -46,8 +46,8 @@ class PhoneLibraryMapDataUiTest {
         val mapState = mutableStateOf(libraryTestMapState(context))
         val item = PhoneLibraryItem.OfflineMap(PhoneOfflineMap(File("/maps/missing.map")), null)
         val actions = libraryTestMapActions(mapState).maps
-        compose.setContent { libraryMapDataButton(item, true, mapState.value.maps, actions) }
-        compose.onNodeWithTag("library-map-data-${item.key}").performClick()
+        compose.setContent { libraryMapDataActions(item, true, mapState.value.maps, actions) }
+        compose.onNodeWithTag("library-map-data-elevation-${item.key}").performClick()
         compose.onNodeWithTag("library-map-data-elevation").performClick()
         compose.onNodeWithTag("library-map-data-start").assertIsNotEnabled()
     }

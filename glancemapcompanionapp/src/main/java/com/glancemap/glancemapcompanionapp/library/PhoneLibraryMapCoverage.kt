@@ -16,6 +16,26 @@ internal data class PhoneLibraryMapCoverage(
     val availableRoutingFiles: Int = 0,
 )
 
+internal enum class PhoneLibraryMapDataStatus {
+    READY,
+    PARTIAL,
+    MISSING,
+    NOT_REQUIRED,
+    UNKNOWN,
+}
+
+internal fun phoneLibraryMapDataStatus(
+    required: Int?,
+    available: Int,
+): PhoneLibraryMapDataStatus =
+    when {
+        required == null -> PhoneLibraryMapDataStatus.UNKNOWN
+        required == 0 -> PhoneLibraryMapDataStatus.NOT_REQUIRED
+        available == 0 -> PhoneLibraryMapDataStatus.MISSING
+        available < required -> PhoneLibraryMapDataStatus.PARTIAL
+        else -> PhoneLibraryMapDataStatus.READY
+    }
+
 internal fun libraryOfflineMapItems(
     maps: List<PhoneOfflineMap>,
     storedItems: List<PhoneLibraryItem>,

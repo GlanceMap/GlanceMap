@@ -2,6 +2,7 @@ package com.glancemap.glancemapcompanionapp.library
 
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.*
@@ -20,69 +21,86 @@ import java.io.File
 class PhoneLibraryMapSelectionUiTest {
     @get:Rule val composeRule = createAndroidComposeRule<ComponentActivity>()
 
-    @Test fun sourceSwitchRestoresThePreferredMapAndKeepsTrackAndPoiSelections() {
-        val first = PhoneOfflineMap(File("first.map"))
-        val preferred = PhoneOfflineMap(File("preferred.map"))
+    @Test fun tappingARowActivatesThatMapAndKeepsTrackAndPoiSelections() {
+        val map = PhoneOfflineMap(File("Alps.map"))
         val initial = libraryTestMapState(composeRule.activity)
-        val state =
-            mutableStateOf(
-                initial.copy(
-                    maps =
-                        initial.maps.copy(
-                            offlineMaps = listOf(first, preferred),
-                            preferredOfflineMapName = preferred.displayName,
-                        ),
-                ),
-            )
+        val state = mutableStateOf(initial.copy(maps = initial.maps.copy(offlineMaps = listOf(map))))
+        var details = 0
         composeRule.setContent {
             MaterialTheme {
                 val actions = libraryTestMapActions(state)
-                libraryOnlineMapSelection(
-                    state.value.maps,
-                    actions.maps.copy(onSwitchToOnline = {
-                        state.value = state.value.copy(maps = state.value.maps.copy(source = PhoneMapSource.Online))
-                    }),
-                )
+                LazyColumn {
+                    libraryMapSourceEntries(state.value.maps, actions.maps, "")
+                    item {
+                        libraryItemRow(
+                            PhoneLibraryRowState(PhoneLibraryItem.OfflineMap(map, 100L), true),
+                            state.value,
+                            actions,
+                        ) { details++ }
+                    }
+                }
             }
         }
-        val toggle = composeRule.onNodeWithTag("library-map-source-toggle")
-        toggle.assertIsOff().performClick().assertIsOn()
+        composeRule.onNodeWithTag("library-item-offline/${map.selectionIdentity}").performClick()
         composeRule.runOnIdle {
-            assertEquals(PhoneMapSource.Offline(preferred), state.value.maps.source)
+            assertEquals(PhoneMapSource.Offline(map), state.value.maps.source)
             assertEquals(initial.gpx, state.value.gpx)
             assertEquals(initial.poi, state.value.poi)
         }
-        toggle.performClick().assertIsOff()
+        composeRule.onNodeWithTag("library-online-OPEN_STREET_MAP").performClick().assertIsSelected()
         composeRule.runOnIdle { assertEquals(PhoneMapSource.Online, state.value.maps.source) }
+        assertEquals(0, details)
     }
 
-    @Test fun sourceSwitchHandlesLoadingAndNoMapsAndFallsBackAfterAMapWasRemoved() {
+    @Test fun activeMapCardNamesTheMapAndWhetherItIsOffline() {
+        val map = PhoneOfflineMap(File("Alps.map"))
         val initial = libraryTestMapState(composeRule.activity)
         val state = mutableStateOf(initial)
         composeRule.setContent {
-            MaterialTheme { libraryOnlineMapSelection(state.value.maps, libraryTestMapActions(state).maps) }
+            MaterialTheme {
+                LazyColumn { libraryMapSourceEntries(state.value.maps, libraryTestMapActions(state).maps, "") }
+            }
         }
-        val toggle = composeRule.onNodeWithTag("library-map-source-toggle")
-        toggle.assertIsNotEnabled()
-        val map = PhoneOfflineMap(File("remaining.map"))
+        val card = composeRule.onNodeWithTag("library-active-map", useUnmergedTree = true)
+        card.assertExists()
+        composeRule
+            .onNodeWithText(composeRule.activity.getString(R.string.map_source_no_offline_maps))
+            .assertExists()
         composeRule.runOnIdle {
             state.value =
                 initial.copy(
-                    maps =
-                        initial.maps.copy(
-                            offlineMaps = listOf(map),
-                            preferredOfflineMapName = "removed.map",
-                            isLoading = true,
-                        ),
+                    maps = initial.maps.copy(source = PhoneMapSource.Offline(map), offlineMaps = listOf(map)),
                 )
         }
-        toggle.assertIsNotEnabled()
-        composeRule.runOnIdle { state.value = state.value.copy(maps = state.value.maps.copy(isLoading = false)) }
-        toggle.performClick().assertIsOn()
-        composeRule.runOnIdle { assertEquals(PhoneMapSource.Offline(map), state.value.maps.source) }
+        composeRule.onNodeWithText("Alps.map").assertIsDisplayed()
+        composeRule.onNodeWithText(composeRule.activity.getString(R.string.library_map_mode_offline)).assertIsDisplayed()
     }
 
-    @Test fun offlineMapRowsShowBothCoverageStatesWithoutTruncatingTheirLabels() {
+    @Test fun loadingBlocksMapActivationFromRows() {
+        val map = PhoneOfflineMap(File("Alps.map"))
+        val initial = libraryTestMapState(composeRule.activity)
+        val state = mutableStateOf(initial.copy(maps = initial.maps.copy(offlineMaps = listOf(map), isLoading = true)))
+        composeRule.setContent {
+            MaterialTheme {
+                val actions = libraryTestMapActions(state)
+                LazyColumn {
+                    libraryMapSourceEntries(state.value.maps, actions.maps, "")
+                    item {
+                        libraryItemRow(
+                            PhoneLibraryRowState(PhoneLibraryItem.OfflineMap(map, 100L), true),
+                            state.value,
+                            actions,
+                        ) {}
+                    }
+                }
+            }
+        }
+        composeRule.onNodeWithTag("library-item-offline/${map.selectionIdentity}").performClick()
+        composeRule.onNodeWithTag("library-online-OPEN_STREET_MAP").assertIsNotEnabled()
+        composeRule.runOnIdle { assertEquals(PhoneMapSource.Online, state.value.maps.source) }
+    }
+
+    @Test fun offlineMapRowsDescribeBothCoverageStatesOnTheirChips() {
         val state = mutableStateOf(libraryTestMapState(composeRule.activity))
         val map = PhoneOfflineMap(File("Alps.map"))
         val coverage = PhoneLibraryMapCoverage(null, 4, 2, 1, 1)
@@ -109,7 +127,7 @@ class PhoneLibraryMapSelectionUiTest {
                 composeRule.activity.getString(R.string.library_offline_routing),
                 composeRule.activity.getString(R.string.library_map_coverage_available, 1, 1),
             )
-        composeRule.onNodeWithText(elevation).assertIsDisplayed()
-        composeRule.onNodeWithText(routing).assertIsDisplayed()
+        composeRule.onNodeWithContentDescription(elevation).assertIsDisplayed()
+        composeRule.onNodeWithContentDescription(routing).assertIsDisplayed()
     }
 }

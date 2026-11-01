@@ -4,6 +4,12 @@
     <string name="library_more_options">Library options</string>
     <string name="library_filter_planned">Planned</string>
     <string name="library_on_map">On map</string>
+    <string name="library_map_using_now">Using now</string>
+    <string name="library_map_mode_offline">Offline</string>
+    <string name="library_map_details">Map details</string>
+    <string name="library_online_maps">Online maps</string>
+    <string name="library_online_maps_hint">Needs a connection</string>
+    <string name="library_offline_maps_hint">Works without signal</string>
     <string name="library_start_route">Start</string>
     <string name="library_route_summary">%1$.1f km · ↑ %2$d m</string>
     <string name="library_offline_areas">Offline areas</string>
@@ -67,7 +73,6 @@
     <string name="library_show_on_map">Show %1$s on map</string>
     <string name="library_use_map">Use %1$s as the map</string>
     <string name="library_use_online_map">Use online map</string>
-    <string name="library_map_offline_toggle">Use offline maps</string>
     <string name="library_offline_maps">Offline maps</string>
     <string name="library_map_coverage_unknown">coverage unknown</string>
     <string name="library_map_coverage_not_required">not required</string>
@@ -1942,7 +1947,6 @@
     <string name="map_custom_theme_missing_resources">The theme ZIP is missing required resources.</string>
     <string name="map_custom_theme_too_large">The theme package is too large.</string>
     <string name="map_custom_theme_damaged">The theme ZIP is damaged.</string>
-    <string name="library_map_data_action">Download map data for %1$s</string>
     <string name="library_map_data_title">Download data for %1$s</string>
     <string name="library_map_data_brouter">BRouter routing</string>
     <string name="library_map_data_shared">Only missing files are downloaded. Files can be shared by other maps.</string>

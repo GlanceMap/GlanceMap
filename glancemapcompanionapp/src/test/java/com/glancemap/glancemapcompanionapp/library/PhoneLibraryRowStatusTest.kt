@@ -32,9 +32,18 @@ class PhoneLibraryRowStatusTest {
     }
 
     @Test
-    fun receivedGpxStaysQuietWhileOfflineMapsKeepTheirStatus() {
+    fun receivedGpxAndOfflineMapsStayQuiet() {
         assertNull(libraryItemStatus(PhoneLibraryItem.ReceivedGpx(File("watch.gpx"), 1L, 1L), null))
         val map = PhoneOfflineMap(File("alps.map"), contentRevision = "test")
-        assertEquals(R.string.library_on_phone, libraryItemStatus(PhoneLibraryItem.OfflineMap(map, 1L), null))
+        assertNull(libraryItemStatus(PhoneLibraryItem.OfflineMap(map, 1L), null))
+    }
+
+    @Test
+    fun mapDataStatusFollowsCoverage() {
+        assertEquals(PhoneLibraryMapDataStatus.UNKNOWN, phoneLibraryMapDataStatus(null, 0))
+        assertEquals(PhoneLibraryMapDataStatus.NOT_REQUIRED, phoneLibraryMapDataStatus(0, 0))
+        assertEquals(PhoneLibraryMapDataStatus.MISSING, phoneLibraryMapDataStatus(4, 0))
+        assertEquals(PhoneLibraryMapDataStatus.PARTIAL, phoneLibraryMapDataStatus(4, 2))
+        assertEquals(PhoneLibraryMapDataStatus.READY, phoneLibraryMapDataStatus(4, 4))
     }
 }

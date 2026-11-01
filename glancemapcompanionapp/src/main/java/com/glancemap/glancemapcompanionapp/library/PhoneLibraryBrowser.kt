@@ -128,12 +128,7 @@ internal fun libraryBrowserList(
             item(key = "grouping") { libraryGpxGrouping(browse, navigation.onBrowse) }
         }
         if (state.filter == PhoneLibraryFilter.MAPS) {
-            item(key = "online-map") { libraryOnlineMapSelection(mapState.maps, mapActions.maps) }
-            item(key = "offline-data") {
-                TextButton(onClick = { actions.onFilterChanged(PhoneLibraryFilter.BUNDLES) }) {
-                    Text(stringResource(R.string.library_filter_bundles))
-                }
-            }
+            libraryMapSourceEntries(mapState.maps, mapActions.maps, browse.query)
         }
         item(key = "count") {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -164,5 +159,10 @@ internal fun libraryBrowserList(
             ) { navigation.onBrowse(browse.copy(folderId = folder.id, query = "")) }
         }
         libraryEntries(state, mapState, mapActions, actions, navigation.onDetails)
+        if (state.filter == PhoneLibraryFilter.MAPS) {
+            item(key = "offline-data") {
+                libraryOfflineDataRow { actions.onFilterChanged(PhoneLibraryFilter.BUNDLES) }
+            }
+        }
     }
 }

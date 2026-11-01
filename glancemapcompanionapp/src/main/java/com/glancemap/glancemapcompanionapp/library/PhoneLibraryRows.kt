@@ -38,7 +38,9 @@ internal fun libraryItemRow(
                 .combinedClickable(
                     enabled = row.enabled,
                     onClick = {
-                        if (item.gpxKind() == PhoneLibraryGpxKind.RECORDING) {
+                        if (item is PhoneLibraryItem.OfflineMap) {
+                            if (!state.maps.isLoading) actions.maps.onSelectOffline(item.map)
+                        } else if (item.gpxKind() == PhoneLibraryGpxKind.RECORDING) {
                             onDetails()
                         } else if (item.isNavigableGpx() && row.onPreviewGpx != null) {
                             row.onPreviewGpx.invoke(item)
@@ -62,6 +64,9 @@ internal fun libraryItemRow(
                 libraryRowTrailing(row, visibility, state, actions, onDetails)
             }
             libraryRowActions(row, visibility, state, actions)
+            if (item is PhoneLibraryItem.OfflineMap) {
+                libraryMapDataActions(item, row.enabled, state.maps, actions.maps)
+            }
         }
     }
 }
@@ -82,7 +87,6 @@ private fun libraryRowText(
         )
         Text(libraryItemSummary(item), style = MaterialTheme.typography.bodySmall)
         if (item is PhoneLibraryItem.Bundle) libraryOfflineCapabilities(item)
-        if (item is PhoneLibraryItem.OfflineMap) libraryMapCoverageLabels(item.coverage)
         libraryItemStatus(item, visibility)?.let { status ->
             Text(stringResource(status), style = MaterialTheme.typography.labelSmall)
         }
@@ -98,12 +102,11 @@ internal fun libraryItemStatus(
     when {
         visibility?.hiddenByLayers == true -> R.string.library_hidden_by_layers
         visibility?.available == false -> R.string.library_unavailable_on_map
-        visibility != null || item is PhoneLibraryItem.ReceivedGpx -> null
         item is PhoneLibraryItem.Bundle && !item.isOfflineReady() -> R.string.library_bundle_attention
         item is PhoneLibraryItem.Bundle -> R.string.library_bundle_ready
         item is PhoneLibraryItem.OfflineData && !item.isUsable -> R.string.library_offline_invalid
         item is PhoneLibraryItem.OfflineData -> R.string.library_offline_ready
-        else -> R.string.library_on_phone
+        else -> null
     }
 
 @Composable
@@ -123,10 +126,16 @@ private fun libraryRowTrailing(
                 Icon(Icons.Default.MoreVert, stringResource(R.string.hike_route_details))
             }
         visibility == null -> {
-            if (item is PhoneLibraryItem.OfflineMap) {
-                libraryMapDataButton(item, row.enabled, state.maps, actions.maps)
-            }
             libraryMapControl(row, state, actions)
+            if (item is PhoneLibraryItem.OfflineMap) {
+                IconButton(
+                    onClick = onDetails,
+                    enabled = row.enabled,
+                    modifier = Modifier.testTag("library-map-details-${item.key}"),
+                ) {
+                    Icon(Icons.Default.MoreVert, stringResource(R.string.library_map_details))
+                }
+            }
         }
     }
 }

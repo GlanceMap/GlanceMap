@@ -1,7 +1,7 @@
 # Phone offline map data downloads
 
-The phone library offers elevation and BRouter choices for each installed Mapsforge
-map. The choice starts the existing offline-bundle foreground service with the local
+The phone library shows elevation and BRouter status chips on each installed
+Mapsforge map, and either chip opens the same download choices. The choice starts the existing offline-bundle foreground service with the local
 map filename and only the requested data components. Map bounds determine tile
 coverage; the map and POI files are never fetched by this action. Existing valid
 tiles are reused and remain shared across maps.

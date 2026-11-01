@@ -16,6 +16,25 @@ import androidx.compose.ui.unit.dp
 import com.glancemap.glancemapcompanionapp.R
 
 @Composable
+internal fun libraryMapCoverageText(
+    label: Int,
+    required: Int?,
+    available: Int,
+): String {
+    val text =
+        when (phoneLibraryMapDataStatus(required, available)) {
+            PhoneLibraryMapDataStatus.UNKNOWN -> stringResource(R.string.library_map_coverage_unknown)
+            PhoneLibraryMapDataStatus.NOT_REQUIRED -> stringResource(R.string.library_map_coverage_not_required)
+            PhoneLibraryMapDataStatus.MISSING -> stringResource(R.string.map_source_capability_missing)
+            PhoneLibraryMapDataStatus.PARTIAL ->
+                stringResource(R.string.library_map_coverage_partial, available, required ?: 0)
+            PhoneLibraryMapDataStatus.READY ->
+                stringResource(R.string.library_map_coverage_available, available, required ?: 0)
+        }
+    return stringResource(R.string.library_offline_component, stringResource(label), text)
+}
+
+@Composable
 internal fun libraryMapCoverageLabels(coverage: PhoneLibraryMapCoverage?) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         libraryMapCoverageLabel(
@@ -40,14 +59,6 @@ private fun libraryMapCoverageLabel(
     required: Int?,
     available: Int,
 ) {
-    val text =
-        when {
-            required == null -> stringResource(R.string.library_map_coverage_unknown)
-            required == 0 -> stringResource(R.string.library_map_coverage_not_required)
-            available == 0 -> stringResource(R.string.map_source_capability_missing)
-            available < required -> stringResource(R.string.library_map_coverage_partial, available, required)
-            else -> stringResource(R.string.library_map_coverage_available, available, required)
-        }
     val color =
         when {
             required != null && available >= required -> MaterialTheme.colorScheme.primary
@@ -57,7 +68,7 @@ private fun libraryMapCoverageLabel(
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp), tint = color)
         Text(
-            stringResource(R.string.library_offline_component, stringResource(label), text),
+            libraryMapCoverageText(label, required, available),
             style = MaterialTheme.typography.bodySmall,
             color = color,
         )
