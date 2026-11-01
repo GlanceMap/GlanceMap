@@ -10,6 +10,7 @@ import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.view.Surface
 import android.view.WindowManager
 import androidx.core.content.ContextCompat
@@ -172,6 +173,9 @@ internal class PhoneCompassSensorSource(
     private var fusedFirstSampleReceived = false
     private var fusedSampleReceived = false
     private var fusedReadyTimeoutRunnable: Runnable? = null
+    private var sensorReadyTimeoutRunnable: Runnable? = null
+    private var sensorRestartElapsedNanos: Long? = null
+    private val fallbackMemory = PhoneCompassFallbackMemory()
     private var sensorRegistrationSucceeded: Boolean? = null
     private var hasSample = false
     private var calibrationRecommended = false
@@ -193,6 +197,7 @@ internal class PhoneCompassSensorSource(
         val sourceChanged = headingSourceMode != normalized.headingSourceMode
         providerMode = normalized.providerMode
         headingSourceMode = normalized.headingSourceMode
+        if (providerChanged || sourceChanged) fallbackMemory.clear()
         if (started && (providerChanged || sourceChanged)) {
             restart()
         } else {
@@ -201,6 +206,8 @@ internal class PhoneCompassSensorSource(
     }
 
     fun recalibrate() {
+        fallbackMemory.clear()
+        cancelSensorReadyTimeout()
         smoothedHeading = null
         calibrationRecommended = false
         if (started && providerMode == PhoneCompassProviderMode.GOOGLE_FUSED) {
@@ -248,7 +255,20 @@ internal class PhoneCompassSensorSource(
         hasSample = false
         calibrationRecommended = false
         magneticInterference = false
-        if (providerMode == PhoneCompassProviderMode.GOOGLE_FUSED) requestFusedOrientation() else startSensorPipeline()
+        when {
+            providerMode != PhoneCompassProviderMode.GOOGLE_FUSED -> startSensorPipeline()
+            !fallbackMemory.preferSensor -> requestFusedOrientation()
+            else -> {
+                sensorRestartElapsedNanos = SystemClock.elapsedRealtimeNanos()
+                startSensorPipeline()
+                if (sensorRegistrationSucceeded == true) {
+                    scheduleSensorReadyTimeout()
+                    PhoneDebugCapture.log(PHONE_COMPASS_DIAGNOSTICS_TAG, "event=phone_compass_cached_fallback")
+                } else {
+                    retryFusedAfterCachedFallback()
+                }
+            }
+        }
         PhoneDebugCapture.log(
             PHONE_COMPASS_DIAGNOSTICS_TAG,
             "event=phone_compass_started provider=$providerMode requestedSource=$headingSourceMode",
@@ -261,6 +281,8 @@ internal class PhoneCompassSensorSource(
         started = false
         fusedRequestGeneration += 1L
         cancelFusedReadyTimeout()
+        cancelSensorReadyTimeout()
+        sensorRestartElapsedNanos = null
         fusedListener?.let { listener -> fusedOrientationClient.removeOrientationUpdates(listener) }
         fusedListener = null
         fusedFirstSampleReceived = false
@@ -282,6 +304,13 @@ internal class PhoneCompassSensorSource(
 
     @Suppress("LongMethod", "CyclomaticComplexMethod") // Sensor-source dispatch mirrors the Android callback contract.
     override fun onSensorChanged(event: SensorEvent) {
+        val restartNanos = sensorRestartElapsedNanos
+        if (
+            restartNanos != null &&
+            !phoneCompassSampleIsFreshForRestart(event.timestamp, restartNanos, SystemClock.elapsedRealtimeNanos())
+        ) {
+            return
+        }
         if (started) {
             when (activePipeline) {
                 PhoneCompassPipeline.ROTATION_VECTOR -> {
@@ -405,6 +434,7 @@ internal class PhoneCompassSensorSource(
                 calibrationRecommended = calibrationRecommended,
                 magneticInterference = magneticInterference,
             )
+        recordFallbackSample(next, sensorElapsedMs)
         recordOrientation(next, normalized)
         if (next == _state.value) {
             recordDiagnostics(next)
@@ -415,6 +445,15 @@ internal class PhoneCompassSensorSource(
         listeners.forEach { listener ->
             listener.onCompassAccuracyChange(next.accuracy)
             next.headingDegrees?.takeIf { next.isRenderable }?.let(listener::onCompassChanged)
+        }
+    }
+
+    private fun recordFallbackSample(
+        state: PhoneCompassState,
+        sensorElapsedMs: Long?,
+    ) {
+        if (fallbackMemory.recordSample(providerMode, activePipeline, state.isRenderable, sensorElapsedMs)) {
+            cancelSensorReadyTimeout()
         }
     }
 
@@ -441,6 +480,7 @@ internal class PhoneCompassSensorSource(
 
     private fun startSensorPipeline() {
         cancelFusedReadyTimeout()
+        cancelSensorReadyTimeout()
         fusedListener?.let { listener -> fusedOrientationClient.removeOrientationUpdates(listener) }
         fusedListener = null
         sensorManager.unregisterListener(this)
@@ -488,6 +528,8 @@ internal class PhoneCompassSensorSource(
 
     private fun requestFusedOrientation() {
         cancelFusedReadyTimeout()
+        cancelSensorReadyTimeout()
+        sensorRestartElapsedNanos = null
         sensorManager.unregisterListener(this)
         activePipeline = PhoneCompassPipeline.GOOGLE_FUSED
         lastSampleElapsedMs = null
@@ -499,7 +541,7 @@ internal class PhoneCompassSensorSource(
         fusedListener?.let { listener -> fusedOrientationClient.removeOrientationUpdates(listener) }
         val listener =
             DeviceOrientationListener { orientation ->
-                if (started && generation == fusedRequestGeneration) {
+                if (phoneCompassFusedCallbackIsCurrent(started, activePipeline, fusedRequestGeneration, generation)) {
                     handleFusedOrientation(orientation)
                 }
             }
@@ -517,7 +559,7 @@ internal class PhoneCompassSensorSource(
                 ContextCompat.getMainExecutor(appContext),
                 listener,
             ).addOnFailureListener { _ ->
-                if (started && generation == fusedRequestGeneration) {
+                if (phoneCompassFusedCallbackIsCurrent(started, activePipeline, fusedRequestGeneration, generation)) {
                     PhoneDebugCapture.log(
                         PHONE_COMPASS_DIAGNOSTICS_TAG,
                         "event=phone_compass_fused_fallback reason=request_failed",
@@ -577,6 +619,37 @@ internal class PhoneCompassSensorSource(
     private fun cancelFusedReadyTimeout() {
         fusedReadyTimeoutRunnable?.let(mainHandler::removeCallbacks)
         fusedReadyTimeoutRunnable = null
+    }
+
+    private fun scheduleSensorReadyTimeout() {
+        cancelSensorReadyTimeout()
+        if (lastSampleElapsedMs != null && _state.value.isRenderable) return
+        val timeout =
+            Runnable {
+                if (started && fallbackMemory.preferSensor) {
+                    PhoneDebugCapture.log(PHONE_COMPASS_DIAGNOSTICS_TAG, "event=phone_compass_cached_fallback_timeout")
+                    retryFusedAfterCachedFallback()
+                }
+            }
+        sensorReadyTimeoutRunnable = timeout
+        mainHandler.postDelayed(timeout, PHONE_COMPASS_FUSED_READY_TIMEOUT_MS)
+    }
+
+    private fun cancelSensorReadyTimeout() {
+        sensorReadyTimeoutRunnable?.let(mainHandler::removeCallbacks)
+        sensorReadyTimeoutRunnable = null
+    }
+
+    private fun retryFusedAfterCachedFallback() {
+        fallbackMemory.clear()
+        accuracy = SensorManager.SENSOR_STATUS_UNRELIABLE
+        smoothedHeading = null
+        rawHeading = null
+        lastSampleElapsedMs = null
+        hasSample = false
+        calibrationRecommended = false
+        magneticInterference = false
+        requestFusedOrientation()
     }
 
     private fun shouldFallbackFromFused(generation: Long): Boolean =

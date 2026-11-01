@@ -2,6 +2,17 @@
 
 This document is the contributor entry point for watch compass behavior.
 
+## Phone map resume
+
+The phone map stops its compass while inactive and clears the last heading. When Google Fused
+cannot become ready, a SensorManager fallback that produces a renderable sample is remembered
+for the lifetime of the map's compass source. On a later resume it tries that sensor first, but
+accepts only samples timestamped after the restart begins. If registration fails or no usable sample
+arrives within the existing 2.5-second readiness window, it retries Google Fused. Changing the
+provider or sensor source, recalibrating, or recreating the source clears the preference.
+The preference does not persist or change location acquisition, and no cached heading is rendered.
+Compare resume captures and verify heading, backgrounding, calibration, and fallback on real phones.
+
 ## Scope
 
 Main source roots:
