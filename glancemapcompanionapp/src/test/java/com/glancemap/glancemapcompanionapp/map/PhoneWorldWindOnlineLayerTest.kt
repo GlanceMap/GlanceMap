@@ -4,7 +4,9 @@ import okhttp3.Protocol
 import okhttp3.Request
 import okhttp3.Response
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PhoneWorldWindOnlineLayerTest {
@@ -18,6 +20,12 @@ class PhoneWorldWindOnlineLayerTest {
             minimumZoom = 2,
             maximumZoom = 10,
         )
+
+    @Test
+    fun onlyRecoverableHttpFailuresAreRetried() {
+        listOf(408, 425, 429, 500, 503).forEach { assertTrue(phoneWorldWindTileFailureIsTransient(it)) }
+        listOf(400, 401, 403, 404).forEach { assertFalse(phoneWorldWindTileFailureIsTransient(it)) }
+    }
 
     @Test
     fun selectedProviderCoordinatesZoomAndCoverageAreRespected() {

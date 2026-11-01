@@ -147,6 +147,10 @@ internal class PhoneElevationRepository(
 
     @Volatile internal var onTileAccess: ((Boolean, PhoneDemTile?) -> Unit)? = null
 
+    @Volatile internal var onTileFailure: ((String, Throwable) -> Unit)? = null
+
+    private val memoryFailedTiles = mutableSetOf<String>()
+
     private val demRootDirs: List<File>
         get() = demRootDirsProvider()
 
@@ -201,11 +205,28 @@ internal class PhoneElevationRepository(
                 }
             }.onFailure { error ->
                 if (logTileFailures) Log.w(PHONE_TERRAIN_TAG, "Could not read DEM $tileId", error)
-            }.getOrNull()
-        synchronized(tileCache) { tileCache[tileId] = loaded }
-        onTileAccess?.invoke(false, loaded)
-        return loaded
+                onTileFailure?.invoke(tileId, error)
+            }
+        val tile = loaded.getOrNull()
+        val outOfMemory = loaded.exceptionOrNull() is OutOfMemoryError
+        synchronized(tileCache) {
+            if (outOfMemory) {
+                // Exhausted memory says nothing about the tile, so free the LRU and leave it readable later.
+                tileCache.clear()
+                memoryFailedTiles.add(tileId)
+            } else {
+                memoryFailedTiles.remove(tileId)
+                tileCache[tileId] = tile
+            }
+        }
+        if (!outOfMemory) onTileAccess?.invoke(false, tile)
+        return tile
     }
+
+    internal fun tileExceededMemory(
+        latitudeTile: Int,
+        longitudeTile: Int,
+    ): Boolean = synchronized(tileCache) { phoneDemTileId(latitudeTile, longitudeTile) in memoryFailedTiles }
 
     internal fun elevationAtUsingTile(
         tile: PhoneDemTile,

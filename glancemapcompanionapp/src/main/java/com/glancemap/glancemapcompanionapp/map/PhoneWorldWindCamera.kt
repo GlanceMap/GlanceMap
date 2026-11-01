@@ -4,6 +4,15 @@ import com.glancemap.trailcore.geo.GeoPoint
 import earth.worldwind.geom.AltitudeMode
 import earth.worldwind.geom.Angle.Companion.degrees
 import earth.worldwind.geom.LookAt
+import kotlin.math.abs
+
+private const val PHONE_WORLDWIND_GROUND_ANCHOR_TOLERANCE_METERS = 5.0
+
+/** Ground-clamped cameras resolve elevation once, so they are repositioned when terrain arrives or refines. */
+internal fun phoneWorldWindGroundMoved(
+    anchoredElevation: Double,
+    currentElevation: Double,
+): Boolean = abs(currentElevation - anchoredElevation) >= PHONE_WORLDWIND_GROUND_ANCHOR_TOLERANCE_METERS
 
 /** Applies the existing map command without changing the chosen 3D tilt or bearing. */
 internal fun phoneWorldWindCommandCamera(

@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="phone_worldwind_loading">Loading 3D terrain</string>
+</resources>

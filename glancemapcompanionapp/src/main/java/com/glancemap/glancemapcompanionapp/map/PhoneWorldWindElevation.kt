@@ -26,6 +26,7 @@ internal class PhoneWorldWindElevation(
     private val online: PhoneOnlineElevationRepository? = null,
     resolutionSeconds: Int = 1,
     private val diagnostics: PhoneWorldWindDiagnostics? = null,
+    private val activity: PhoneWorldWindActivity,
 ) : AutoCloseable {
     private val closed = AtomicBoolean(false)
     private val demDispatcher = Dispatchers.IO.limitedParallelism(1)
@@ -54,42 +55,48 @@ internal class PhoneWorldWindElevation(
                     ElevationSource.fromElevationDataFactory(
                         object : ElevationSource.ElevationDataFactory {
                             override suspend fun fetchElevationData(): Buffer? =
-                                withContext(demDispatcher) {
-                                    if (closed.get()) return@withContext null
-                                    val started = android.os.SystemClock.elapsedRealtime()
-                                    val tile = tileMatrix.tileSector(row, column)
-                                    val bounds =
-                                        PhoneWorldWindBounds(
-                                            tile.minLatitude.inDegrees,
-                                            tile.minLongitude.inDegrees,
-                                            tile.maxLatitude.inDegrees,
-                                            tile.maxLongitude.inDegrees,
+                                activity.track {
+                                    withContext(demDispatcher) {
+                                        if (closed.get()) return@withContext null
+                                        val started = android.os.SystemClock.elapsedRealtime()
+                                        val tile = tileMatrix.tileSector(row, column)
+                                        val bounds =
+                                            PhoneWorldWindBounds(
+                                                tile.minLatitude.inDegrees,
+                                                tile.minLongitude.inDegrees,
+                                                tile.maxLatitude.inDegrees,
+                                                tile.maxLongitude.inDegrees,
+                                            )
+                                        val zoom =
+                                            phoneWorldWindOnlineDemZoom(
+                                                bounds.south,
+                                                bounds.west,
+                                                bounds.north,
+                                                bounds.east,
+                                                tileMatrix.tileWidth,
+                                            )
+                                        val heights =
+                                            phoneWorldWindElevationGrid(
+                                                bounds,
+                                                tileMatrix.tileWidth to tileMatrix.tileHeight,
+                                                repository,
+                                                online,
+                                                zoom,
+                                            )
+                                        if (closed.get()) return@withContext null
+                                        if (heights == null) {
+                                            diagnostics?.elevationIncomplete()
+                                            return@withContext null
+                                        }
+                                        val valid = heights.count { it != Short.MIN_VALUE }
+                                        diagnostics?.elevation(
+                                            android.os.SystemClock.elapsedRealtime() - started,
+                                            heights.size,
+                                            valid,
                                         )
-                                    val zoom =
-                                        phoneWorldWindOnlineDemZoom(
-                                            bounds.south,
-                                            bounds.west,
-                                            bounds.north,
-                                            bounds.east,
-                                            tileMatrix.tileWidth,
-                                        )
-                                    val heights =
-                                        phoneWorldWindElevationGrid(
-                                            bounds,
-                                            tileMatrix.tileWidth to tileMatrix.tileHeight,
-                                            repository,
-                                            online,
-                                            zoom,
-                                        )
-                                    if (closed.get()) return@withContext null
-                                    val valid = heights.count { it != Short.MIN_VALUE }
-                                    diagnostics?.elevation(
-                                        android.os.SystemClock.elapsedRealtime() - started,
-                                        heights.size,
-                                        valid,
-                                    )
-                                    if (valid == 0 && online != null) return@withContext null
-                                    ShortBuffer.wrap(heights)
+                                        if (valid == 0 && online != null) return@withContext null
+                                        ShortBuffer.wrap(heights)
+                                    }
                                 }
                         },
                     )
@@ -142,23 +149,34 @@ internal fun phoneWorldWindDemResolutionSeconds(
     onlineEnabled: Boolean,
 ): Int = if (onlineEnabled || axisLength == null || axisLength > 1200) 1 else 3
 
-/** Group points by HGT tile to reuse each decoded tile even when the small repository LRU churns. */
+/** WorldWind reads a coverage value as the centre of its cell, not as a point on the tile edge. */
+internal fun phoneWorldWindCellCenter(
+    start: Double,
+    end: Double,
+    index: Int,
+    count: Int,
+): Double = start + (end - start) * (index + 0.5) / count
+
+/**
+ * Group points by HGT tile to reuse each decoded tile even when the small repository LRU churns.
+ * Returns null when a source failed, because WorldWind keeps a returned grid but retries a missing one.
+ */
 internal suspend fun phoneWorldWindElevationGrid(
     bounds: PhoneWorldWindBounds,
     dimensions: Pair<Int, Int>,
     local: PhoneElevationRepository?,
     online: PhoneOnlineElevationRepository?,
     zoom: Int,
-): ShortArray {
+): ShortArray? {
     val (width, height) = dimensions
     val heights = ShortArray(width * height) { Short.MIN_VALUE }
     val latitudes =
         DoubleArray(height) { y ->
-            (bounds.north - (bounds.north - bounds.south) * y / (height - 1)).coerceIn(-89.999999, 89.999999)
+            phoneWorldWindCellCenter(bounds.north, bounds.south, y, height).coerceIn(-89.999999, 89.999999)
         }
     val longitudes =
         DoubleArray(width) { x ->
-            (bounds.west + (bounds.east - bounds.west) * x / (width - 1)).coerceIn(-179.999999, 179.999999)
+            phoneWorldWindCellCenter(bounds.west, bounds.east, x, width).coerceIn(-179.999999, 179.999999)
         }
     val groups = LinkedHashMap<Pair<Int, Int>, MutableList<Int>>()
     for (y in 0 until height) {
@@ -167,22 +185,36 @@ internal suspend fun phoneWorldWindElevationGrid(
             groups.getOrPut(tile) { mutableListOf() }.add(y * width + x)
         }
     }
-    for ((tileId, indices) in groups) {
+    val sampler = PhoneWorldWindGridSampler(latitudes, longitudes, heights, local, online, zoom)
+    val complete = groups.all { (tileId, indices) -> sampler.fill(tileId, indices) }
+    return heights.takeIf { complete }
+}
+
+private class PhoneWorldWindGridSampler(
+    private val latitudes: DoubleArray,
+    private val longitudes: DoubleArray,
+    private val heights: ShortArray,
+    private val local: PhoneElevationRepository?,
+    private val online: PhoneOnlineElevationRepository?,
+    private val zoom: Int,
+) {
+    /** False when a source failed, as opposed to having no data for these samples. */
+    suspend fun fill(
+        tileId: Pair<Int, Int>,
+        indices: List<Int>,
+    ): Boolean {
         currentCoroutineContext().ensureActive()
         val tile = local?.loadTile(tileId.first, tileId.second)
+        if (tile == null && local?.tileExceededMemory(tileId.first, tileId.second) == true) return false
         for (index in indices) {
             if (index % 64 == 0) currentCoroutineContext().ensureActive()
-            val latitude = latitudes[index / width]
-            val longitude = longitudes[index % width]
+            val latitude = latitudes[index / longitudes.size]
+            val longitude = longitudes[index % longitudes.size]
+            val point = PhoneMapCoordinate(latitude, longitude)
             val elevation =
-                (
-                    if (tile != null) {
-                        local.elevationAtUsingTile(tile, tileId.first, tileId.second, latitude, longitude)
-                    } else {
-                        null
-                    }
-                )
-                    ?: online?.elevationAt(PhoneMapCoordinate(latitude, longitude), zoom)
+                tile?.let { local?.elevationAtUsingTile(it, tileId.first, tileId.second, latitude, longitude) }
+                    ?: online?.elevationAt(point, zoom)
+            if (elevation == null && online?.isTileUnavailable(point, zoom) == true) return false
             if (elevation != null &&
                 elevation.isFinite() &&
                 elevation > Short.MIN_VALUE &&
@@ -191,6 +223,6 @@ internal suspend fun phoneWorldWindElevationGrid(
                 heights[index] = elevation.roundToInt().coerceIn(Short.MIN_VALUE + 1, Short.MAX_VALUE.toInt()).toShort()
             }
         }
+        return true
     }
-    return heights
 }

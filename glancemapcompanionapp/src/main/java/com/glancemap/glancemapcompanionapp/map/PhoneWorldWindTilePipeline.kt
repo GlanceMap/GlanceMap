@@ -4,8 +4,31 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.async
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 private const val PHONE_WORLDWIND_MIB = 1024 * 1024
+internal const val PHONE_WORLDWIND_TILE_RETRY_MS = 30_000L
+
+/** WorldWind never retries a failed factory image itself, so each failed source is released after a delay. */
+internal class PhoneWorldWindTileRetry(
+    private val scope: CoroutineScope,
+    private val delayMillis: Long = PHONE_WORLDWIND_TILE_RETRY_MS,
+    private val onScheduled: () -> Unit = {},
+    private val onRetry: (Int) -> Unit,
+) {
+    private val pending = mutableSetOf<Int>()
+
+    fun schedule(resourceId: Int) {
+        if (!synchronized(pending) { pending.add(resourceId) }) return
+        onScheduled()
+        scope.launch {
+            delay(delayMillis)
+            synchronized(pending) { pending.remove(resourceId) }
+            onRetry(resourceId)
+        }
+    }
+}
 
 /** Budget decoded-equivalent pixels so 512px tiles cannot silently consume four times the cache budget. */
 internal fun phoneWorldWindCacheCapacity(maxHeapBytes: Long): Int = (maxHeapBytes / 8).coerceIn(4L * PHONE_WORLDWIND_MIB, 64L * PHONE_WORLDWIND_MIB).toInt()

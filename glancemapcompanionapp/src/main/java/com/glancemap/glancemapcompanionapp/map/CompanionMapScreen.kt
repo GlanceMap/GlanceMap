@@ -1034,8 +1034,9 @@ internal fun CompanionMapScreen(
     }
     val mapCamera = cameraState.camera
     var terrainPreview by remember { mutableStateOf<PhoneWorldWindPreview?>(null) }
+    var terrainPreviewRequested by rememberSaveable { mutableStateOf(false) }
     val terrainCenter = remember { arrayOfNulls<GeoPoint>(1) }
-    val terrainTilt = remember { doubleArrayOf(PHONE_WORLDWIND_DEFAULT_TILT_DEGREES) }
+    val terrainTilt = rememberSaveable { doubleArrayOf(PHONE_WORLDWIND_DEFAULT_TILT_DEGREES) }
     val storageMigration = remember(context) { PhoneOfflineStorageMigration(context.applicationContext) }
     var storageMigrationState by remember(storageMigration) {
         mutableStateOf(
@@ -2888,10 +2889,10 @@ internal fun CompanionMapScreen(
     }
     val baseOfflineMap = (mapUiState.source as? PhoneMapSource.Offline)?.map
     LaunchedEffect(mapUiState.source, selectedOnlineSource, offlineThemeConfig, mapSettings.onlineElevationEnabled, mapSettings.demSource, terrainDataVersion) {
-        terrainPreview?.let { current ->
+        if (terrainPreviewRequested) {
             val center = terrainCenter[0]
             terrainPreview =
-                current.copy(
+                PhoneWorldWindPreview(
                     map = baseOfflineMap,
                     onlineProvider = selectedOnlineProvider.takeIf { mapUiState.source == PhoneMapSource.Online },
                     onlineElevationEnabled = mapSettings.onlineElevationEnabled,
@@ -3285,6 +3286,13 @@ internal fun CompanionMapScreen(
             val preview = terrainPreview?.takeIf { isVisible }
             if (preview != null) {
                 Box(Modifier.fillMaxSize()) {
+                    // The surface restarts from the preview camera, so keep it current while the surface is hidden.
+                    DisposableEffect(Unit) {
+                        onDispose {
+                            terrainPreview =
+                                terrainPreview?.copy(camera = cameraState.camera, tiltDegrees = terrainTilt[0])
+                        }
+                    }
                     val worldWindLocation =
                         locationState.location
                             ?.takeIf { locationState.hasPermission }
@@ -4926,6 +4934,7 @@ internal fun CompanionMapScreen(
                             mapUiState = mapUiState.setComparisonTransparency(percent)
                         },
                         onOpenTerrainPreview = {
+                            terrainPreviewRequested = terrainPreview == null
                             if (terrainPreview != null) {
                                 terrainPreview = null
                             } else {

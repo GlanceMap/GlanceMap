@@ -33,6 +33,7 @@ internal class PhoneWorldWindMapsforgeLayer(
     private val map: PhoneOfflineMap,
     private val themeConfig: PhoneOfflineThemeConfig,
     private val diagnostics: PhoneWorldWindDiagnostics,
+    private val activity: PhoneWorldWindActivity,
 ) : Closeable {
     private data class Style(
         val display: DisplayModel,
@@ -50,6 +51,7 @@ internal class PhoneWorldWindMapsforgeLayer(
     private val worker =
         Executors.newSingleThreadExecutor { runnable -> Thread(runnable, "worldwind-mapsforge") }.asCoroutineDispatcher()
     private val scope = CoroutineScope(SupervisorJob() + worker)
+    private val retry = phoneWorldWindTileRetry(scope, diagnostics)
     private val coalescer =
         PhoneWorldWindTileCoalescer<PhoneWorldWindTileKey, ByteArray>(
             scope,
@@ -135,11 +137,14 @@ internal class PhoneWorldWindMapsforgeLayer(
                                 tile,
                                 resolution,
                             )
-                        return ImageSource.fromImageFactory(
-                            object : ImageSource.ImageFactory {
-                                override suspend fun createBitmap(): Bitmap? = bitmap(key)
-                            },
-                        )
+                        return phoneWorldWindRetryingImage(retry) { onTransientFailure ->
+                            bitmap(key).also { bitmap ->
+                                if (bitmap == null) {
+                                    diagnostics.tileFailed("mapsforge", "no_bitmap_z${key.tile.z}")
+                                    onTransientFailure()
+                                }
+                            }
+                        }
                     }
                 },
                 maxZoom = 20,
@@ -157,12 +162,16 @@ internal class PhoneWorldWindMapsforgeLayer(
         diagnostics.misses.incrementAndGet()
         diagnostics.tile("miss", key, 0)
         val bytes =
-            coalescer.get(key) {
-                cache.get(key) ?: render(key)?.also {
-                    val context = currentCoroutineContext()
-                    synchronized(renderLock) {
-                        context.ensureActive()
-                        if (!closed) cache.put(key, it)
+            activity.track {
+                coalescer.get(key) {
+                    activity.track {
+                        cache.get(key) ?: render(key)?.also {
+                            val context = currentCoroutineContext()
+                            synchronized(renderLock) {
+                                context.ensureActive()
+                                if (!closed) cache.put(key, it)
+                            }
+                        }
                     }
                 }
             } ?: return null
@@ -200,6 +209,7 @@ internal class PhoneWorldWindMapsforgeLayer(
                 }
             } catch (error: Exception) {
                 Log.w("PhoneWorldWind", "Mapsforge tile failed z=${key.tile.z}", error)
+                diagnostics.event("mapsforge_error", "z=${key.tile.z} resolution=${key.resolution} error=${error::class.simpleName}")
                 null
             }
         }

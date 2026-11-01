@@ -150,6 +150,15 @@ internal class PhoneOnlineElevationRepository(
             tile?.elevationAt(sample.pixelX, sample.pixelY)
         }
     }
+
+    /** True while the tile covering [point] failed to load, as opposed to loading with no data there. */
+    suspend fun isTileUnavailable(
+        point: PhoneMapCoordinate,
+        zoom: Int = ONLINE_DEM_READING_ZOOM,
+    ): Boolean {
+        val sample = phoneOnlineDemPoint(point, zoom) ?: return false
+        return mutex.withLock { tiles[sample.tile]?.let { it.tile == null } == true }
+    }
 }
 
 internal suspend fun phoneMapElevationAt(

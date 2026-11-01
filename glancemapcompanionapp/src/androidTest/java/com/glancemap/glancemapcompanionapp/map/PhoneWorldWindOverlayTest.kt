@@ -12,10 +12,12 @@ import org.junit.runner.RunWith
 class PhoneWorldWindOverlayTest {
     @Test
     fun updatedLocationMovesTheMarkerAndStaleFixUsesTheHistoricalColor() {
-        val first = phoneWorldWindGpxLayer(emptyList(), 0xff000000.toInt(), GeoPoint(46.0, 11.0))
-            .getRenderable(0) as Placemark
-        val stale = phoneWorldWindGpxLayer(emptyList(), 0xff000000.toInt(), GeoPoint(46.1, 11.2), false)
-            .getRenderable(0) as Placemark
+        val first =
+            phoneWorldWindGpxLayer(emptyList(), 0xff000000.toInt(), GeoPoint(46.0, 11.0))
+                .getRenderable(0) as Placemark
+        val stale =
+            phoneWorldWindGpxLayer(emptyList(), 0xff000000.toInt(), GeoPoint(46.1, 11.2), false)
+                .getRenderable(0) as Placemark
         assertEquals(46.0, first.position.latitude.inDegrees, 0.00001)
         assertEquals(46.1, stale.position.latitude.inDegrees, 0.00001)
         assertEquals(11.2, stale.position.longitude.inDegrees, 0.00001)

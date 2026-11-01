@@ -11,12 +11,18 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Landscape
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -38,6 +44,7 @@ import com.glancemap.trailcore.geo.GeoPoint
 import earth.worldwind.BasicWorldWindowController
 import earth.worldwind.WorldWind
 import earth.worldwind.WorldWindow
+import earth.worldwind.frame.Frame
 import earth.worldwind.geom.AltitudeMode
 import earth.worldwind.geom.Angle.Companion.degrees
 import earth.worldwind.geom.LookAt
@@ -53,10 +60,12 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import org.mapsforge.core.model.BoundingBox
 import java.io.Closeable
+import java.util.Locale
 import javax.microedition.khronos.opengles.GL10
 
 private class PhoneWorldWindWindow(
     context: Context,
+    private val diagnostics: PhoneWorldWindDiagnostics,
     private val onCameraChanged: (PhoneMapCameraSnapshot, Double) -> Unit,
     private val onUserPan: () -> Unit,
     private val onUserRotation: (Float) -> Unit,
@@ -93,6 +102,48 @@ private class PhoneWorldWindWindow(
     val tracksLayer = RenderableLayer("Tracks")
     val positionLayer = RenderableLayer("Position")
 
+    @Volatile private var touching = false
+    private var anchoredGround = 0.0
+    private var lastGestureDrawNanos = 0L
+
+    private fun groundElevation(at: LookAt) = engine.globe.getElevation(at.position.latitude, at.position.longitude)
+
+    fun applyCamera(lookAt: LookAt) {
+        engine.cameraFromLookAt(lookAt)
+        currentLookAt.copy(lookAt)
+        anchoredGround = groundElevation(lookAt)
+    }
+
+    /** Coordinates are rounded: the capture needs to compare cameras, not record an exact position. */
+    fun cameraSummary(): String {
+        val position = currentLookAt.position
+        return String.format(
+            Locale.ROOT,
+            "lat=%.3f lon=%.3f range=%.0f tilt=%.1f heading=%.1f mode=%s",
+            position.latitude.inDegrees,
+            position.longitude.inDegrees,
+            currentLookAt.range,
+            currentLookAt.tilt.inDegrees,
+            currentLookAt.heading.inDegrees,
+            currentLookAt.altitudeMode,
+        )
+    }
+
+    override fun renderFrame(frame: Frame) {
+        val started = System.nanoTime()
+        super.renderFrame(frame)
+        diagnostics.renderFrames.record(System.nanoTime() - started)
+        if (touching || currentLookAt.altitudeMode != AltitudeMode.CLAMP_TO_GROUND) return
+        val anchored = anchoredGround
+        val ground = groundElevation(currentLookAt)
+        if (phoneWorldWindGroundMoved(anchored, ground)) {
+            applyCamera(currentLookAt)
+            val altitude = engine.camera.position.altitude
+            diagnostics.cameraReanchored("ground_before=$anchored ground_after=$ground camera_altitude=$altitude")
+            WorldWind.requestRedraw()
+        }
+    }
+
     fun publishCamera(lookAt: LookAt = currentLookAt) {
         val latitude =
             lookAt.position.latitude.inDegrees
@@ -112,9 +163,15 @@ private class PhoneWorldWindWindow(
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
-        if (event.actionMasked == MotionEvent.ACTION_DOWN) onGestureActive(true)
+        if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+            touching = true
+            onGestureActive(true)
+        }
         val handled = super.onTouchEvent(event)
-        if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) onGestureActive(false)
+        if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) {
+            touching = false
+            onGestureActive(false)
+        }
         return handled
     }
 
@@ -128,10 +185,16 @@ private class PhoneWorldWindWindow(
     }
 
     override fun onDrawFrame(gl: GL10) {
+        val started = System.nanoTime()
         super.onDrawFrame(gl)
+        val finished = System.nanoTime()
+        diagnostics.glFrames.record(finished - started)
+        if (touching && lastGestureDrawNanos != 0L) diagnostics.gestureFrameGaps.record(started - lastGestureDrawNanos)
+        lastGestureDrawNanos = if (touching) finished else 0L
         if (!firstFrame) {
             firstFrame = true
-            onFirstGlFrame(SystemClock.elapsedRealtime() - started)
+            val elapsed = SystemClock.elapsedRealtime() - started
+            post { onFirstGlFrame(elapsed) }
         }
     }
 }
@@ -192,12 +255,15 @@ internal fun phoneWorldWindSurface(
     val uriHandler = LocalUriHandler.current
     val lifecycle by LocalLifecycleOwner.current.lifecycle.currentStateAsState()
     val latestCallbacks by rememberUpdatedState(callbacks)
+    val activity = remember(preview) { PhoneWorldWindActivity() }
+    val processing by activity.isActive.collectAsState()
     var gestureActive by remember(preview) { mutableStateOf(false) }
     var viewportReady by remember(preview) { mutableStateOf(false) }
     var onlineUnavailable by remember(preview) { mutableStateOf(false) }
     var resources by remember(preview) { mutableStateOf<PhoneWorldWindResources?>(null) }
     var failure by remember(preview) { mutableStateOf(false) }
     var window by remember(preview) { mutableStateOf<PhoneWorldWindWindow?>(null) }
+    var firstFrame by remember(preview) { mutableStateOf(false) }
     LaunchedEffect(preview) {
         val map = preview.map
         val provider = preview.onlineProvider
@@ -213,18 +279,45 @@ internal fun phoneWorldWindSurface(
                     runCatching {
                         val diagnostics = PhoneWorldWindDiagnostics()
                         var offlineImagery: PhoneWorldWindMapsforgeLayer? = null
+                        var onlineImagery: PhoneWorldWindOnlineImagery? = null
                         try {
-                            offlineImagery = map?.let { PhoneWorldWindMapsforgeLayer(context.applicationContext, it, preview.theme, diagnostics) }
-                            val imagery = offlineImagery?.layer ?: phoneWorldWindOnlineLayer(context.applicationContext, requireNotNull(provider))
+                            offlineImagery =
+                                map?.let {
+                                    PhoneWorldWindMapsforgeLayer(
+                                        context.applicationContext,
+                                        it,
+                                        preview.theme,
+                                        diagnostics,
+                                        activity,
+                                    )
+                                }
+                            if (map == null) {
+                                onlineImagery =
+                                    PhoneWorldWindOnlineImagery(context.applicationContext, requireNotNull(provider), diagnostics)
+                            }
+                            val imagery = offlineImagery?.layer ?: requireNotNull(onlineImagery).layer
                             val bounds = offlineImagery?.bounds ?: BoundingBox(-85.0, -180.0, 85.0, 180.0)
                             val repository = PhoneElevationRepository(context.applicationContext)
                             val hasData = repository.hasData()
                             repository.onTileAccess = { hit, tile -> diagnostics.demAccess(hit, tile?.axisLength) }
+                            repository.onTileFailure = diagnostics::demFailure
                             val centerSample = if (hasData) repository.elevationSampleAt(preview.camera.latitude, preview.camera.longitude) else null
                             val centerHasData = centerSample != null
                             val online = onlineElevation.takeIf { provider != null && preview.onlineElevationEnabled }
                             val resolution = phoneWorldWindDemResolutionSeconds(centerSample?.axisLen, online != null)
-                            val elevation = if (hasData || online != null) PhoneWorldWindElevation(repository.takeIf { hasData }, bounds, online, resolution, diagnostics) else null
+                            val elevation =
+                                if (hasData || online != null) {
+                                    PhoneWorldWindElevation(
+                                        repository.takeIf { hasData },
+                                        bounds,
+                                        online,
+                                        resolution,
+                                        diagnostics,
+                                        activity,
+                                    )
+                                } else {
+                                    null
+                                }
                             val status =
                                 when {
                                     online != null -> null
@@ -233,9 +326,19 @@ internal fun phoneWorldWindSurface(
                                     !centerHasData -> R.string.phone_worldwind_no_dem_here
                                     else -> null
                                 }
-                            PhoneWorldWindResources(imagery, offlineImagery, elevation, status, online, centerHasData, diagnostics)
+                            val imageryOwner = offlineImagery ?: onlineImagery
+                            PhoneWorldWindResources(
+                                imagery,
+                                imageryOwner,
+                                elevation,
+                                status,
+                                online,
+                                centerHasData,
+                                diagnostics,
+                            )
                         } catch (error: Exception) {
                             offlineImagery?.close()
+                            onlineImagery?.close()
                             diagnostics.close()
                             throw error
                         }
@@ -251,19 +354,29 @@ internal fun phoneWorldWindSurface(
     }
     DisposableEffect(window, lifecycle) {
         val current = window
-        if (current != null && lifecycle.isAtLeast(Lifecycle.State.RESUMED)) current.onResume()
-        onDispose { current?.onPause() }
+        val captured = resources?.diagnostics
+        if (current != null && lifecycle.isAtLeast(Lifecycle.State.RESUMED)) {
+            current.onResume()
+            captured?.event("surface_resume", current.cameraSummary())
+        }
+        onDispose {
+            current?.onPause()
+            if (current != null) captured?.event("surface_pause", current.cameraSummary())
+        }
     }
 
-    LaunchedEffect(resources) {
+    val resumed = lifecycle.isAtLeast(Lifecycle.State.RESUMED)
+    LaunchedEffect(resources, resumed) {
         val prepared = resources ?: return@LaunchedEffect
         val online = prepared.online ?: return@LaunchedEffect
-        if (!prepared.centerHasLocalElevation) {
+        if (resumed && !prepared.centerHasLocalElevation) {
             val center = PhoneMapCoordinate(preview.camera.latitude, preview.camera.longitude)
             do {
                 onlineUnavailable = online.elevationAt(center) == null
-                if (onlineUnavailable) delay(PHONE_ONLINE_DEM_FAILURE_RETRY_MS)
-            } while (onlineUnavailable)
+                // A loaded tile with no data here will not improve, so only failed loads are retried.
+                val retry = onlineUnavailable && online.isTileUnavailable(center)
+                if (retry) delay(PHONE_ONLINE_DEM_FAILURE_RETRY_MS)
+            } while (retry)
         }
     }
     phoneWorldWindOverlayEffects(window, live)
@@ -277,12 +390,16 @@ internal fun phoneWorldWindSurface(
                 runCatching {
                     PhoneWorldWindWindow(
                         context = viewContext,
+                        diagnostics = prepared.diagnostics,
                         onCameraChanged = { camera, tilt -> latestCallbacks.onCameraChanged(camera, tilt) },
                         onUserPan = { latestCallbacks.onUserPan() },
                         onUserRotation = { latestCallbacks.onUserRotation(it) },
                         onGestureActive = { gestureActive = it },
                         onViewportReady = { viewportReady = true },
-                        onFirstGlFrame = { ms -> prepared.diagnostics.event("first_gl_frame", "elapsed_ms=$ms") },
+                        onFirstGlFrame = { ms ->
+                            firstFrame = true
+                            prepared.diagnostics.event("first_gl_frame", "elapsed_ms=$ms")
+                        },
                     ).also { view ->
                         view.engine.layers.clearLayers()
                         view.engine.globe.elevationModel
@@ -298,6 +415,10 @@ internal fun phoneWorldWindSurface(
                         view.engine.layers.addLayer(view.tracksLayer)
                         view.engine.layers.addLayer(view.positionLayer)
                         phoneWorldWindSetCamera(view, preview.camera, preview.tiltDegrees)
+                        prepared.diagnostics.event(
+                            "surface_start",
+                            "imagery=${if (preview.map != null) "offline" else "online"} ${view.cameraSummary()}",
+                        )
                         window = view
                         WorldWind.requestRedraw()
                     }
@@ -307,8 +428,10 @@ internal fun phoneWorldWindSurface(
                     View(viewContext)
                 }
             })
-        } else if (!failure) {
-            CircularProgressIndicator(Modifier.align(Alignment.Center))
+        }
+        val initializing = prepared == null || !firstFrame
+        if (!failure && (initializing || processing)) {
+            phoneWorldWindActivityIndicator(Modifier.align(Alignment.CenterStart).padding(start = 16.dp))
         }
         Column(Modifier.align(Alignment.TopCenter).padding(top = 120.dp)) {
             if (failure) {
@@ -356,6 +479,22 @@ internal fun phoneWorldWindSurface(
 }
 
 @Composable
+private fun phoneWorldWindActivityIndicator(modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier.size(36.dp).background(Color.Black.copy(alpha = 0.7f), CircleShape),
+        contentAlignment = Alignment.Center,
+    ) {
+        CircularProgressIndicator(Modifier.size(32.dp), color = Color(0xFFFFB300), strokeWidth = 2.dp)
+        Icon(
+            Icons.Filled.Landscape,
+            contentDescription = stringResource(R.string.phone_worldwind_loading),
+            modifier = Modifier.size(18.dp),
+            tint = Color(0xFFFFB300),
+        )
+    }
+}
+
+@Composable
 private fun phoneWorldWindOverlayEffects(
     window: PhoneWorldWindWindow?,
     live: PhoneWorldWindLiveState,
@@ -387,8 +526,7 @@ private fun phoneWorldWindCameraEffects(
         if (!viewportReady) return@LaunchedEffect
         val command = live.cameraCommand ?: return@LaunchedEffect
         val lookAt = phoneWorldWindCommandCamera(view.currentLookAt, command, live.mapSettings, view.width.toDouble())
-        view.engine.cameraFromLookAt(lookAt)
-        view.currentLookAt.copy(lookAt)
+        view.applyCamera(lookAt)
         view.publishCamera(lookAt)
         WorldWind.requestRedraw()
         onCommandHandled(command.id)
@@ -399,8 +537,7 @@ private fun phoneWorldWindCameraEffects(
         val lookAt =
             phoneWorldWindFollowCamera(view.currentLookAt, live.mode, live.location, live.compassBearingDegrees)
                 ?: return@LaunchedEffect
-        view.engine.cameraFromLookAt(lookAt)
-        view.currentLookAt.copy(lookAt)
+        view.applyCamera(lookAt)
         view.publishCamera(lookAt)
         WorldWind.requestRedraw()
     }
@@ -422,8 +559,7 @@ private fun phoneWorldWindSetCamera(
             phoneWorldWindClampedTilt(tilt).degrees,
             0.0.degrees,
         )
-    window.engine.cameraFromLookAt(lookAt)
-    window.currentLookAt.copy(lookAt)
+    window.applyCamera(lookAt)
     WorldWind.requestRedraw()
 }
 

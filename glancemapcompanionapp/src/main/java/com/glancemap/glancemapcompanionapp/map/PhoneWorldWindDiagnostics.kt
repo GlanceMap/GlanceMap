@@ -7,7 +7,31 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 
+private const val PHONE_WORLDWIND_SLOW_FRAME_NANOS = 16_666_667L
+private const val PHONE_WORLDWIND_NANOS_PER_MILLI = 1_000_000L
+
+/** Lock-free frame durations, summarized as a count, slow count and worst case. */
+internal class PhoneWorldWindFrameStats(
+    private val slowNanos: Long = PHONE_WORLDWIND_SLOW_FRAME_NANOS,
+) {
+    private val count = AtomicLong()
+    private val slow = AtomicLong()
+    private val max = AtomicLong()
+
+    fun record(nanos: Long) {
+        count.incrementAndGet()
+        if (nanos > slowNanos) slow.incrementAndGet()
+        max.accumulateAndGet(nanos, ::maxOf)
+    }
+
+    fun summary(name: String): String {
+        val maxMillis = max.get() / PHONE_WORLDWIND_NANOS_PER_MILLI
+        return "${name}_frames=${count.get()} ${name}_slow=${slow.get()} ${name}_max_ms=$maxMillis"
+    }
+}
+
 /** Aggregates are inexpensive; detailed events are recorded only during an explicit phone capture. */
+@Suppress("TooManyFunctions") // One small recorder per capture event keeps call sites free of counter details.
 internal class PhoneWorldWindDiagnostics : Closeable {
     private val started = SystemClock.elapsedRealtime()
     val hits = AtomicInteger()
@@ -25,6 +49,15 @@ internal class PhoneWorldWindDiagnostics : Closeable {
     val demDetailed = AtomicInteger()
     val elevationRequests = AtomicInteger()
     val elevationMillis = AtomicLong()
+    val elevationIncomplete = AtomicInteger()
+    val demFailures = AtomicInteger()
+    val tileFailures = AtomicInteger()
+    val tileRetriesScheduled = AtomicInteger()
+    val tileRetriesFired = AtomicInteger()
+    val cameraReanchors = AtomicInteger()
+    val renderFrames = PhoneWorldWindFrameStats()
+    val glFrames = PhoneWorldWindFrameStats()
+    val gestureFrameGaps = PhoneWorldWindFrameStats()
     private val firstImage = AtomicBoolean()
     private val firstElevation = AtomicBoolean()
     private var summaryProvider: () -> String = { "" }
@@ -73,6 +106,42 @@ internal class PhoneWorldWindDiagnostics : Closeable {
         }
     }
 
+    fun elevationIncomplete() {
+        elevationIncomplete.incrementAndGet()
+        event("elevation_incomplete", "retry=worldwind")
+    }
+
+    fun demFailure(
+        tileId: String,
+        error: Throwable,
+    ) {
+        demFailures.incrementAndGet()
+        event("dem_failed", "tile=$tileId error=${error::class.simpleName}")
+    }
+
+    /** [reason] must never contain a URL: online tile URLs can carry provider API keys. */
+    fun tileFailed(
+        source: String,
+        reason: String,
+    ) {
+        tileFailures.incrementAndGet()
+        event("tile_failed", "source=$source reason=$reason")
+    }
+
+    fun tileRetryScheduled() {
+        tileRetriesScheduled.incrementAndGet()
+    }
+
+    fun tileRetryFired() {
+        tileRetriesFired.incrementAndGet()
+        event("tile_retry", "fired=${tileRetriesFired.get()}")
+    }
+
+    fun cameraReanchored(detail: String) {
+        cameraReanchors.incrementAndGet()
+        event("camera_reanchor", detail)
+    }
+
     fun demAccess(
         cacheHit: Boolean,
         axisLength: Int?,
@@ -103,6 +172,11 @@ internal class PhoneWorldWindDiagnostics : Closeable {
                 "dem_hits=${demCacheHits.get()} dem_misses=${demCacheMisses.get()} dem_missing=${demMissing.get()} " +
                 "dem_standard=${demStandard.get()} dem_detailed=${demDetailed.get()} " +
                 "elevation_requests=${elevationRequests.get()} elevation_ms=${elevationMillis.get()} " +
+                "elevation_incomplete=${elevationIncomplete.get()} dem_failures=${demFailures.get()} " +
+                "tile_failures=${tileFailures.get()} tile_retries_scheduled=${tileRetriesScheduled.get()} " +
+                "tile_retries_fired=${tileRetriesFired.get()} camera_reanchors=${cameraReanchors.get()} " +
+                "${renderFrames.summary("render")} ${glFrames.summary("gl")} " +
+                "${gestureFrameGaps.summary("gesture_gap")} " +
                 "heap_used=${runtime.totalMemory() - runtime.freeMemory()} ${summaryProvider()}",
         )
     }

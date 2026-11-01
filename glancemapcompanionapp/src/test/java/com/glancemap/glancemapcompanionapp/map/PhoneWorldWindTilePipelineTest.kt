@@ -130,4 +130,40 @@ class PhoneWorldWindTilePipelineTest {
             assertEquals(42, second.await())
             scope.cancel()
         }
+
+    @Test
+    fun failedTileIsReleasedOncePerPendingRetryAndCanFailAgain() {
+        val released = mutableListOf<Int>()
+        var scheduled = 0
+        runBlocking {
+            val retry = PhoneWorldWindTileRetry(this, 1L, onScheduled = { scheduled++ }) { released += it }
+            retry.schedule(7)
+            retry.schedule(7)
+            retry.schedule(8)
+        }
+        assertEquals(listOf(7, 8), released.sorted())
+        assertEquals(2, scheduled)
+        runBlocking {
+            val retry = PhoneWorldWindTileRetry(this, 1L) { released += it }
+            retry.schedule(7)
+        }
+        assertEquals(3, released.size)
+    }
+
+    @Test
+    fun frameStatsReportCountSlowFramesAndWorstCase() {
+        val stats = PhoneWorldWindFrameStats(slowNanos = 10L)
+        listOf(5L, 11L, 2_000_000L).forEach(stats::record)
+        assertEquals("gl_frames=3 gl_slow=2 gl_max_ms=2", stats.summary("gl"))
+    }
+
+    @Test
+    fun closedViewDropsPendingRetries() =
+        runBlocking {
+            val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+            val released = AtomicInteger()
+            PhoneWorldWindTileRetry(scope, 60_000L, onRetry = { released.incrementAndGet() }).schedule(7)
+            scope.cancel()
+            assertEquals(0, released.get())
+        }
 }

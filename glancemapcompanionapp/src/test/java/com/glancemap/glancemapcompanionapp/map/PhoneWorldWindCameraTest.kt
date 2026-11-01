@@ -5,10 +5,19 @@ import earth.worldwind.geom.AltitudeMode
 import earth.worldwind.geom.Angle.Companion.degrees
 import earth.worldwind.geom.LookAt
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PhoneWorldWindCameraTest {
+    @Test
+    fun cameraReanchorsWhenTerrainArrivesButIgnoresSmallRefinements() {
+        assertTrue(phoneWorldWindGroundMoved(0.0, 2_400.0))
+        assertTrue(phoneWorldWindGroundMoved(2_400.0, 2_380.0))
+        assertFalse(phoneWorldWindGroundMoved(2_400.0, 2_403.0))
+    }
+
     private fun camera() =
         LookAt().set(
             46.0.degrees,

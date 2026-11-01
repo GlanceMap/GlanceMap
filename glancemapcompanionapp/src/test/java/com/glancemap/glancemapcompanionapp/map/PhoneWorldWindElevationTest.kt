@@ -2,6 +2,7 @@ package com.glancemap.glancemapcompanionapp.map
 
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -26,6 +27,16 @@ class PhoneWorldWindElevationTest {
             assertTrue(zoom in 0..14)
             assertTrue((last.x - first.x + 1) * (last.y - first.y + 1) <= 4)
         }
+    }
+
+    @Test
+    fun gridSamplesCellCentersSoNeighbouringTilesDoNotRepeatTheirSharedEdge() {
+        assertEquals(0.5, phoneWorldWindCellCenter(0.0, 64.0, 0, 64), 1e-9)
+        assertEquals(63.5, phoneWorldWindCellCenter(0.0, 64.0, 63, 64), 1e-9)
+        val lastOfFirstTile = phoneWorldWindCellCenter(0.0, 1.0, 63, 64)
+        val firstOfNextTile = phoneWorldWindCellCenter(1.0, 2.0, 0, 64)
+        assertEquals(1.0 / 64.0, firstOfNextTile - lastOfFirstTile, 1e-9)
+        assertEquals(46.0 - 0.5 / 64.0, phoneWorldWindCellCenter(46.0, 45.0, 0, 64), 1e-9)
     }
 
     @Test
@@ -58,8 +69,48 @@ class PhoneWorldWindElevationTest {
                     0,
                 )
             assertEquals(2, accesses)
-            assertEquals(123.toShort(), result[0])
+            assertEquals(123.toShort(), result!![0])
             assertEquals(Short.MIN_VALUE, result[7])
+        }
+
+    private val gridBounds = PhoneWorldWindBounds(0.1, 0.1, 0.9, 0.9)
+
+    @Test
+    fun failedOnlineTileRejectsTheGridSoWorldWindRetriesIt() =
+        runBlocking {
+            val online = PhoneOnlineElevationRepository(fetchTile = { null })
+            assertNull(phoneWorldWindElevationGrid(gridBounds, 4 to 4, null, online, 5))
+        }
+
+    @Test
+    fun loadedOnlineTileWithoutDataKeepsItsGrid() =
+        runBlocking {
+            val online = PhoneOnlineElevationRepository(fetchTile = { PhoneTerrariumTile(IntArray(4), 2) })
+            val heights = phoneWorldWindElevationGrid(gridBounds, 4 to 4, null, online, 5)
+            assertTrue(heights!!.all { it == Short.MIN_VALUE })
+        }
+
+    @Test
+    fun absentLocalTileKeepsItsGridButExhaustedMemoryDoesNot() =
+        runBlocking {
+            val root = folder.newFolder()
+            val absent = PhoneElevationRepository(listOf(root))
+            assertTrue(phoneWorldWindElevationGrid(gridBounds, 4 to 4, absent, null, 0) != null)
+
+            var fail = true
+            val local =
+                PhoneElevationRepository(
+                    {
+                        if (fail) throw OutOfMemoryError()
+                        listOf(root)
+                    },
+                    false,
+                )
+            assertNull(phoneWorldWindElevationGrid(gridBounds, 4 to 4, local, null, 0))
+            assertTrue(local.tileExceededMemory(0, 0))
+            fail = false
+            assertTrue(phoneWorldWindElevationGrid(gridBounds, 4 to 4, local, null, 0) != null)
+            assertFalse(local.tileExceededMemory(0, 0))
         }
 
     @Test
