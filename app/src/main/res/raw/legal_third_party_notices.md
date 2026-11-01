@@ -46,10 +46,9 @@ This file helps internal review of transitive dependencies beyond the main famil
 - For MapLibre Native (BSD 2-Clause), keep the copyright/license notice available with binary distribution documentation.
 - Re-check upstream license changes when upgrading dependency versions.
 
-## MapLibre GL JS (3D terrain preview)
+## WorldWind Kotlin (3D terrain view)
 
-- Version: 5.24.0, bundled JavaScript, worker and CSS assets.
-- Upstream: https://github.com/maplibre/maplibre-gl-js/tree/v5.24.0
-- License: BSD-3-Clause, with bundled third-party notices.
-- The complete upstream license accompanies the redistributed assets at
-  `glancemapcompanionapp/src/main/assets/terrain-preview/LICENSE.txt`.
+- Version: 2.1.1, with worldwind-assets 1.0.0.
+- Upstream: https://github.com/WorldWindEarth/WorldWindKotlin
+- License: Apache-2.0.
+- Its transitive runtime dependencies are listed in `RUNTIME_DEPENDENCIES_RESOLVED.txt`.

@@ -66,18 +66,20 @@ This file lists third-party websites and APIs used by the companion app for down
    - Eligible French addresses use IGN first; unmatched requests fall back to Photon.
    - Both services are disabled by the companion's Online search switch.
 
-## 7) Optional 3D terrain preview (reviewed 2026-10-18)
+## 7) Optional 3D terrain view (reviewed 2026-11-01)
 
-- MapLibre GL JS 5.24.0 is bundled locally, including its worker, CSS and BSD-3-Clause
-  license, in `glancemapcompanionapp/src/main/assets/terrain-preview/`.
-- Upstream: https://github.com/maplibre/maplibre-gl-js/tree/v5.24.0
-- Esri satellite uses the existing World Imagery provider credits.
-- Terrain: https://tiles.mapterhorn.com/tilejson.json
-  Attribution and source data licenses: https://mapterhorn.com/attribution
-- The preview is user-opened, online-only, and unavailable while offline mode is on.
-  Visible GPX tracks, loaded POIs and the last location fix are rendered locally in
-  the preview. They are not submitted to a route-rendering or tracking service.
-  Map tile requests disclose the viewed area, like the app's other online maps.
+- Rendered on the device by WorldWind Kotlin 2.1.1 (Apache-2.0); see the third-party notices.
+  WorldWind's default imagery and elevation services are not used.
+- Offline maps: imagery comes from the selected local map and theme, and elevation from
+  local elevation files. Offline maps never use network elevation.
+- Online raster maps: tiles are requested directly from the selected provider, whose
+  attribution stays visible. Vector-style providers are not supported in 3D.
+- Online elevation, when enabled with an online map, uses Terrarium tiles from
+  `s3.amazonaws.com/elevation-tiles-prod`.
+  Attribution: https://github.com/tilezen/joerd/blob/master/docs/attribution.md
+- Visible tracks and the last location fix are rendered locally. They are not submitted
+  to a route-rendering or tracking service. Map tile requests disclose the viewed area,
+  like the app's other online maps.
 
 ## 8) Transparency note
 
