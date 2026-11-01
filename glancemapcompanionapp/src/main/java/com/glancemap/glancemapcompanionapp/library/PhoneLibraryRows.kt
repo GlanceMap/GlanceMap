@@ -80,6 +80,8 @@ internal fun libraryItemRow(
                     when {
                         visibility?.hiddenByLayers == true -> R.string.library_hidden_by_layers
                         visibility?.available == false -> R.string.library_unavailable_on_map
+                        visibility?.checked == true -> R.string.library_phone_shown_on_map
+                        visibility != null -> R.string.library_phone_hidden_on_map
                         item is PhoneLibraryItem.Bundle && !item.isOfflineReady() -> R.string.library_bundle_attention
                         item is PhoneLibraryItem.Bundle -> R.string.library_bundle_ready
                         item is PhoneLibraryItem.OfflineData && !item.isUsable -> R.string.library_offline_invalid
@@ -92,6 +94,11 @@ internal fun libraryItemRow(
                 libraryMapDataButton(item, row.enabled, state.maps, actions.maps)
             }
             libraryMapControl(row, visibility, state, actions)
+            if (item is PhoneLibraryItem.Pois) {
+                IconButton(onClick = onDetails, enabled = row.enabled, modifier = Modifier.size(40.dp)) {
+                    Icon(Icons.Default.MoreVert, stringResource(R.string.hike_route_details))
+                }
+            }
             if (item.isNavigableGpx()) {
                 if (item is PhoneLibraryItem.ReceivedGpx) {
                     IconButton(onClick = onDetails, enabled = row.enabled, modifier = Modifier.size(36.dp)) {

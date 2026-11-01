@@ -12,6 +12,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -95,7 +96,6 @@ internal fun libraryPanelContent(
 ) {
     var browse by rememberSaveable(stateSaver = phoneLibraryBrowseSaver) { mutableStateOf(PhoneLibraryBrowseState()) }
     var checkpointsOpen by rememberSaveable { mutableStateOf(false) }
-    var searchOpen by rememberSaveable { mutableStateOf(false) }
     var selectedKey by rememberSaveable { mutableStateOf<String?>(null) }
     var moveKey by rememberSaveable { mutableStateOf<String?>(null) }
     var appearanceTarget by remember { mutableStateOf<PhoneLibraryGpxAppearanceTarget?>(null) }
@@ -117,15 +117,14 @@ internal fun libraryPanelContent(
         remember(state.items, state.filter, browse, state.organization) {
             browsePhoneLibraryItems(state.items, state.filter, browse, state.organization)
         }
+    BackHandler(enabled = state.filter == PhoneLibraryFilter.BUNDLES && browse.folderId == null) {
+        actions.onFilterChanged(PhoneLibraryFilter.MAPS)
+    }
     BackHandler(enabled = browse.folderId != null) { browse = state.organization.parentBrowse(browse) }
     BackHandler(enabled = checkpointsOpen && state.filter == PhoneLibraryFilter.POIS) { checkpointsOpen = false }
     Column(Modifier.fillMaxSize().padding(horizontal = 12.dp)) {
-        if (state.filter == PhoneLibraryFilter.POIS) {
-            TextButton(onClick = { checkpointsOpen = !checkpointsOpen }) {
-                Text(stringResource(if (checkpointsOpen) R.string.hike_back_pois else R.string.hike_checkpoints))
-            }
-        }
         if (checkpointsOpen && state.filter == PhoneLibraryFilter.POIS) {
+            TextButton(onClick = { checkpointsOpen = false }) { Text(stringResource(R.string.hike_back_pois)) }
             Box(Modifier.weight(1f)) { checkpointsContent() }
         } else {
             libraryBrowserList(
@@ -135,8 +134,7 @@ internal fun libraryPanelContent(
                 addingActions,
                 PhoneLibraryBrowserPresentation(
                     browse,
-                    searchOpen,
-                    PhoneLibraryBrowserActions({ browse = it }, { searchOpen = !searchOpen }, { selectedKey = it.key }),
+                    PhoneLibraryBrowserActions({ browse = it }, { checkpointsOpen = true }, { selectedKey = it.key }),
                 ),
             )
         }
@@ -207,6 +205,7 @@ internal fun LazyListScope.libraryEntries(
                 guidanceEnabled = !actions.guidanceActive && actions.guidanceStartingKey == null,
                 guidanceLoading = actions.guidanceStartingKey == item.key,
                 onStartGuidance = actions.onStartGuidance,
+                onSendGpx = actions.onSendGpx,
                 onPreviewGpx = actions.onPreviewGpx,
                 onOpenGpxInNewHikeTab = actions.onOpenGpxInNewHikeTab,
                 onRenameRoute = actions.onRenameRoute,
@@ -220,8 +219,10 @@ internal fun LazyListScope.libraryEntries(
 
 @Composable
 internal fun libraryCount(state: PhoneLibraryListState) {
-    Text(stringResource(R.string.library_local_count, state.items.size), style = MaterialTheme.typography.bodySmall)
-    state.message?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+    Column {
+        Text(stringResource(R.string.library_local_count, state.items.size), style = MaterialTheme.typography.bodySmall)
+        state.message?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+    }
 }
 
 @Composable
@@ -232,7 +233,7 @@ internal fun librarySearch(
     OutlinedTextField(
         value = query,
         onValueChange = onQuery,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().testTag("library-search"),
         placeholder = { Text(stringResource(R.string.library_search)) },
         trailingIcon = {
             if (query.isNotEmpty()) {

@@ -5,11 +5,13 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.saveable.listSaver
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -49,13 +51,12 @@ internal val phoneLibraryBrowseSaver =
 
 internal data class PhoneLibraryBrowserPresentation(
     val browse: PhoneLibraryBrowseState,
-    val searchOpen: Boolean,
     val navigation: PhoneLibraryBrowserActions,
 )
 
 internal data class PhoneLibraryBrowserActions(
     val onBrowse: (PhoneLibraryBrowseState) -> Unit,
-    val onSearch: () -> Unit,
+    val onCheckpoints: () -> Unit,
     val onDetails: (PhoneLibraryItem) -> Unit,
 )
 
@@ -74,42 +75,61 @@ internal fun libraryBrowserList(
         contentPadding = PaddingValues(vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        item(key = "folder-navigation") {
-            libraryFolderNavigation(state.organization, browse, actions.organization) {
-                navigation.onBrowse(state.organization.parentBrowse(browse))
-            }
-        }
         if (state.filter == PhoneLibraryFilter.BUNDLES) {
             item(key = "offline-sections") { libraryOfflineSections(browse, navigation.onBrowse) }
         }
         item(key = "controls") {
-            val trailing: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit = {
-                IconButton(onClick = navigation.onSearch, modifier = Modifier.size(40.dp)) {
-                    Icon(Icons.Filled.Search, stringResource(R.string.library_search))
-                }
-                IconButton(
-                    onClick = actions.onRefresh,
-                    enabled = !state.isLoading && !state.isImporting,
-                    modifier = Modifier.size(40.dp),
-                ) { Icon(Icons.Filled.Refresh, stringResource(R.string.library_refresh)) }
-            }
             if (state.filter == PhoneLibraryFilter.BUNDLES) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, content = trailing)
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    TextButton(onClick = { actions.onFilterChanged(PhoneLibraryFilter.MAPS) }) {
+                        Text(stringResource(R.string.map_tool_maps_title))
+                    }
+                    Spacer(Modifier.weight(1f))
+                    IconButton(onClick = actions.onRefresh, enabled = !state.isLoading && !state.isImporting) {
+                        Icon(Icons.Filled.Refresh, stringResource(R.string.library_refresh))
+                    }
+                }
+                librarySearch(browse.query) { navigation.onBrowse(browse.copy(query = it)) }
                 libraryOfflineControls(browse, state.isImporting, actions, mapState.maps, mapActions.maps)
             } else {
-                libraryCategoryControls(state.filter, state.isImporting, actions, trailing)
+                libraryCategoryControls(
+                    state.filter,
+                    state.isLoading || state.isImporting,
+                    actions,
+                    browse.query,
+                    { navigation.onBrowse(browse.copy(query = it)) },
+                    navigation.onCheckpoints,
+                )
             }
-        }
-        if (browser.searchOpen || browse.query.isNotEmpty()) {
-            item(key = "search") { librarySearch(browse.query) { navigation.onBrowse(browse.copy(query = it)) } }
         }
         if (state.filter == PhoneLibraryFilter.GPX) {
             item(key = "grouping") { libraryGpxGrouping(browse, navigation.onBrowse) }
         }
         if (state.filter == PhoneLibraryFilter.MAPS) {
             item(key = "online-map") { libraryOnlineMapSelection(mapState.maps, mapActions.maps) }
+            item(key = "offline-data") {
+                TextButton(onClick = { actions.onFilterChanged(PhoneLibraryFilter.BUNDLES) }) {
+                    Text(stringResource(R.string.library_filter_bundles))
+                }
+            }
         }
-        item(key = "count") { libraryCount(state) }
+        item(key = "count") {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.weight(1f)) {
+                    if (browse.folderId == null) {
+                        libraryCount(state)
+                    } else {
+                        libraryFolderNavigation(state.organization, browse, actions.organization) {
+                            navigation.onBrowse(state.organization.parentBrowse(browse))
+                        }
+                    }
+                }
+                if (browse.folderId == null) {
+                    libraryFolderNavigation(state.organization, browse, actions.organization) {}
+                }
+            }
+            if (browse.folderId != null) libraryCount(state)
+        }
         val folders =
             state.organization.folders
                 .filter { it.parentId == browse.folderId && browse.query.isBlank() }

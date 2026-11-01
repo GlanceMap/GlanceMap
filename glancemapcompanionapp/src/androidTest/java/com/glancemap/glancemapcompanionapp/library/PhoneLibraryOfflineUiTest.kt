@@ -24,6 +24,25 @@ import java.util.UUID
 class PhoneLibraryOfflineUiTest {
     @get:Rule val composeRule = createAndroidComposeRule<ComponentActivity>()
 
+    @Test fun mapsOpensOfflineDataAndReturnsToMaps() {
+        val state = mutableStateOf(libraryTestMapState(composeRule.activity))
+        val filter = mutableStateOf(PhoneLibraryFilter.MAPS)
+        composeRule.setContent {
+            MaterialTheme {
+                libraryPanelContent(
+                    PhoneLibraryListState(emptyList(), filter.value),
+                    state.value,
+                    libraryTestMapActions(state),
+                    libraryTestActions().copy(onFilterChanged = { filter.value = it }),
+                )
+            }
+        }
+        scrollToText(R.string.library_filter_bundles).performClick()
+        composeRule.onNodeWithTag("library-offline-ELEVATION").assertExists()
+        composeRule.onNodeWithText(label(R.string.map_tool_maps_title)).performClick()
+        composeRule.onNodeWithTag("library-offline-ELEVATION").assertDoesNotExist()
+    }
+
     @Test fun sectionsShowStandaloneFilesAndFolderActionsUseTheirOwnSources() {
         val state = mutableStateOf(libraryTestMapState(composeRule.activity))
         var elevationFolders = 0

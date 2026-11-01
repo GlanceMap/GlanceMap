@@ -4,8 +4,6 @@ import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.*
@@ -37,16 +35,15 @@ class PhoneLibraryNavigationTest {
         val additions = mutableListOf<MapLibraryAction>()
         composeRule.setContent {
             MaterialTheme {
-                libraryCategoryControls(filter.value, false, actions({ settings += it }, { additions += it }))
+                libraryCategoryControls(filter.value, false, actions({ settings += it }, { additions += it }), "", {}, {})
             }
         }
         composeRule.onNodeWithText(label(R.string.library_add_gpx)).assertIsDisplayed()
         listOf(PhoneLibraryFilter.GPX, PhoneLibraryFilter.POIS, PhoneLibraryFilter.MAPS).forEach { category ->
             composeRule.runOnIdle { filter.value = category }
             val tool = requireNotNull(category.tool)
-            composeRule
-                .onNodeWithContentDescription(label(tool.titleResource(MapToolContentMode.FEATURE_SETTINGS)))
-                .performClick()
+            composeRule.onNodeWithTag("library-controls-menu").performClick()
+            composeRule.onNodeWithText(label(tool.titleResource(MapToolContentMode.FEATURE_SETTINGS))).performClick()
         }
         assertEquals(listOf(MapTool.GPX, MapTool.POI, MapTool.MAPS), settings)
         composeRule.runOnIdle { filter.value = PhoneLibraryFilter.POIS }
@@ -115,23 +112,19 @@ class PhoneLibraryNavigationTest {
 
     @Test
     fun narrowSplitPanelKeepsAddAndSettingsReadableAndUtilityActionsClickable() {
-        var searches = 0
+        var query = ""
         composeRule.setContent {
             MaterialTheme {
                 Box(Modifier.width(200.dp)) {
-                    libraryCategoryControls(PhoneLibraryFilter.GPX, false, actions({}, {})) {
-                        TextButton(onClick = { searches++ }) { Text("Search") }
-                        TextButton(onClick = {}) { Text("Refresh") }
-                    }
+                    libraryCategoryControls(PhoneLibraryFilter.GPX, false, actions({}, {}), "", { query = it }, {})
                 }
             }
         }
         composeRule.onNodeWithText(label(R.string.library_add_gpx)).assertIsDisplayed()
-        composeRule
-            .onNodeWithContentDescription(label(MapTool.GPX.titleResource(MapToolContentMode.FEATURE_SETTINGS)))
-            .assertIsDisplayed()
-        composeRule.onNodeWithText("Search").performClick()
-        assertEquals(1, searches)
+        composeRule.onNodeWithTag("library-search").performTextInput("A")
+        assertEquals("A", query)
+        composeRule.onNodeWithTag("library-controls-menu").performClick()
+        composeRule.onNodeWithText(label(MapTool.GPX.titleResource(MapToolContentMode.FEATURE_SETTINGS))).assertIsDisplayed()
     }
 
     private fun label(id: Int): String = composeRule.activity.getString(id)

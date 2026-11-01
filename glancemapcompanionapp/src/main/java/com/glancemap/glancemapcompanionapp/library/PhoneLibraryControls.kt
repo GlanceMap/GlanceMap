@@ -5,11 +5,12 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.glancemap.glancemapcompanionapp.R
@@ -22,24 +23,57 @@ internal fun libraryCategoryControls(
     filter: PhoneLibraryFilter,
     importing: Boolean,
     actions: PhoneLibraryActions,
-    trailingContent: @Composable RowScope.() -> Unit = {},
+    query: String,
+    onQuery: (String) -> Unit,
+    onCheckpoints: () -> Unit,
 ) {
+    var menuOpen by remember { mutableStateOf(false) }
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         val narrow = maxWidth < 320.dp
         Column {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.weight(1f)) { libraryCategoryAddAction(filter, importing, actions) }
-                filter.tool?.let { tool ->
-                    IconButton(onClick = { actions.onOpenSettings(tool) }, modifier = Modifier.size(40.dp)) {
-                        val description =
-                            stringResource(tool.titleResource(MapToolContentMode.FEATURE_SETTINGS))
-                        Icon(Icons.Filled.Settings, description)
+                Box(Modifier.weight(1f)) { librarySearch(query, onQuery) }
+                if (!narrow) libraryCategoryAddAction(filter, importing, actions)
+                Box {
+                    IconButton(onClick = { menuOpen = true }, modifier = Modifier.testTag("library-controls-menu")) {
+                        Icon(Icons.Filled.MoreVert, stringResource(R.string.library_more_options))
+                    }
+                    DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                        filter.tool?.let { tool ->
+                            DropdownMenuItem(
+                                text = {
+                                    Text(stringResource(tool.titleResource(MapToolContentMode.FEATURE_SETTINGS)))
+                                },
+                                onClick = {
+                                    menuOpen = false
+                                    actions.onOpenSettings(tool)
+                                },
+                            )
+                        }
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.library_refresh)) },
+                            enabled = !importing,
+                            onClick = {
+                                menuOpen = false
+                                actions.onRefresh()
+                            },
+                        )
+                        if (filter == PhoneLibraryFilter.POIS) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.hike_checkpoints)) },
+                                onClick = {
+                                    menuOpen = false
+                                    onCheckpoints()
+                                },
+                            )
+                        }
                     }
                 }
-                if (!narrow) trailingContent()
             }
             if (narrow) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) { trailingContent() }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    libraryCategoryAddAction(filter, importing, actions)
+                }
             }
         }
     }
@@ -68,7 +102,7 @@ private fun libraryCategoryAddAction(
                 PhoneLibraryFilter.BUNDLES -> MapLibraryAction.DOWNLOAD_BUNDLE
                 PhoneLibraryFilter.GPX -> error("GPX has its own importer")
             }
-        Button(onClick = { actions.onMapAction(action) }, modifier = Modifier.fillMaxWidth()) {
+        Button(onClick = { actions.onMapAction(action) }, enabled = !importing) {
             Icon(Icons.Filled.Add, contentDescription = null)
             Spacer(Modifier.width(8.dp))
             Text(stringResource(label))
@@ -88,7 +122,6 @@ private fun libraryGpxImport(
     Button(
         onClick = { launcher.launch(arrayOf("*/*")) },
         enabled = !importing,
-        modifier = Modifier.fillMaxWidth(),
     ) {
         Icon(Icons.Filled.Add, contentDescription = null)
         Spacer(Modifier.width(8.dp))

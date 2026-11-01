@@ -7,15 +7,11 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Download
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -43,8 +39,10 @@ internal fun phoneLibraryHeader(
                 .testTag("library-tabs"),
         horizontalArrangement = Arrangement.spacedBy(2.dp),
     ) {
-        PhoneLibraryFilter.entries.forEach { filter ->
-            val active = selected == filter
+        PhoneLibraryFilter.entries.filterNot { it == PhoneLibraryFilter.BUNDLES }.forEach { filter ->
+            val active =
+                selected == filter ||
+                    (selected == PhoneLibraryFilter.BUNDLES && filter == PhoneLibraryFilter.MAPS)
             val contentColor =
                 if (active) {
                     MaterialTheme.colorScheme.onSecondaryContainer
@@ -62,15 +60,11 @@ internal fun phoneLibraryHeader(
                         .padding(horizontal = 8.dp, vertical = 4.dp),
                 contentAlignment = Alignment.Center,
             ) {
-                if (filter == PhoneLibraryFilter.BUNDLES) {
-                    Icon(Icons.Filled.Download, stringResource(filter.label), Modifier.size(24.dp), tint = contentColor)
-                } else {
-                    Text(
-                        stringResource(filter.label),
-                        color = contentColor,
-                        style = MaterialTheme.typography.labelLarge,
-                    )
-                }
+                Text(
+                    stringResource(filter.label),
+                    color = contentColor,
+                    style = MaterialTheme.typography.labelLarge,
+                )
             }
         }
     }

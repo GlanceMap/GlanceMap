@@ -23,7 +23,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.dp
 import com.glancemap.glancemapcompanionapp.R
 import com.glancemap.glancemapcompanionapp.map.MapToolsPanelActions
 import kotlinx.coroutines.CancellationException
@@ -61,6 +60,16 @@ internal fun libraryGpxOverflowMenu(
             },
             modifier = Modifier.testTag("library-gpx-details"),
         )
+        if (item is PhoneLibraryItem.Gpx) {
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.transfer_title_send_to_watch)) },
+                onClick = {
+                    expanded = false
+                    row.onSendGpx(item.route.id)
+                },
+                modifier = Modifier.testTag("library-gpx-send-watch"),
+            )
+        }
         if (item is PhoneLibraryItem.Gpx || item is PhoneLibraryItem.FolderGpx) {
             DropdownMenuItem(
                 text = { Text(stringResource(R.string.map_content_action_rename)) },
@@ -111,7 +120,10 @@ private fun libraryGpxRenameDialog(
             Column {
                 OutlinedTextField(
                     value = name,
-                    onValueChange = { name = it; failed = false },
+                    onValueChange = {
+                        name = it
+                        failed = false
+                    },
                     label = { Text(stringResource(R.string.map_poi_name_hint)) },
                     singleLine = true,
                     enabled = !busy,

@@ -25,6 +25,14 @@ class PhoneLibraryFoldersUiTest {
     private var folderSequence = 0
 
     @Test
+    fun searchIsImmediatelyAvailableAndRootHeadingIsHidden() {
+        setContent()
+        composeRule.onNodeWithText(label(R.string.library_folder_root)).assertDoesNotExist()
+        composeRule.onNodeWithTag("library-search").assertIsDisplayed().performTextInput("missing")
+        composeRule.onNodeWithText("Forest loop").assertDoesNotExist()
+    }
+
+    @Test
     fun createsNestedFoldersMovesAnEntryAndBackGoesToTheParent() {
         setContent()
         createFolder("Alps")
@@ -61,9 +69,9 @@ class PhoneLibraryFoldersUiTest {
         composeRule.onNodeWithText("Coast ride").assertIsDisplayed()
         composeRule.onNodeWithText("Forest loop").assertDoesNotExist()
         composeRule.onNodeWithTag("library-list").performScrollToNode(hasTestTag("library-activity-HIKE"))
-        composeRule.onNodeWithTag("library-activity-HIKE").performClick()
+        composeRule.onNodeWithTag("library-activity-HIKE").performScrollTo().performClick()
         composeRule.onNodeWithText("Coast ride").assertDoesNotExist()
-        composeRule.onNodeWithTag("library-activity-BIKE").performClick()
+        composeRule.onNodeWithTag("library-activity-BIKE").performScrollTo().performClick()
         composeRule.onNodeWithTag("library-list").performScrollToNode(hasText("Coast ride"))
         composeRule.onNodeWithText("Coast ride").assertIsDisplayed()
     }
@@ -82,7 +90,7 @@ class PhoneLibraryFoldersUiTest {
             organization.value.entry(PhoneLibraryItem.Gpx(libraryTestRoute())).activity,
         )
         composeRule.onNodeWithTag("library-list").performScrollToNode(hasTestTag("library-activity-BIKE"))
-        composeRule.onNodeWithTag("library-activity-BIKE").performClick()
+        composeRule.onNodeWithTag("library-activity-BIKE").performScrollTo().performClick()
         composeRule.onNodeWithTag("library-list").performScrollToNode(hasText("Forest loop"))
         composeRule.onNodeWithText("Forest loop").assertIsDisplayed()
     }

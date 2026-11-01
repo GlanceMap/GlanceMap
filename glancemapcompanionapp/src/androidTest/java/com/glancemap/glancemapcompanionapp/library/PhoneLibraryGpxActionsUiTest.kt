@@ -6,12 +6,12 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
+import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.longClick
-import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTouchInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -29,6 +29,7 @@ class PhoneLibraryGpxActionsUiTest {
         val mapState = mutableStateOf(libraryTestMapState(composeRule.activity))
         var renamedRoute: Pair<String, String>? = null
         var deletedRoute: String? = null
+        var sentRoute: String? = null
         var detailsOpened = 0
         val row =
             PhoneLibraryRowState(
@@ -36,6 +37,7 @@ class PhoneLibraryGpxActionsUiTest {
                 enabled = true,
                 onRenameRoute = { routeId, name -> renamedRoute = routeId to name },
                 onDeleteRoute = { routeId -> deletedRoute = routeId },
+                onSendGpx = { sentRoute = it },
             )
 
         composeRule.setContent {
@@ -49,6 +51,10 @@ class PhoneLibraryGpxActionsUiTest {
         composeRule.onNodeWithTag("library-gpx-overflow-${item.key}").performClick()
         composeRule.onNodeWithTag("library-gpx-details").assertIsDisplayed().performClick()
         assertEquals(1, detailsOpened)
+
+        composeRule.onNodeWithTag("library-gpx-overflow-${item.key}").performClick()
+        composeRule.onNodeWithTag("library-gpx-send-watch").performClick()
+        assertEquals("route", sentRoute)
 
         composeRule.onNodeWithTag("library-gpx-overflow-${item.key}").performClick()
         composeRule.onNodeWithTag("library-gpx-rename").performClick()

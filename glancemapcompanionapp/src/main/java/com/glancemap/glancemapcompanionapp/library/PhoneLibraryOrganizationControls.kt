@@ -30,19 +30,19 @@ internal fun libraryFolderNavigation(
     onParent: () -> Unit,
 ) {
     var creating by rememberSaveable { mutableStateOf(false) }
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
         if (browse.folderId != null) {
             IconButton(onClick = onParent) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.library_folder_parent))
             }
+            Text(
+                stringResource(R.string.library_title) + " > " + organization.folderPath(browse.folderId),
+                Modifier.weight(1f),
+                style = MaterialTheme.typography.labelLarge,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
-        Text(
-            organization.folderPath(browse.folderId).ifEmpty { stringResource(R.string.library_folder_root) },
-            Modifier.weight(1f),
-            style = MaterialTheme.typography.labelLarge,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
         IconButton(onClick = { creating = true }, enabled = actions.enabled) {
             Icon(Icons.Filled.CreateNewFolder, stringResource(R.string.library_create_folder))
         }
@@ -106,26 +106,22 @@ internal fun libraryGpxGrouping(
     browse: PhoneLibraryBrowseState,
     onBrowse: (PhoneLibraryBrowseState) -> Unit,
 ) {
-    Column {
-        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            PhoneLibraryGpxKind.entries.forEach { kind ->
-                FilterChip(
-                    selected = browse.kind == kind,
-                    modifier = Modifier.testTag("library-kind-${kind.name}"),
-                    onClick = { onBrowse(browse.copy(kind = kind.takeUnless { browse.kind == it })) },
-                    label = { Text(stringResource(kind.label)) },
-                )
-            }
+    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        PhoneLibraryGpxKind.entries.forEach { kind ->
+            FilterChip(
+                selected = browse.kind == kind,
+                modifier = Modifier.testTag("library-kind-${kind.name}"),
+                onClick = { onBrowse(browse.copy(kind = kind.takeUnless { browse.kind == it })) },
+                label = { Text(stringResource(kind.label)) },
+            )
         }
-        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            PhoneLibraryActivity.entries.forEach { activity ->
-                FilterChip(
-                    selected = browse.activity == activity,
-                    modifier = Modifier.testTag("library-activity-${activity.name}"),
-                    onClick = { onBrowse(browse.copy(activity = activity.takeUnless { browse.activity == it })) },
-                    label = { Text(stringResource(activity.label)) },
-                )
-            }
+        PhoneLibraryActivity.entries.forEach { activity ->
+            FilterChip(
+                selected = browse.activity == activity,
+                modifier = Modifier.testTag("library-activity-${activity.name}"),
+                onClick = { onBrowse(browse.copy(activity = activity.takeUnless { browse.activity == it })) },
+                label = { Text(stringResource(activity.label)) },
+            )
         }
     }
 }

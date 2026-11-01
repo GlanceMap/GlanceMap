@@ -111,6 +111,7 @@ internal data class PhoneLibraryRowState(
     val guidanceEnabled: Boolean = false,
     val guidanceLoading: Boolean = false,
     val onStartGuidance: (PhoneLibraryItem) -> Unit = {},
+    val onSendGpx: (String) -> Unit = {},
     val onPreviewGpx: ((PhoneLibraryItem) -> Unit)? = null,
     val onOpenGpxInNewHikeTab: ((PhoneLibraryItem) -> Unit)? = null,
     val onRenameRoute: suspend (String, String) -> Unit = { _, _ -> },

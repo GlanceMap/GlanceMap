@@ -1,6 +1,9 @@
 <resources>
     <string name="library_open_gpx_library">Open GPX Library</string>
     <string name="library_filter_bundles">Offline data</string>
+    <string name="library_more_options">Library options</string>
+    <string name="library_phone_shown_on_map">On phone · shown on map</string>
+    <string name="library_phone_hidden_on_map">On phone · hidden on map</string>
     <string name="library_offline_areas">Offline areas</string>
     <string name="library_offline_elevation">Elevation (DEM)</string>
     <string name="library_offline_routing">Routing</string>
