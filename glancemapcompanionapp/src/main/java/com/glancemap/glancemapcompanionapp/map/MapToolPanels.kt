@@ -253,7 +253,6 @@ internal fun MapToolPanelContent(
     routeToolsContent: @Composable () -> Unit = {},
     libraryContent: @Composable (MapToolsPanelState, MapToolsPanelActions) -> Unit = { _, _ -> },
     discoveryOpen: Boolean = false,
-    onOpenDiscovery: () -> Unit = {},
     discoveryContent: @Composable () -> Unit = {},
 ) {
     if (contentMode == MapToolContentMode.FEATURE_SETTINGS) {
@@ -285,7 +284,6 @@ internal fun MapToolPanelContent(
                         onRenameItem = actions.onRenameGpxItem,
                         onDeleteItem = actions.onDeleteGpxItem,
                         onOpenRouteTools = actions.onOpenRouteTools,
-                        onOpenDiscovery = onOpenDiscovery,
                     )
                 }
             MapTool.POI ->
@@ -531,12 +529,8 @@ private fun mapToolsGpxPanel(
     onRenameItem: (PhoneMapGpxItem) -> Unit,
     onDeleteItem: (PhoneMapGpxItem) -> Unit,
     onOpenRouteTools: () -> Unit,
-    onOpenDiscovery: () -> Unit,
 ) {
     mapToolPanelColumn {
-        OutlinedButton(onClick = onOpenDiscovery, modifier = Modifier.fillMaxWidth()) {
-            Text(stringResource(R.string.discovery_title))
-        }
         ListItem(
             headlineContent = { Text(stringResource(R.string.map_tools_gpx_global_visibility)) },
             supportingContent = {

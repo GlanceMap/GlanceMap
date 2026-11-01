@@ -28,6 +28,12 @@ internal data class OfflineTrailsUiState(
     val message: String? = null,
 )
 
+internal data class OnlineTrailDetailState(
+    val trail: PublishedTrail? = null,
+    val loading: Boolean = false,
+    val failed: Boolean = false,
+)
+
 internal class TrailDiscoveryViewModel(
     application: Application,
 ) : AndroidViewModel(application) {
@@ -37,6 +43,7 @@ internal class TrailDiscoveryViewModel(
     private val http = TrailDiscoveryHttp()
     private var repository = repository(settings.value)
     val controller = TrailDiscoveryController(viewModelScope) { query, enabled -> repository.discover(query, enabled) }
+    val mapSelection = TrailMapSelectionController(viewModelScope) { trail -> repository.detail(trail) }
     private val library = RouteLibraryRepository(application)
     private val offlineStore = OfflinePublishedTrailStore(application.filesDir)
     private val mutableSave = MutableStateFlow(DiscoveredTrailSaveState())
@@ -44,12 +51,40 @@ internal class TrailDiscoveryViewModel(
     private val mutableOffline = MutableStateFlow(OfflineTrailsUiState())
     val offlineState = mutableOffline.asStateFlow()
     private var detailJob: Job? = null
+    private var onlineDetailJob: Job? = null
+    private val mutableOnlineDetail = MutableStateFlow(OnlineTrailDetailState())
+    val onlineDetail = mutableOnlineDetail.asStateFlow()
+
+    @Suppress("TooGenericExceptionCaught") // Provider errors are shown without exposing remote details.
+    fun openTrail(trail: PublishedTrail) {
+        onlineDetailJob?.cancel()
+        val needsDetail = !trail.canSave && trail.sources.any { it.provider == TrailProvider.WAYMARKED_TRAILS }
+        mutableOnlineDetail.value = OnlineTrailDetailState(trail, loading = needsDetail)
+        if (!needsDetail) return
+        onlineDetailJob =
+            viewModelScope.launch {
+                try {
+                    val result = repository.detail(trail)
+                    mutableOnlineDetail.value = OnlineTrailDetailState(result, failed = !result.canSave)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    mutableOnlineDetail.value = OnlineTrailDetailState(trail, failed = true)
+                }
+            }
+    }
+
+    fun closeTrail() {
+        onlineDetailJob?.cancel()
+        mutableOnlineDetail.value = OnlineTrailDetailState()
+    }
 
     init {
         refreshOffline()
     }
 
     fun saveSettings(next: RouteSourceSettings) {
+        closeTrail()
         val previous = settings.value
         val saved = preferences.save(next)
         mutableSettings.value = saved
@@ -155,6 +190,7 @@ internal class TrailDiscoveryViewModel(
         val geotrek = runCatching { parseGeotrekRegistry(settings.geotrekRegistry) }.getOrDefault(emptyList())
         return TrailDiscoveryRepository(
             listOf(
+                WaymarkedPublishedTrailProvider(http),
                 OsmPublishedTrailProvider(settings.overpassUrl, http),
                 UnavailableTrailProvider(
                     TrailProvider.WANDERER,

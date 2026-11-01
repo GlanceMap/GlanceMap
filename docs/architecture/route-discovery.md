@@ -1,7 +1,7 @@
 # Companion route discovery
 
-The left navigation drawer offers **Discover routes**, opening the existing GPX map panel.
-Discovery searches within 10 km of an explicit origin: **Near me** uses a valid location fix
+The route-discovery screen remains implemented but is currently hidden from the user-facing navigation menus.
+Discovery searches an area approximately 10 km around an explicit origin: **Near me** uses a valid location fix
 no older than two minutes (requesting permission if needed); **Choose on map** accepts a tap,
 long press, or the map centre. Waiting and point selection can be cancelled. Existing location
 subscriptions, recording, and navigation remain unchanged. **Search this area** searches the
@@ -18,12 +18,14 @@ concurrency, isolates failures (including individual Geotrek instances), merges 
 results, and reports source-specific success, failure, or configuration requirements.
 
 Requests are explicit, debounced by 350 ms, cancelled when replaced, the discovery panel
-closes, or the camera settles for 600 ms more than 500 m from the pending query centre, and protected by generation checks against late results. Successful queries have a
+closes, or a user-panned camera settles for 600 ms more than 500 m from the pending query centre,
+and protected by generation checks against late results. Successful queries have a
 five-minute, 24-entry in-memory cache. Each adapter is limited to 40 results per response;
 this is a bounded discovery preview, not an exhaustive catalogue or a bulk downloader.
 Moving the map does not automatically refresh an existing result set: press Search this area.
-Changing source preferences clears obsolete results immediately and reruns the last query.
-No disabled-source results remain visible.
+Only a user pan can invalidate a pending search; a programmatic camera move to the search
+target cannot. Changing source preferences clears obsolete results immediately and reruns
+the last query. No disabled-source results remain visible.
 
 HTTP uses HTTPS, no redirects, an 8-second connect timeout, a 22-second call timeout and a
 4 MiB decompressed response limit, with an additional 25-second source deadline. Cancellation
@@ -48,16 +50,30 @@ timed out. That service failure cannot be repaired by enabling the unconfigured 
 Only official documentation, APIs and official implementation sources were consulted. No
 websites are scraped. Automated tests use local fixtures, never live endpoints.
 
-### OpenStreetMap / Waymarked Trails
+### Waymarked Trails
 
-Functional baseline: OSM hiking relations through the documented Overpass QL API. It queries
+Waymarked Trails is the default global provider. Its hiking API lists up to 40 relations by a
+Web Mercator bounding box approximating the 10 km search area; this is a rectangle, not an
+exact radius filter. Listing results are metadata only, with no per-route geometry requests.
+Opening a result loads its detail on demand; converted WGS84 geometry preserves split and
+appendix boundaries. Complete details are cached for the current repository session. Waymarked
+and direct OSM records sharing an OSM relation ID merge with their source credits retained.
+
+The hosted API is an external dependency with no established third-party SLA or permission
+agreement. Its open server code does not establish a hosted-service guarantee. Production
+deployment must confirm acceptable use with the operator or use an approved compatible backend.
+
+### Direct OpenStreetMap / Overpass
+
+Optional advanced source: OSM hiking relations through the documented Overpass QL API. It queries
 `type=route`, `route=hiking` relations around the search point and requests complete member
 way geometry with `out body geom 40`. Hiking networks (`lwn`, `rwn`, `nwn`, `iwn`) are retained
 by the OSM catalogue rather than restricted to a single regional network. Relation IDs and
 original OSM URLs are retained; every result credits OpenStreetMap contributors and identifies
 ODbL 1.0. The settings endpoint is replaceable with an operator-owned Overpass-compatible
-backend without changing the UI. Waymarked Trails' hosted API is deliberately not called:
-open server source code does not establish hosted API permission or a stable service contract.
+backend without changing the UI. Overpass is queried only when explicitly enabled, never as an
+automatic fallback after a Waymarked failure. When enabled alongside Waymarked, its response or
+timeout can delay the combined result list.
 
 The public `https://overpass-api.de/api/interpreter` default is for limited, explicit searches.
 It has no availability guarantee. The official operator warns against relying on shared
@@ -161,15 +177,18 @@ References:
 ## Preferences, normalization, attribution and saving
 
 `RouteSourcePreferences` uses the companion's existing private SharedPreferences pattern.
-Each provider has an independent persistent boolean, exposed as source chips directly on
-the search screen and as switches in Route Sources settings. OSM alone defaults on; the other sources
-default off. Source configuration and enablement are separate: enabling a source without its
+Each provider has an independent persistent boolean, exposed as switches in Route Sources
+settings. Waymarked alone defaults on for new settings; the other sources default off, while
+previously saved source choices remain in place. Source configuration and enablement are separate: enabling a source without its
 required configuration reports unavailable instead of claiming an empty successful catalogue.
 
 `PublishedTrail` has a list of `TrailSource` entries so deduplication never discards known
 identity, original URL, publisher, licence, attribution or update date. Cards show provider
-identity and attribution; details show all source records. Map previews live inside that details
-panel using existing GPX overlays and map fit behavior. They disappear when discovery closes.
+identity and attribution; details show all source records. A details preview uses existing GPX
+overlays and disappears when discovery closes. Independently, checking a search result loads
+its complete geometry if necessary and keeps it visible on the map for the current session.
+Checked routes remain available for unchecking after a new search and are held in memory only;
+they do not create Library entries or provide offline availability.
 
 Deduplication is intentionally conservative: identical provider IDs, or normalized equal titles
 with identical complete ordered geometry and matching computed distance, are combined.
@@ -186,7 +205,7 @@ HTTP client, provider DTO or settings code was added to `:trailcore`; watch beha
 update date and the route description in metadata/track description. It uses `RouteLibraryRepository.saveGpxRoute`, the
 shared generated/discovered GPX parsing, profile, index and selection flow. It triggers the
 existing library refresh callback so Route Library and Today's Hike can use the result normally.
-Geometry remains exclusively in Route Library. Existing GPX exports retain the embedded attribution.
+Persisted route geometry remains exclusively in Route Library. Existing GPX exports retain the embedded attribution.
 A stable published-trail ID in the Library index makes retries idempotent, including when the
 Library save succeeds but the details write fails.
 
@@ -211,7 +230,7 @@ records, coordinate order, partial failure, required attribution and safe GPX ro
 Unit tests cover settings persistence, enablement, normalization, bad coordinates/geometry,
 bounded responses, missing credentials, merging, attribution, cache expiry, independent instances,
 debounce and stale completion. Android tests cover toggles, provider labels, loading/empty/error,
-opening details, source chips, current-location/map-centre actions, the left drawer entry,
+opening details, source settings, current-location/map-centre actions, hidden menu entry points,
 disabled-source visibility, and actual route/details persistence after repository recreation.
 Tests also verify retry deduplication, metadata-only downloads, and preservation of a damaged
 catalogue. Unit tests reject stale/future/invalid current-location fixes and invalid offline coordinates.

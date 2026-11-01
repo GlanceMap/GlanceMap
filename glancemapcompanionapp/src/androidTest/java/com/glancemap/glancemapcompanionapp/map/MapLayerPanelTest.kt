@@ -66,7 +66,11 @@ class MapLayerPanelTest {
         composeRule.onNodeWithContentDescription(slopeRelief).assertDoesNotExist()
         composeRule.runOnIdle { state.value = state.value.copy(base = PhoneMapSource.Offline(offlineMap)) }
         composeRule.onNodeWithContentDescription(night).performScrollTo().assertExists()
-        composeRule.onNodeWithContentDescription(slopeRelief).performScrollTo().assertIsDisplayed().performClick()
+        composeRule
+            .onNodeWithContentDescription(slopeRelief)
+            .performScrollTo()
+            .assertIsDisplayed()
+            .performClick()
         composeRule.runOnIdle { assertTrue(state.value.mapSettings.reliefOverlayEnabled) }
     }
 

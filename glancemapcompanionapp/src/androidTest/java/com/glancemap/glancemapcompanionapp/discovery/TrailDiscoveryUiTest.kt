@@ -8,11 +8,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
-import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
@@ -22,9 +22,16 @@ import com.glancemap.glancemapcompanionapp.filepicker.CompanionHomeArea
 import com.glancemap.glancemapcompanionapp.filepicker.CompanionMenuActions
 import com.glancemap.glancemapcompanionapp.filepicker.CompanionMenuState
 import com.glancemap.glancemapcompanionapp.filepicker.companionNavigationDrawer
+import com.glancemap.glancemapcompanionapp.library.libraryTestMapActions
+import com.glancemap.glancemapcompanionapp.library.libraryTestMapState
+import com.glancemap.glancemapcompanionapp.map.MapTool
+import com.glancemap.glancemapcompanionapp.map.MapToolContentMode
+import com.glancemap.glancemapcompanionapp.map.MapToolFeatureSettingsSection
+import com.glancemap.glancemapcompanionapp.map.MapToolPanelContent
 import com.glancemap.trailcore.geo.GeoPoint
 import com.glancemap.trailcore.profile.TrailPoint
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 
@@ -48,11 +55,11 @@ class TrailDiscoveryUiTest {
             }
         }
         compose
-            .onNodeWithContentDescription(TrailProvider.OPEN_STREET_MAP.label)
+            .onNodeWithContentDescription(TrailProvider.WAYMARKED_TRAILS.label)
             .assertIsOn()
             .performClick()
         compose.runOnIdle { assertEquals(emptySet<TrailProvider>(), settings.value.enabled) }
-        compose.onNodeWithContentDescription(TrailProvider.OPEN_STREET_MAP.label).assertIsOff()
+        compose.onNodeWithContentDescription(TrailProvider.WAYMARKED_TRAILS.label).assertIsOff()
         compose
             .onNodeWithContentDescription("Geotrek")
             .assertIsOff()
@@ -139,7 +146,11 @@ class TrailDiscoveryUiTest {
             var selected by remember { mutableStateOf<PublishedTrail?>(null) }
             MaterialTheme {
                 selected?.let { trail ->
-                    PublishedTrailDetails(trail, DiscoveredTrailSaveState(), { selected = null }) { saved++ }
+                    PublishedTrailDetails(
+                        trail,
+                        DiscoveredTrailSaveState(),
+                        PublishedTrailDetailActions({ selected = null }, { saved++ }),
+                    )
                 } ?: TrailDiscoveryPanel(
                     TrailDiscoveryUiState(
                         reply = TrailDiscoveryReply(listOf(trail)),
@@ -163,8 +174,7 @@ class TrailDiscoveryUiTest {
                 PublishedTrailDetails(
                     trail.copy(geometryComplete = false),
                     DiscoveredTrailSaveState(),
-                    {},
-                    { downloads++ },
+                    PublishedTrailDetailActions({}, { downloads++ }),
                 )
             }
         }
@@ -177,18 +187,117 @@ class TrailDiscoveryUiTest {
     }
 
     @Test
-    fun searchSourceChipsChangeTheSelectedProviders() {
-        val enabled = mutableStateOf(setOf(TrailProvider.OPEN_STREET_MAP))
+    fun lazyDetailLoadingAndFailurePreventSavingAndOfferRetry() {
+        val detail = mutableStateOf(OnlineTrailDetailState(loading = true))
+        var retries = 0
         compose.setContent {
             MaterialTheme {
-                TrailSourceFilters(enabled.value) { provider, selected ->
-                    enabled.value = if (selected) enabled.value + provider else enabled.value - provider
-                }
+                PublishedTrailDetails(
+                    trail.copy(geometry = emptyList(), geometryComplete = false),
+                    DiscoveredTrailSaveState(),
+                    PublishedTrailDetailActions({}, {}, { retries++ }),
+                    detail = detail.value,
+                )
             }
         }
-        compose.onNodeWithContentDescription("Search OpenStreetMap").assertIsSelected().performClick()
-        compose.onNodeWithContentDescription("Search Geotrek").performClick().assertIsSelected()
-        compose.runOnIdle { assertEquals(setOf(TrailProvider.GEOTREK), enabled.value) }
+        compose.onNodeWithText("Loading route geometry…").performScrollTo().assertIsDisplayed()
+        compose
+            .onNodeWithText("Downloads details and source credits only. No navigable route geometry is available.")
+            .assertDoesNotExist()
+        compose.onNodeWithText("Download for offline").performScrollTo().assertIsNotEnabled()
+        compose.runOnIdle { detail.value = OnlineTrailDetailState(failed = true) }
+        compose.onNodeWithText("Complete route geometry could not be loaded.").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Retry").performScrollTo().performClick()
+        compose.runOnIdle { assertEquals(1, retries) }
+    }
+
+    @Test
+    fun sourcesAreConfiguredInSettingsRatherThanOnSearchScreen() {
+        compose.setContent { MaterialTheme { TrailDiscoveryPanel(TrailDiscoveryUiState(), actions()) } }
+        compose.onNodeWithContentDescription("Search OpenStreetMap").assertDoesNotExist()
+        compose.onNodeWithText("Configure route sources").performScrollTo().assertIsDisplayed()
+    }
+
+    @Test
+    fun checkingARouteKeepsItAvailableAfterSearchingAnotherArea() {
+        val state =
+            mutableStateOf(
+                TrailDiscoveryUiState(
+                    searched = true,
+                    enabled = setOf(TrailProvider.GEOTREK),
+                    reply = TrailDiscoveryReply(listOf(trail)),
+                ),
+            )
+        val selection = mutableStateOf(TrailMapSelectionState())
+        var opened = 0
+        compose.setContent {
+            MaterialTheme {
+                TrailDiscoveryPanel(
+                    state.value,
+                    actions { opened++ }.copy(
+                        onMapSelectionChanged = { selected, visible ->
+                            val next =
+                                if (visible) {
+                                    selection.value.requested + (selected.id to selected)
+                                } else {
+                                    selection.value.requested - selected.id
+                                }
+                            selection.value = selection.value.copy(requested = next)
+                        },
+                    ),
+                    mapSelection = selection.value,
+                )
+            }
+        }
+        compose
+            .onNodeWithContentDescription("Show Fixture hike on map")
+            .performScrollTo()
+            .assertIsOff()
+            .performClick()
+        compose.onNodeWithContentDescription("Show Fixture hike on map").assertIsOn()
+        compose.runOnIdle {
+            assertEquals(0, opened)
+            state.value = state.value.copy(reply = TrailDiscoveryReply())
+        }
+        compose.onNodeWithText("Selected for map").performScrollTo().assertIsDisplayed()
+        compose
+            .onNodeWithContentDescription("Show Fixture hike on map")
+            .performScrollTo()
+            .assertIsOn()
+            .performClick()
+        compose.onNodeWithText("Fixture hike").assertDoesNotExist()
+    }
+
+    @Test
+    fun checkedRouteCanBeRemovedWhenNewResultHasNoGeometry() {
+        val selection = mutableStateOf(TrailMapSelectionState(requested = mapOf(trail.id to trail)))
+        compose.setContent {
+            MaterialTheme {
+                TrailDiscoveryPanel(
+                    TrailDiscoveryUiState(
+                        enabled = setOf(TrailProvider.GEOTREK),
+                        reply =
+                            TrailDiscoveryReply(
+                                listOf(trail.copy(geometry = emptyList(), geometryComplete = false)),
+                            ),
+                    ),
+                    actions().copy(
+                        onMapSelectionChanged = { selected, visible ->
+                            if (!visible) {
+                                selection.value = selection.value.copy(requested = selection.value.requested - selected.id)
+                            }
+                        },
+                    ),
+                    mapSelection = selection.value,
+                )
+            }
+        }
+        compose
+            .onNodeWithContentDescription("Show Fixture hike on map")
+            .performScrollTo()
+            .assertIsOn()
+            .performClick()
+        compose.runOnIdle { assertTrue(selection.value.requested.isEmpty()) }
     }
 
     @Test
@@ -237,7 +346,7 @@ class TrailDiscoveryUiTest {
     }
 
     @Test
-    fun discoveryIsAnActionInTheLeftDrawer() {
+    fun discoveryIsHiddenFromTheLeftDrawer() {
         var destination: CompanionHomeArea? = null
         compose.setContent {
             MaterialTheme {
@@ -248,8 +357,27 @@ class TrailDiscoveryUiTest {
                 ) {}
             }
         }
-        compose.onNodeWithText("Discover routes").performScrollTo().performClick()
-        compose.runOnIdle { assertEquals(CompanionHomeArea.DISCOVER_ROUTES, destination) }
+        compose.onNodeWithText("Discover routes").assertDoesNotExist()
+        compose.runOnIdle { assertEquals(null, destination) }
+    }
+
+    @Test
+    fun discoveryIsHiddenFromTheGpxToolPanel() {
+        compose.setContent {
+            val context = LocalContext.current
+            val mapState = remember(context) { mutableStateOf(libraryTestMapState(context)) }
+            MaterialTheme {
+                MapToolPanelContent(
+                    tool = MapTool.GPX,
+                    contentMode = MapToolContentMode.MAIN,
+                    featureSettingsSection = MapToolFeatureSettingsSection.ROOT,
+                    state = mapState.value,
+                    actions = libraryTestMapActions(mapState),
+                )
+            }
+        }
+
+        compose.onNodeWithText("Discover routes").assertDoesNotExist()
     }
 
     @Test
@@ -259,8 +387,7 @@ class TrailDiscoveryUiTest {
                 PublishedTrailDetails(
                     trail,
                     DiscoveredTrailSaveState(savedTrailIds = setOf(trail.id)),
-                    {},
-                    {},
+                    PublishedTrailDetailActions({}, {}),
                 )
             }
         }

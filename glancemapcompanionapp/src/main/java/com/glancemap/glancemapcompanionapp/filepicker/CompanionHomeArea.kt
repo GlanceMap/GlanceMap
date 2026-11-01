@@ -35,7 +35,6 @@ internal enum class CompanionHomeArea(
 
 internal val companionMenuAreas =
     listOf(
-        CompanionHomeArea.DISCOVER_ROUTES,
         CompanionHomeArea.MISSION_PLAN,
         CompanionHomeArea.ROUTE_WEATHER,
         CompanionHomeArea.LIVE_TRACKING,

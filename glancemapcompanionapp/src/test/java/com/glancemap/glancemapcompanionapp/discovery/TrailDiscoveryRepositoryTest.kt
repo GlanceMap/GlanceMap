@@ -160,10 +160,29 @@ class TrailDiscoveryRepositoryTest {
             controller.submit(query, setOf(TrailProvider.GEOTREK))
             advanceTimeBy(351)
             runCurrent()
+            controller.onUserMapPan()
             controller.cancelIfMoved(GeoPoint(47.0, 8.0))
             assertFalse(controller.state.value.loading)
             assertFalse(controller.state.value.searched)
             assertEquals(1, calls)
+        }
+
+    @Test
+    fun programmaticTargetMoveDoesNotCancelSearchWhileCameraIsStaleOrArriving() =
+        runTest {
+            val pending = CompletableDeferred<TrailDiscoveryReply>()
+            val controller = TrailDiscoveryController(backgroundScope) { _, _ -> pending.await() }
+            val target = TrailDiscoveryQuery(GeoPoint(48.1367362, 11.5386586))
+            controller.submit(target, setOf(TrailProvider.WAYMARKED_TRAILS))
+            advanceTimeBy(601)
+            runCurrent()
+            controller.cancelIfMoved(GeoPoint(48.1567362, 11.5386586))
+            assertTrue(controller.state.value.loading)
+            controller.cancelIfMoved(target.center)
+            assertTrue(controller.state.value.loading)
+            pending.complete(TrailDiscoveryReply())
+            runCurrent()
+            assertTrue(controller.state.value.searched)
         }
 
     private fun trail(id: String) = PublishedTrail(id, id, emptyList())

@@ -841,6 +841,7 @@ internal fun CompanionMapScreen(
     val recordingSettings by PhoneRecordingSettingsState.state.collectAsStateWithLifecycle()
     val discoveryViewModel: TrailDiscoveryViewModel = viewModel()
     val discoverySaveState by discoveryViewModel.saveState.collectAsStateWithLifecycle()
+    val discoveryMapSelection by discoveryViewModel.mapSelection.state.collectAsStateWithLifecycle()
     var discoveryOpen by rememberSaveable { mutableStateOf(initialDiscoveryRequest != null) }
     var discoveryPickingPoint by rememberSaveable { mutableStateOf(false) }
     var discoveryNearMePending by rememberSaveable { mutableStateOf(false) }
@@ -1205,6 +1206,10 @@ internal fun CompanionMapScreen(
                 )
             }
         }
+    val discoveryOverlays =
+        remember(discoveryMapSelection, discoveryOverlay) {
+            discoveryMapOverlays(discoveryMapSelection.visibleTrails, discoveryOverlay)
+        }
     val savedGpxFitSegments =
         remember(savedGpxGeometry, discoveryOverlay) {
             discoveryOverlay?.segments ?: savedGpxGeometry.flatMap { it.segments }
@@ -1224,14 +1229,14 @@ internal fun CompanionMapScreen(
             savedGpxOverlays,
             recordingOverlay,
             hikeOverlay,
-            discoveryOverlay,
+            discoveryOverlays,
             mapUiState.contentVisibility.gpxTracks,
         ) {
-            if (!mapUiState.contentVisibility.gpxTracks && discoveryOverlay != null) {
-                listOf(discoveryOverlay)
+            if (!mapUiState.contentVisibility.gpxTracks && discoveryOverlays.isNotEmpty()) {
+                discoveryOverlays
             } else {
                 savedGpxOverlays.filterNot { hikeOverlay != null && it.id == hikeTrackId } +
-                    listOfNotNull(recordingOverlay, hikeOverlay, discoveryOverlay)
+                    listOfNotNull(recordingOverlay, hikeOverlay) + discoveryOverlays
             }
         }
     val visibleMultiPointRoutePreview = routeToolsState.visibleMultiPointRoutePreview()
@@ -1588,7 +1593,7 @@ internal fun CompanionMapScreen(
             overlays = mapGpxOverlays,
             segments = mapGpxOverlays.flatMap(PhoneMapGpxOverlay::segments),
             isVisible =
-                mapUiState.contentVisibility.gpxTracks || discoveryOverlay != null || routePreviewOverlay != null,
+                mapUiState.contentVisibility.gpxTracks || discoveryOverlays.isNotEmpty() || routePreviewOverlay != null,
             settings = gpxSettings,
         )
     val selectLocalMapLauncher =
@@ -3325,6 +3330,7 @@ internal fun CompanionMapScreen(
                                         )
                                 },
                                 onUserPan = {
+                                    discoveryViewModel.controller.onUserMapPan()
                                     mapUiState = mapUiState.copy(mapMode = mapUiState.mapMode.detachFromLocation(mapCamera.bearingDegrees))
                                 },
                                 onUserRotation = { bearing ->
@@ -3533,6 +3539,7 @@ internal fun CompanionMapScreen(
                                         onlineGestureState.withActive(PhoneOnlineGestureType.PAN, active)
                                 },
                                 onUserPan = { bearing ->
+                                    discoveryViewModel.controller.onUserMapPan()
                                     mapUiState =
                                         mapUiState.copy(
                                             mapMode = mapUiState.mapMode.detachFromLocation(bearing),
@@ -3775,6 +3782,7 @@ internal fun CompanionMapScreen(
                                                 onlineGestureState.withActive(PhoneOnlineGestureType.PAN, active)
                                         },
                                         onUserPan = { bearing ->
+                                            discoveryViewModel.controller.onUserMapPan()
                                             mapUiState =
                                                 mapUiState.copy(
                                                     mapMode = mapUiState.mapMode.detachFromLocation(bearing),
@@ -4001,6 +4009,7 @@ internal fun CompanionMapScreen(
                                         },
                                         onUserPan = { bearing ->
                                             if (!comparisonOwnsFollowAndCommands) {
+                                                discoveryViewModel.controller.onUserMapPan()
                                                 mapUiState =
                                                     mapUiState.copy(
                                                         mapMode = mapUiState.mapMode.detachFromLocation(bearing),
@@ -4159,6 +4168,7 @@ internal fun CompanionMapScreen(
                                                 onlineGestureState.withActive(PhoneOnlineGestureType.PAN, active)
                                         },
                                         onUserPan = { bearing ->
+                                            discoveryViewModel.controller.onUserMapPan()
                                             mapUiState =
                                                 mapUiState.copy(
                                                     mapMode = mapUiState.mapMode.detachFromLocation(bearing),
@@ -4380,6 +4390,7 @@ internal fun CompanionMapScreen(
                                     onTwoFingerTap = onDistanceMeasurementGesture,
                                     onMeasurementPointMoved = onDistanceMeasurementPointMoved,
                                     onUserPan = { bearing ->
+                                        discoveryViewModel.controller.onUserMapPan()
                                         mapUiState =
                                             mapUiState.copy(
                                                 mapMode =
@@ -4734,7 +4745,6 @@ internal fun CompanionMapScreen(
                 },
                 libraryContent = libraryContent,
                 discoveryOpen = discoveryOpen,
-                onOpenDiscovery = { discoveryOpen = true },
                 discoveryContent = {
                     TrailDiscoveryContent(
                         viewModel = discoveryViewModel,

@@ -6,7 +6,7 @@ import androidx.core.content.edit
 import okhttp3.HttpUrl.Companion.toHttpUrl
 
 internal data class RouteSourceSettings(
-    val enabled: Set<TrailProvider> = setOf(TrailProvider.OPEN_STREET_MAP),
+    val enabled: Set<TrailProvider> = setOf(TrailProvider.WAYMARKED_TRAILS),
     val overpassUrl: String = "https://overpass-api.de/api/interpreter",
     val geotrekRegistry: String = "",
 )
@@ -48,19 +48,22 @@ internal class RouteSourcePreferences(
         context.applicationContext.getSharedPreferences("phone_route_sources", Context.MODE_PRIVATE),
     )
 
-    fun load(): RouteSourceSettings =
-        RouteSourceSettings(
+    fun load(): RouteSourceSettings {
+        val previouslyConfigured =
+            TrailProvider.entries.any { it != TrailProvider.WAYMARKED_TRAILS && preferences.contains(it.name) }
+        return RouteSourceSettings(
             enabled =
                 TrailProvider.entries
                     .filter {
                         preferences.getBoolean(
                             it.name,
-                            it == TrailProvider.OPEN_STREET_MAP,
+                            it == TrailProvider.WAYMARKED_TRAILS && !previouslyConfigured,
                         )
                     }.toSet(),
             overpassUrl = preferences.getString("overpass_url", null) ?: RouteSourceSettings().overpassUrl,
             geotrekRegistry = preferences.getString("geotrek_registry", "").orEmpty(),
         )
+    }
 
     fun save(settings: RouteSourceSettings): RouteSourceSettings {
         val normalized = settings.copy(overpassUrl = validatedDiscoveryUrl(settings.overpassUrl))

@@ -2,7 +2,6 @@
 
 package com.glancemap.glancemapcompanionapp.discovery
 
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -11,10 +10,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
-import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -28,8 +26,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -43,7 +41,13 @@ internal data class TrailDiscoveryActions(
     val onSources: () -> Unit,
     val onOpen: (PublishedTrail) -> Unit,
     val map: TrailDiscoverySearchActions = TrailDiscoverySearchActions(),
-    val onSourceChanged: (TrailProvider, Boolean) -> Unit = { _, _ -> },
+    val onMapSelectionChanged: (PublishedTrail, Boolean) -> Unit = { _, _ -> },
+)
+
+internal data class PublishedTrailDetailActions(
+    val onBack: () -> Unit,
+    val onSave: (PublishedTrail) -> Unit,
+    val onRetry: () -> Unit = {},
 )
 
 @Composable
@@ -60,6 +64,8 @@ internal fun TrailDiscoveryContent(
     val settings by viewModel.settings.collectAsState()
     val save by viewModel.saveState.collectAsState()
     val offline by viewModel.offlineState.collectAsState()
+    val onlineDetail by viewModel.onlineDetail.collectAsState()
+    val mapSelection by viewModel.mapSelection.state.collectAsState()
     var sourcesOpen by remember { mutableStateOf(false) }
     var downloadsOpen by remember { mutableStateOf(false) }
     var selectedId by remember { mutableStateOf<String?>(null) }
@@ -67,7 +73,7 @@ internal fun TrailDiscoveryContent(
         if (downloadsOpen) {
             offline.selectedTrail?.takeIf { it.id == selectedId }
         } else {
-            state.reply.trails.firstOrNull { it.id == selectedId }
+            selectedOnlineTrail(selectedId, state.reply.trails, mapSelection.requested, onlineDetail.trail)
         }
     LaunchedEffect(selected) { onPreview(selected) }
     LaunchedEffect(query.center, state.loading) {
@@ -80,6 +86,7 @@ internal fun TrailDiscoveryContent(
     DisposableEffect(Unit) {
         onDispose {
             viewModel.controller.cancel()
+            viewModel.closeTrail()
             mapActions.onDismiss()
             onPreview(null)
         }
@@ -90,6 +97,7 @@ internal fun TrailDiscoveryContent(
             TextButton(onClick = onLibrary) { Text(stringResource(R.string.discovery_library)) }
             TextButton(onClick = {
                 selectedId = null
+                viewModel.closeTrail()
                 sourcesOpen = false
                 downloadsOpen = !downloadsOpen
                 if (downloadsOpen) {
@@ -107,7 +115,19 @@ internal fun TrailDiscoveryContent(
                 selected != null -> {
                     if (downloadsOpen) Text(stringResource(R.string.discovery_offline_reading))
                     offline.message?.takeIf { downloadsOpen }?.let { Text(it) }
-                    PublishedTrailDetails(selected, save, { selectedId = null }, viewModel::saveTrail)
+                    PublishedTrailDetails(
+                        selected,
+                        save,
+                        PublishedTrailDetailActions(
+                            onBack = {
+                                selectedId = null
+                                viewModel.closeTrail()
+                            },
+                            onSave = viewModel::saveTrail,
+                            onRetry = { viewModel.openTrail(selected) },
+                        ),
+                        detail = if (downloadsOpen) OnlineTrailDetailState() else onlineDetail,
+                    )
                 }
                 downloadsOpen ->
                     OfflineTrailsPanel(offline) { record ->
@@ -121,31 +141,50 @@ internal fun TrailDiscoveryContent(
                             onSearchArea = { viewModel.controller.submit(query, settings.enabled) },
                             onSearchPlace = onSearchPlace,
                             onSources = { sourcesOpen = true },
-                            onOpen = { selectedId = it.id },
-                            map = mapActions,
-                            onSourceChanged = { provider, enabled ->
-                                val sources = if (enabled) settings.enabled + provider else settings.enabled - provider
-                                viewModel.saveSettings(settings.copy(enabled = sources))
+                            onOpen = {
+                                selectedId = it.id
+                                val loaded = mapSelection.requested[it.id]?.takeIf(PublishedTrail::canSave) ?: it
+                                viewModel.openTrail(loaded)
                             },
+                            map = mapActions,
+                            onMapSelectionChanged = viewModel.mapSelection::setVisible,
                         ),
+                        mapSelection = mapSelection,
                     )
             }
         }
     }
 }
 
+private fun selectedOnlineTrail(
+    id: String?,
+    trails: List<PublishedTrail>,
+    requested: Map<String, PublishedTrail>,
+    detail: PublishedTrail?,
+): PublishedTrail? {
+    val listing = trails.firstOrNull { it.id == id } ?: id?.let(requested::get) ?: return null
+    return detail?.takeIf { it.id == id } ?: listing
+}
+
 @Composable
 @Suppress("FunctionNaming") // Stateless panel supports fixture-based Compose tests.
-internal fun TrailDiscoveryPanel(state: TrailDiscoveryUiState, actions: TrailDiscoveryActions) {
+internal fun TrailDiscoveryPanel(
+    state: TrailDiscoveryUiState,
+    actions: TrailDiscoveryActions,
+    mapSelection: TrailMapSelectionState = TrailMapSelectionState(),
+) {
+    val results = state.reply.trails.filter { trail -> trail.sources.any { it.provider in state.enabled } }
+    val resultIds = results.mapTo(mutableSetOf()) { it.id }
+    val selectedElsewhere = mapSelection.requested.values.filterNot { it.id in resultIds }
     LazyColumn(
         modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         item { TrailDiscoverySearchControls(actions) }
-        item { TrailSourceFilters(state.enabled, actions.onSourceChanged) }
         item {
             TextButton(onClick = actions.onSources) { Text(stringResource(R.string.discovery_source_settings)) }
             Text(stringResource(R.string.discovery_radius), style = MaterialTheme.typography.bodySmall)
+            Text(stringResource(R.string.discovery_map_selection_hint), style = MaterialTheme.typography.bodySmall)
             TrailDiscoveryStatus(state)
         }
         items(state.reply.statuses.filter { it.outcome != TrailSourceOutcome.SUCCESS }) { status ->
@@ -154,10 +193,15 @@ internal fun TrailDiscoveryPanel(state: TrailDiscoveryUiState, actions: TrailDis
                 style = MaterialTheme.typography.bodySmall,
             )
         }
-        items(
-            state.reply.trails.filter { trail -> trail.sources.any { it.provider in state.enabled } },
-            key = PublishedTrail::id,
-        ) { trail -> TrailDiscoveryCard(trail) { actions.onOpen(trail) } }
+        if (selectedElsewhere.isNotEmpty()) {
+            item { Text(stringResource(R.string.discovery_selected_for_map)) }
+            items(selectedElsewhere, key = { "selected/${it.id}" }) { trail ->
+                TrailDiscoveryCard(trail, { actions.onOpen(trail) }, mapSelection, actions.onMapSelectionChanged)
+            }
+        }
+        items(results, key = { "result/${it.id}" }) { trail ->
+            TrailDiscoveryCard(trail, { actions.onOpen(trail) }, mapSelection, actions.onMapSelectionChanged)
+        }
     }
 }
 
@@ -201,30 +245,13 @@ private fun TrailDiscoverySearchControls(actions: TrailDiscoveryActions) {
 }
 
 @Composable
-@Suppress("FunctionNaming") // Persistent source filters are visible before a search is submitted.
-internal fun TrailSourceFilters(enabled: Set<TrailProvider>, onChanged: (TrailProvider, Boolean) -> Unit) {
-    Column {
-        Text(stringResource(R.string.discovery_sources))
-        Row(
-            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            TrailProvider.entries.forEach { source ->
-                val label = stringResource(R.string.discovery_search_source, source.label)
-                FilterChip(
-                    selected = source in enabled,
-                    onClick = { onChanged(source, source !in enabled) },
-                    label = { Text(source.label) },
-                    modifier = Modifier.semantics { contentDescription = label },
-                )
-            }
-        }
-    }
-}
-
-@Composable
 @Suppress("FunctionNaming") // The same attributed card serves online results and offline snapshots.
-private fun TrailDiscoveryCard(trail: PublishedTrail, onOpen: () -> Unit) {
+private fun TrailDiscoveryCard(
+    trail: PublishedTrail,
+    onOpen: () -> Unit,
+    mapSelection: TrailMapSelectionState? = null,
+    onMapSelectionChanged: (PublishedTrail, Boolean) -> Unit = { _, _ -> },
+) {
     Card(onClick = onOpen, modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(trail.title, style = MaterialTheme.typography.titleMedium)
@@ -236,6 +263,23 @@ private fun TrailDiscoveryCard(trail: PublishedTrail, onOpen: () -> Unit) {
             )
             trail.distanceMeters?.let { Text(stringResource(R.string.discovery_distance, it / 1000.0)) }
             trail.sources.forEach { Text(it.attribution, style = MaterialTheme.typography.labelSmall) }
+            if (mapSelection != null) {
+                val label = stringResource(R.string.discovery_show_route_on_map, trail.title)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(
+                        checked = trail.id in mapSelection.requested,
+                        onCheckedChange = { onMapSelectionChanged(trail, it) },
+                        enabled =
+                            trail.id in mapSelection.requested ||
+                                trail.canSave ||
+                                trail.sources.any { it.provider == TrailProvider.WAYMARKED_TRAILS },
+                        modifier = Modifier.semantics { contentDescription = label },
+                    )
+                    Text(stringResource(R.string.discovery_show_on_map))
+                }
+                if (trail.id in mapSelection.loading) Text(stringResource(R.string.discovery_map_loading))
+                if (trail.id in mapSelection.failed) Text(stringResource(R.string.discovery_map_failed))
+            }
         }
     }
 }
@@ -252,7 +296,7 @@ internal fun OfflineTrailsPanel(state: OfflineTrailsUiState, onOpen: (OfflinePub
             if (!state.loading && state.records.isEmpty()) Text(stringResource(R.string.discovery_offline_empty))
         }
         items(state.records, key = { it.trail.id }) { record ->
-            TrailDiscoveryCard(record.trail) { onOpen(record) }
+            TrailDiscoveryCard(record.trail, { onOpen(record) })
         }
     }
 }
@@ -292,73 +336,3 @@ private fun trailDiscoveryFailureMessage(failure: TrailDiscoveryFailure?): Strin
             null -> R.string.discovery_source_failed
         },
     )
-
-@Composable
-@Suppress("FunctionNaming") // Compose details entry point.
-internal fun PublishedTrailDetails(
-    trail: PublishedTrail,
-    save: DiscoveredTrailSaveState,
-    onBack: () -> Unit,
-    onSave: (PublishedTrail) -> Unit,
-) {
-    val uriHandler = LocalUriHandler.current
-    LazyColumn(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        item {
-            TextButton(onClick = onBack) { Text(stringResource(R.string.discovery_back_results)) }
-            Text(trail.title, style = MaterialTheme.typography.titleLarge)
-            Text(trail.activity)
-            if (trail.description.isNotBlank()) Text(trail.description)
-            trail.difficulty?.let { Text(it) }
-            trail.distanceMeters?.let { Text(stringResource(R.string.discovery_distance, it / 1000.0)) }
-            PublishedTrailMetrics(trail)
-            Text(stringResource(if (trail.canSave) R.string.discovery_preview else R.string.discovery_no_geometry))
-            if (trail.geometry.any { it.startsNewSegment }) Text(stringResource(R.string.discovery_segments))
-            Button(
-                onClick = { onSave(trail) },
-                enabled = trail.sources.isNotEmpty() && !save.saving && trail.id !in save.savedTrailIds,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                val label =
-                    if (trail.id in save.savedTrailIds) {
-                        R.string.discovery_available_offline
-                    } else {
-                        R.string.discovery_download
-                    }
-                Text(stringResource(label))
-            }
-            val scope =
-                if (trail.canSave) {
-                    R.string.discovery_download_route_scope
-                } else {
-                    R.string.discovery_download_info_scope
-                }
-            Text(stringResource(scope))
-            if (save.saving) LinearProgressIndicator(Modifier.fillMaxWidth())
-            save.message?.let { Text(it) }
-        }
-        items(trail.sources) { source ->
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(source.provider.label, style = MaterialTheme.typography.titleSmall)
-                source.publisherName?.let { Text(it) }
-                Text(source.attribution)
-                Text(source.license, style = MaterialTheme.typography.bodySmall)
-                source.updatedAt?.let { Text(stringResource(R.string.discovery_updated, it)) }
-                Text(source.providerTrailId, style = MaterialTheme.typography.labelSmall)
-                TextButton(onClick = { uriHandler.openUri(source.sourceUrl) }) {
-                    Text(stringResource(R.string.discovery_original))
-                }
-            }
-        }
-    }
-}
-
-@Composable
-@Suppress("FunctionNaming") // Compose helper follows the panel naming convention.
-private fun PublishedTrailMetrics(trail: PublishedTrail) {
-    trail.profile?.let { profile ->
-        Text(stringResource(R.string.discovery_duration, profile.estimatedDurationSeconds / 3600.0))
-        if (trail.geometry.all { it.elevationMeters != null }) {
-            Text(stringResource(R.string.discovery_elevation, profile.totalAscentMeters, profile.totalDescentMeters))
-        }
-    }
-}

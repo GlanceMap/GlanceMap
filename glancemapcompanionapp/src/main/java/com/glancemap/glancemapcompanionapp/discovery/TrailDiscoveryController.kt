@@ -13,7 +13,7 @@ import kotlin.coroutines.coroutineContext
 
 internal data class TrailDiscoveryUiState(
     val query: TrailDiscoveryQuery? = null,
-    val enabled: Set<TrailProvider> = setOf(TrailProvider.OPEN_STREET_MAP),
+    val enabled: Set<TrailProvider> = setOf(TrailProvider.WAYMARKED_TRAILS),
     val loading: Boolean = false,
     val searched: Boolean = false,
     val reply: TrailDiscoveryReply = TrailDiscoveryReply(),
@@ -28,12 +28,14 @@ internal class TrailDiscoveryController(
     val state = mutableState.asStateFlow()
     private var job: Job? = null
     private var generation = 0L
+    private var userPanned = false
 
     fun submit(
         query: TrailDiscoveryQuery,
         enabled: Set<TrailProvider>,
     ) {
         cancel()
+        userPanned = false
         val request = generation
         mutableState.value = TrailDiscoveryUiState(query, enabled, loading = enabled.isNotEmpty(), searched = true)
         if (enabled.isEmpty()) return
@@ -48,10 +50,14 @@ internal class TrailDiscoveryController(
 
     fun cancelIfMoved(center: GeoPoint) {
         val request = mutableState.value.query ?: return
-        if (mutableState.value.loading && haversineDistanceMeters(request.center, center) > 500.0) {
+        if (userPanned && mutableState.value.loading && haversineDistanceMeters(request.center, center) > 500.0) {
             cancel()
             mutableState.value = mutableState.value.copy(query = null, searched = false, reply = TrailDiscoveryReply())
         }
+    }
+
+    fun onUserMapPan() {
+        userPanned = true
     }
 
     fun cancel() {

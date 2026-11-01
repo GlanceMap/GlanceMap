@@ -10,6 +10,7 @@ import kotlin.math.abs
 internal enum class TrailProvider(
     val label: String,
 ) {
+    WAYMARKED_TRAILS("Waymarked Trails"),
     OPEN_STREET_MAP("OpenStreetMap"),
     WANDERER("Wanderer"),
     GEOTREK("Geotrek"),
@@ -55,7 +56,7 @@ internal data class TrailDiscoveryQuery(
     }
 }
 
-/** Only matching full geometry is strong enough to combine independently published routes. */
+/** Shared OSM identity or matching full geometry can combine independently published routes. */
 internal fun mergePublishedTrails(trails: List<PublishedTrail>): List<PublishedTrail> {
     val merged = mutableListOf<PublishedTrail>()
     trails.forEach { trail ->
@@ -75,12 +76,26 @@ private fun samePublishedTrail(
     first: PublishedTrail,
     second: PublishedTrail,
 ): Boolean {
-    if (!first.canSave || !second.canSave || first.title.trailTitleKey() != second.title.trailTitleKey()) return false
-    // shortcut: exact ordered geometry only; add spatial matching when real duplicate fixtures justify it.
-    return first.geometry.size == second.geometry.size &&
-        abs(first.profile!!.totalDistanceMeters - second.profile!!.totalDistanceMeters) <= 5.0 &&
-        first.geometry == second.geometry
+    val firstOsm = first.osmRelationId()
+    val secondOsm = second.osmRelationId()
+    return if (firstOsm != null && secondOsm != null) {
+        firstOsm == secondOsm
+    } else {
+        // shortcut: exact ordered geometry only; add spatial matching when real duplicate fixtures justify it.
+        first.canSave &&
+            second.canSave &&
+            first.title.trailTitleKey() == second.title.trailTitleKey() &&
+            first.geometry.size == second.geometry.size &&
+            abs(first.profile!!.totalDistanceMeters - second.profile!!.totalDistanceMeters) <= 5.0 &&
+            first.geometry == second.geometry
+    }
 }
+
+private fun PublishedTrail.osmRelationId(): String? =
+    sources
+        .firstOrNull { it.provider == TrailProvider.WAYMARKED_TRAILS || it.provider == TrailProvider.OPEN_STREET_MAP }
+        ?.providerTrailId
+        ?.takeIf { it.toLongOrNull()?.let { id -> id > 0 } == true }
 
 private fun String.trailTitleKey(): String =
     Normalizer

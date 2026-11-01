@@ -144,7 +144,7 @@ class MapToolLauncherTest {
             .onNode(
                 hasText(label(R.string.library_title)) and hasAnyAncestor(hasTestTag("map-tool-panel-header")),
             ).assertDoesNotExist()
-        PhoneLibraryFilter.entries.forEach { category ->
+        PhoneLibraryFilter.entries.filterNot { it == PhoneLibraryFilter.BUNDLES }.forEach { category ->
             val tab = composeRule.onNodeWithTag("library-tab-${category.name}")
             tab.assertIsDisplayed().performClick().assertIsSelected()
             composeRule.runOnIdle { assertEquals(category, libraryFilter.value) }
@@ -152,17 +152,15 @@ class MapToolLauncherTest {
             assertTrue(bounds.left >= header.left && bounds.right <= header.right)
             assertEquals(header.center.y, bounds.center.y, 1f)
         }
-        composeRule.onNodeWithText(label(R.string.library_filter_bundles)).assertDoesNotExist()
-        composeRule.onNodeWithContentDescription(label(R.string.library_filter_bundles)).assertIsSelected()
         val expand =
             label(R.string.map_tool_action_expand_content_description) + ". " + label(R.string.map_tool_resize_hint)
         composeRule.onNodeWithContentDescription(expand).performClick()
         composeRule.runOnIdle { assertEquals(MapToolPanelMode.EXPANDED, ui.value.toolPanel.mode) }
-        composeRule.onNodeWithTag("library-tab-BUNDLES").assertIsSelected()
+        composeRule.onNodeWithTag("library-tab-MAPS").assertIsSelected()
         composeRule.onNodeWithContentDescription(label(R.string.common_action_close)).performClick()
         composeRule.runOnIdle { assertEquals(MapToolPanelMode.CLOSED, ui.value.toolPanel.mode) }
         click(R.string.library_title)
-        composeRule.onNodeWithTag("library-tab-BUNDLES").assertIsSelected()
+        composeRule.onNodeWithTag("library-tab-MAPS").assertIsSelected()
     }
 
     @Test

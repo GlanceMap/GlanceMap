@@ -18,6 +18,8 @@ internal interface PublishedTrailProvider {
         get() = null
 
     suspend fun discover(query: TrailDiscoveryQuery): List<PublishedTrail>
+
+    suspend fun detail(trail: PublishedTrail): PublishedTrail = trail
 }
 
 internal enum class TrailSourceOutcome { SUCCESS, UNAVAILABLE, FAILED }
@@ -40,6 +42,34 @@ internal class TrailDiscoveryRepository(
     private val nowMillis: () -> Long = System::currentTimeMillis,
 ) {
     private val cache = linkedMapOf<Pair<String, TrailDiscoveryQuery>, Pair<Long, List<PublishedTrail>>>()
+    private val detailCache = linkedMapOf<String, PublishedTrail>()
+
+    suspend fun detail(trail: PublishedTrail): PublishedTrail =
+        withContext(Dispatchers.IO) {
+            if (trail.canSave) return@withContext trail
+            val source =
+                trail.sources.firstOrNull { it.provider == TrailProvider.WAYMARKED_TRAILS } ?: return@withContext trail
+            val adapter = providers.firstOrNull { it.provider == source.provider } ?: return@withContext trail
+            val cached = synchronized(detailCache) { detailCache[source.providerTrailId] }
+            val loaded =
+                cached ?: withTimeoutOrNull(25000) { adapter.detail(trail) }
+                    ?: throw TrailDiscoveryException(TrailDiscoveryFailure.TIMED_OUT)
+            coroutineContext.ensureActive()
+            if (loaded.canSave) {
+                synchronized(detailCache) {
+                    if (detailCache.size >= 8) detailCache.remove(detailCache.keys.first())
+                    detailCache[source.providerTrailId] = loaded
+                }
+            }
+            loaded.copy(
+                sources =
+                    trail.sources.map { source ->
+                        loaded.sources.firstOrNull {
+                            it.provider == source.provider && it.providerTrailId == source.providerTrailId
+                        } ?: source
+                    },
+            )
+        }
 
     suspend fun discover(
         query: TrailDiscoveryQuery,

@@ -32,15 +32,18 @@ class RouteSourcePreferencesTest {
             Proxy.newProxyInstance(javaClass.classLoader, arrayOf(SharedPreferences::class.java)) { _, method, args ->
                 when (method.name) {
                     "getBoolean", "getString" -> values[args[0]] ?: args[1]
+                    "contains" -> values.containsKey(args[0])
                     "edit" -> editor
                     else -> error("Unexpected preference call")
                 }
             } as SharedPreferences
         val store = RouteSourcePreferences(preferences)
-        assertEquals(setOf(TrailProvider.OPEN_STREET_MAP), store.load().enabled)
+        assertEquals(setOf(TrailProvider.WAYMARKED_TRAILS), store.load().enabled)
         val saved = store.save(store.load().copy(enabled = setOf(TrailProvider.GEOTREK, TrailProvider.DATATOURISME)))
         assertEquals(saved, RouteSourcePreferences(preferences).load())
         val disabled = store.save(saved.copy(enabled = emptySet()))
         assertEquals(disabled, RouteSourcePreferences(preferences).load())
+        values.remove(TrailProvider.WAYMARKED_TRAILS.name)
+        assertEquals(emptySet<TrailProvider>(), store.load().enabled)
     }
 }
