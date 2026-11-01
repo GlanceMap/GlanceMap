@@ -61,6 +61,27 @@ internal data class PhoneLibraryBrowserActions(
 )
 
 @Composable
+internal fun libraryBrowserWithAdd(
+    state: PhoneLibraryListState,
+    mapState: MapToolsPanelState,
+    mapActions: MapToolsPanelActions,
+    actions: PhoneLibraryActions,
+    browser: PhoneLibraryBrowserPresentation,
+) {
+    Box(Modifier.fillMaxSize()) {
+        libraryBrowserList(state, mapState, mapActions, actions, browser)
+        if (state.filter != PhoneLibraryFilter.BUNDLES) {
+            libraryCategoryAddAction(
+                state.filter,
+                state.isLoading || state.isImporting,
+                actions,
+                Modifier.align(Alignment.BottomEnd).padding(bottom = 12.dp),
+            )
+        }
+    }
+}
+
+@Composable
 internal fun libraryBrowserList(
     state: PhoneLibraryListState,
     mapState: MapToolsPanelState,
@@ -72,7 +93,8 @@ internal fun libraryBrowserList(
     val navigation = browser.navigation
     LazyColumn(
         Modifier.fillMaxSize().testTag("library-list"),
-        contentPadding = PaddingValues(vertical = 8.dp),
+        // Leaves the last row reachable above the floating add button.
+        contentPadding = PaddingValues(top = 8.dp, bottom = 80.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         if (state.filter == PhoneLibraryFilter.BUNDLES) {

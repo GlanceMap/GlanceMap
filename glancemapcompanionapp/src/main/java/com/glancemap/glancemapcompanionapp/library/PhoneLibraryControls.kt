@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -28,51 +29,34 @@ internal fun libraryCategoryControls(
     onCheckpoints: () -> Unit,
 ) {
     var menuOpen by remember { mutableStateOf(false) }
-    BoxWithConstraints(Modifier.fillMaxWidth()) {
-        val narrow = maxWidth < 320.dp
-        Column {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.weight(1f)) { librarySearch(query, onQuery) }
-                if (!narrow) libraryCategoryAddAction(filter, importing, actions)
-                Box {
-                    IconButton(onClick = { menuOpen = true }, modifier = Modifier.testTag("library-controls-menu")) {
-                        Icon(Icons.Filled.MoreVert, stringResource(R.string.library_more_options))
-                    }
-                    DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                        filter.tool?.let { tool ->
-                            DropdownMenuItem(
-                                text = {
-                                    Text(stringResource(tool.titleResource(MapToolContentMode.FEATURE_SETTINGS)))
-                                },
-                                onClick = {
-                                    menuOpen = false
-                                    actions.onOpenSettings(tool)
-                                },
-                            )
-                        }
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.library_refresh)) },
-                            enabled = !importing,
-                            onClick = {
-                                menuOpen = false
-                                actions.onRefresh()
-                            },
-                        )
-                        if (filter == PhoneLibraryFilter.POIS) {
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.hike_checkpoints)) },
-                                onClick = {
-                                    menuOpen = false
-                                    onCheckpoints()
-                                },
-                            )
-                        }
-                    }
-                }
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.weight(1f)) { librarySearch(query, onQuery) }
+        filter.tool?.let { tool ->
+            IconButton(onClick = { actions.onOpenSettings(tool) }, modifier = Modifier.testTag("library-settings")) {
+                Icon(Icons.Filled.Settings, stringResource(tool.titleResource(MapToolContentMode.FEATURE_SETTINGS)))
             }
-            if (narrow) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                    libraryCategoryAddAction(filter, importing, actions)
+        }
+        Box {
+            IconButton(onClick = { menuOpen = true }, modifier = Modifier.testTag("library-controls-menu")) {
+                Icon(Icons.Filled.MoreVert, stringResource(R.string.library_more_options))
+            }
+            DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.library_refresh)) },
+                    enabled = !importing,
+                    onClick = {
+                        menuOpen = false
+                        actions.onRefresh()
+                    },
+                )
+                if (filter == PhoneLibraryFilter.POIS) {
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.hike_checkpoints)) },
+                        onClick = {
+                            menuOpen = false
+                            onCheckpoints()
+                        },
+                    )
                 }
             }
         }
@@ -80,13 +64,14 @@ internal fun libraryCategoryControls(
 }
 
 @Composable
-private fun libraryCategoryAddAction(
+internal fun libraryCategoryAddAction(
     filter: PhoneLibraryFilter,
     importing: Boolean,
     actions: PhoneLibraryActions,
+    modifier: Modifier = Modifier,
 ) {
     if (filter == PhoneLibraryFilter.GPX) {
-        libraryGpxImport(importing, actions)
+        libraryGpxImport(importing, actions, modifier)
     } else {
         val label =
             when (filter) {
@@ -102,11 +87,7 @@ private fun libraryCategoryAddAction(
                 PhoneLibraryFilter.BUNDLES -> MapLibraryAction.DOWNLOAD_BUNDLE
                 PhoneLibraryFilter.GPX -> error("GPX has its own importer")
             }
-        Button(onClick = { actions.onMapAction(action) }, enabled = !importing) {
-            Icon(Icons.Filled.Add, contentDescription = null)
-            Spacer(Modifier.width(8.dp))
-            Text(stringResource(label))
-        }
+        libraryAddButton(stringResource(label), !importing, modifier) { actions.onMapAction(action) }
     }
 }
 
@@ -114,17 +95,32 @@ private fun libraryCategoryAddAction(
 private fun libraryGpxImport(
     importing: Boolean,
     actions: PhoneLibraryActions,
+    modifier: Modifier,
 ) {
     val launcher =
         rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
             if (uri != null) actions.onImportGpx(uri, false, null)
         }
+    libraryAddButton(stringResource(R.string.library_add_gpx), !importing, modifier) {
+        launcher.launch(arrayOf("*/*"))
+    }
+}
+
+@Composable
+private fun libraryAddButton(
+    label: String,
+    enabled: Boolean,
+    modifier: Modifier,
+    onClick: () -> Unit,
+) {
     Button(
-        onClick = { launcher.launch(arrayOf("*/*")) },
-        enabled = !importing,
+        onClick = onClick,
+        enabled = enabled,
+        elevation = ButtonDefaults.elevatedButtonElevation(),
+        modifier = modifier,
     ) {
         Icon(Icons.Filled.Add, contentDescription = null)
         Spacer(Modifier.width(8.dp))
-        Text(stringResource(R.string.library_add_gpx))
+        Text(label)
     }
 }

@@ -19,7 +19,7 @@ internal enum class PhoneLibraryFilter(
     @StringRes val label: Int,
     val tool: MapTool?,
 ) {
-    GPX(R.string.map_tool_gpx_title, MapTool.GPX),
+    GPX(R.string.library_routes_label, MapTool.GPX),
     POIS(R.string.library_filter_pois, MapTool.POI),
     MAPS(R.string.map_tool_maps_title, MapTool.MAPS),
     BUNDLES(R.string.library_filter_bundles, null),

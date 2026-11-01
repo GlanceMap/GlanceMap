@@ -167,7 +167,6 @@ class PhoneLibraryVisibilityUiTest {
                 }
             }
         }
-        composeRule.onNodeWithContentDescription(composeRule.activity.getString(R.string.library_search)).performClick()
         composeRule.onNode(hasSetTextAction()).performTextInput("spring")
         val description = composeRule.activity.getString(MapTool.POI.titleResource(MapToolContentMode.FEATURE_SETTINGS))
         composeRule.onNodeWithContentDescription(description).performClick()

@@ -7,7 +7,7 @@ import com.google.gson.annotations.SerializedName
 internal enum class PhoneLibraryGpxKind(
     @StringRes val label: Int,
 ) {
-    ROUTE(R.string.library_routes_label),
+    ROUTE(R.string.library_filter_planned),
     RECORDING(R.string.library_filter_recorded),
 }
 

@@ -1,5 +1,6 @@
 package com.glancemap.glancemapcompanionapp.library
 
+import androidx.annotation.StringRes
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
@@ -29,11 +30,6 @@ internal fun libraryItemRow(
     onDetails: () -> Unit,
 ) {
     val item = row.item
-    val guidanceDescription =
-        stringResource(
-            if (row.guidanceLoading) R.string.phone_guidance_starting_cd else R.string.phone_guidance_start_cd,
-            item.title,
-        )
     val visibility = phoneLibraryVisibility(item, state.gpx.items, state.gpx.globalVisible, state.poi.globalVisible)
     Card(
         modifier =
@@ -56,100 +52,99 @@ internal fun libraryItemRow(
                             ?.let { openInNewHikeTab -> { openInNewHikeTab(item) } },
                 ).testTag("library-item-${item.key}"),
     ) {
-        Row(
-            Modifier.padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Icon(item.icon(row.organization), contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(
-                    item.title,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    style = MaterialTheme.typography.titleMedium,
-                )
-                Text(libraryItemSummary(item), style = MaterialTheme.typography.bodySmall)
-                if (item is PhoneLibraryItem.Bundle) libraryOfflineCapabilities(item)
-                if (item is PhoneLibraryItem.OfflineMap) libraryMapCoverageLabels(item.coverage)
-                if (item.filter == PhoneLibraryFilter.GPX) {
-                    val activity = row.organization.entry(item).activity ?: PhoneLibraryActivity.HIKE
-                    Text(stringResource(activity.label), style = MaterialTheme.typography.labelSmall)
-                }
-                val status =
-                    when {
-                        visibility?.hiddenByLayers == true -> R.string.library_hidden_by_layers
-                        visibility?.available == false -> R.string.library_unavailable_on_map
-                        visibility?.checked == true -> R.string.library_phone_shown_on_map
-                        visibility != null -> R.string.library_phone_hidden_on_map
-                        item is PhoneLibraryItem.Bundle && !item.isOfflineReady() -> R.string.library_bundle_attention
-                        item is PhoneLibraryItem.Bundle -> R.string.library_bundle_ready
-                        item is PhoneLibraryItem.OfflineData && !item.isUsable -> R.string.library_offline_invalid
-                        item is PhoneLibraryItem.OfflineData -> R.string.library_offline_ready
-                        else -> R.string.library_on_phone
-                    }
-                Text(stringResource(status), style = MaterialTheme.typography.labelSmall)
+        Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Icon(item.icon(row.organization), contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                libraryRowText(row, visibility, Modifier.weight(1f))
+                libraryRowTrailing(row, visibility, state, actions, onDetails)
             }
-            if (item is PhoneLibraryItem.OfflineMap) {
-                libraryMapDataButton(item, row.enabled, state.maps, actions.maps)
-            }
-            libraryMapControl(row, visibility, state, actions)
-            if (item is PhoneLibraryItem.Pois) {
-                IconButton(onClick = onDetails, enabled = row.enabled, modifier = Modifier.size(40.dp)) {
-                    Icon(Icons.Default.MoreVert, stringResource(R.string.hike_route_details))
-                }
-            }
-            if (item.isNavigableGpx()) {
-                if (item is PhoneLibraryItem.ReceivedGpx) {
-                    IconButton(onClick = onDetails, enabled = row.enabled, modifier = Modifier.size(36.dp)) {
-                        Icon(Icons.Default.MoreVert, stringResource(R.string.hike_route_details))
-                    }
-                } else {
-                    libraryGpxOverflowMenu(row, actions, onDetails)
-                }
-                IconButton(
-                    onClick = { row.onStartGuidance(item) },
-                    enabled = row.enabled && row.guidanceEnabled && !row.guidanceLoading,
-                    modifier =
-                        Modifier.size(40.dp).testTag("library-guidance-${item.key}").semantics {
-                            contentDescription = guidanceDescription
-                        },
-                ) {
-                    if (row.guidanceLoading) {
-                        CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
-                    } else {
-                        Icon(
-                            Icons.Filled.Navigation,
-                            contentDescription = stringResource(R.string.phone_guidance_start),
-                            tint = MaterialTheme.colorScheme.primary,
-                        )
-                    }
-                }
-            }
+            libraryRowActions(row, visibility, state, actions)
         }
     }
 }
 
-private fun PhoneLibraryItem.isNavigableGpx(): Boolean = this is PhoneLibraryItem.Gpx || this is PhoneLibraryItem.FolderGpx || this is PhoneLibraryItem.ReceivedGpx
+@Composable
+private fun libraryRowText(
+    row: PhoneLibraryRowState,
+    visibility: PhoneLibraryVisibility?,
+    modifier: Modifier,
+) {
+    val item = row.item
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(
+            item.title,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            style = MaterialTheme.typography.titleMedium,
+        )
+        Text(libraryItemSummary(item), style = MaterialTheme.typography.bodySmall)
+        if (item is PhoneLibraryItem.Bundle) libraryOfflineCapabilities(item)
+        if (item is PhoneLibraryItem.OfflineMap) libraryMapCoverageLabels(item.coverage)
+        libraryItemStatus(item, visibility)?.let { status ->
+            Text(stringResource(status), style = MaterialTheme.typography.labelSmall)
+        }
+    }
+}
+
+/** Routes and POIs stay quiet unless something stops them showing on the map. */
+@StringRes
+internal fun libraryItemStatus(
+    item: PhoneLibraryItem,
+    visibility: PhoneLibraryVisibility?,
+): Int? =
+    when {
+        visibility?.hiddenByLayers == true -> R.string.library_hidden_by_layers
+        visibility?.available == false -> R.string.library_unavailable_on_map
+        visibility != null || item is PhoneLibraryItem.ReceivedGpx -> null
+        item is PhoneLibraryItem.Bundle && !item.isOfflineReady() -> R.string.library_bundle_attention
+        item is PhoneLibraryItem.Bundle -> R.string.library_bundle_ready
+        item is PhoneLibraryItem.OfflineData && !item.isUsable -> R.string.library_offline_invalid
+        item is PhoneLibraryItem.OfflineData -> R.string.library_offline_ready
+        else -> R.string.library_on_phone
+    }
 
 @Composable
-private fun libraryMapControl(
+private fun libraryRowTrailing(
     row: PhoneLibraryRowState,
     visibility: PhoneLibraryVisibility?,
     state: MapToolsPanelState,
     actions: MapToolsPanelActions,
+    onDetails: () -> Unit,
 ) {
     val item = row.item
-    if (visibility != null) {
-        val description = stringResource(R.string.library_show_on_map, item.title)
-        Switch(
-            checked = visibility.checked,
-            enabled = row.enabled && visibility.available && (item is PhoneLibraryItem.Pois || !state.gpx.isLoading),
-            onCheckedChange = { visible -> setLibraryItemVisible(item, visible, actions) },
-            modifier =
-                Modifier.testTag("library-visibility-${item.key}").semantics { contentDescription = description },
-        )
-    } else if (item is PhoneLibraryItem.OfflineMap) {
+    when {
+        item is PhoneLibraryItem.Gpx || item is PhoneLibraryItem.FolderGpx ->
+            libraryGpxOverflowMenu(row, actions, onDetails)
+        item is PhoneLibraryItem.Pois || item is PhoneLibraryItem.ReceivedGpx ->
+            IconButton(onClick = onDetails, enabled = row.enabled) {
+                Icon(Icons.Default.MoreVert, stringResource(R.string.hike_route_details))
+            }
+        visibility == null -> {
+            if (item is PhoneLibraryItem.OfflineMap) {
+                libraryMapDataButton(item, row.enabled, state.maps, actions.maps)
+            }
+            libraryMapControl(row, state, actions)
+        }
+    }
+}
+
+internal fun PhoneLibraryItem.isNavigableGpx(): Boolean =
+    when (this) {
+        is PhoneLibraryItem.Gpx, is PhoneLibraryItem.FolderGpx, is PhoneLibraryItem.ReceivedGpx -> true
+        else -> false
+    }
+
+@Composable
+private fun libraryMapControl(
+    row: PhoneLibraryRowState,
+    state: MapToolsPanelState,
+    actions: MapToolsPanelActions,
+) {
+    val item = row.item
+    if (item is PhoneLibraryItem.OfflineMap) {
         val description = stringResource(R.string.library_use_map, item.title)
         val activeMap = (state.maps.source as? PhoneMapSource.Offline)?.map
         RadioButton(
@@ -160,19 +155,6 @@ private fun libraryMapControl(
         )
     } else {
         Icon(Icons.Filled.ChevronRight, contentDescription = null)
-    }
-}
-
-private fun setLibraryItemVisible(
-    item: PhoneLibraryItem,
-    visible: Boolean,
-    actions: MapToolsPanelActions,
-) {
-    when (item) {
-        is PhoneLibraryItem.Gpx -> actions.onGpxItemToggled(item.route.id)
-        is PhoneLibraryItem.FolderGpx -> actions.onGpxItemToggled(item.item.id)
-        is PhoneLibraryItem.Pois -> actions.onPoiSourceVisibilityChanged(item.source.fileName, visible)
-        else -> Unit
     }
 }
 

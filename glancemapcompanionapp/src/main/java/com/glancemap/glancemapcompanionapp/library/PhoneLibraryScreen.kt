@@ -127,7 +127,7 @@ internal fun libraryPanelContent(
             TextButton(onClick = { checkpointsOpen = false }) { Text(stringResource(R.string.hike_back_pois)) }
             Box(Modifier.weight(1f)) { checkpointsContent() }
         } else {
-            libraryBrowserList(
+            libraryBrowserWithAdd(
                 state.copy(items = visible),
                 mapState,
                 mapActions,
@@ -250,17 +250,20 @@ internal fun librarySearch(
 internal fun libraryItemSummary(item: PhoneLibraryItem): String =
     when (item) {
         is PhoneLibraryItem.Gpx -> {
-            val kind =
-                stringResource(
-                    if (item.route.isRecording) R.string.library_item_recording else R.string.library_item_route,
-                )
-            stringResource(
-                R.string.library_gpx_summary,
-                kind,
-                item.route.summary.distanceMeters / 1000.0,
+            val distance = item.route.summary.distanceMeters / 1000.0
+            val gain =
                 item.route.summary.elevationGainMeters
-                    .roundToInt(),
-            )
+                    .roundToInt()
+            if (item.route.isRecording) {
+                stringResource(
+                    R.string.library_gpx_summary,
+                    stringResource(R.string.library_item_recording),
+                    distance,
+                    gain,
+                )
+            } else {
+                stringResource(R.string.library_route_summary, distance, gain)
+            }
         }
         is PhoneLibraryItem.FolderGpx ->
             stringResource(R.string.library_folder_gpx_summary, item.item.track.points.size)

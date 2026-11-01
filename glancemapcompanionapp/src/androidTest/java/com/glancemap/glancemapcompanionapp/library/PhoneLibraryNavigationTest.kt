@@ -2,6 +2,7 @@ package com.glancemap.glancemapcompanionapp.library
 
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.mutableStateOf
@@ -35,15 +36,18 @@ class PhoneLibraryNavigationTest {
         val additions = mutableListOf<MapLibraryAction>()
         composeRule.setContent {
             MaterialTheme {
-                libraryCategoryControls(filter.value, false, actions({ settings += it }, { additions += it }), "", {}, {})
+                val actions = actions({ settings += it }, { additions += it })
+                Column {
+                    libraryCategoryControls(filter.value, false, actions, "", {}, {})
+                    libraryCategoryAddAction(filter.value, false, actions)
+                }
             }
         }
         composeRule.onNodeWithText(label(R.string.library_add_gpx)).assertIsDisplayed()
         listOf(PhoneLibraryFilter.GPX, PhoneLibraryFilter.POIS, PhoneLibraryFilter.MAPS).forEach { category ->
             composeRule.runOnIdle { filter.value = category }
             val tool = requireNotNull(category.tool)
-            composeRule.onNodeWithTag("library-controls-menu").performClick()
-            composeRule.onNodeWithText(label(tool.titleResource(MapToolContentMode.FEATURE_SETTINGS))).performClick()
+            composeRule.onNodeWithContentDescription(label(tool.titleResource(MapToolContentMode.FEATURE_SETTINGS))).performClick()
         }
         assertEquals(listOf(MapTool.GPX, MapTool.POI, MapTool.MAPS), settings)
         composeRule.runOnIdle { filter.value = PhoneLibraryFilter.POIS }
@@ -111,7 +115,7 @@ class PhoneLibraryNavigationTest {
     }
 
     @Test
-    fun narrowSplitPanelKeepsAddAndSettingsReadableAndUtilityActionsClickable() {
+    fun narrowSplitPanelKeepsSearchSettingsAndUtilityActionsClickable() {
         var query = ""
         composeRule.setContent {
             MaterialTheme {
@@ -120,11 +124,11 @@ class PhoneLibraryNavigationTest {
                 }
             }
         }
-        composeRule.onNodeWithText(label(R.string.library_add_gpx)).assertIsDisplayed()
         composeRule.onNodeWithTag("library-search").performTextInput("A")
         assertEquals("A", query)
+        composeRule.onNodeWithTag("library-settings").assertIsDisplayed()
         composeRule.onNodeWithTag("library-controls-menu").performClick()
-        composeRule.onNodeWithText(label(MapTool.GPX.titleResource(MapToolContentMode.FEATURE_SETTINGS))).assertIsDisplayed()
+        composeRule.onNodeWithText(label(R.string.library_refresh)).assertIsDisplayed()
     }
 
     private fun label(id: Int): String = composeRule.activity.getString(id)
