@@ -68,6 +68,7 @@ internal data class PhoneHikeUiState(
     val checkpointDraft: PhoneHikeCheckpointDraft? = null,
     val pickingCheckpoint: Boolean = false,
     val currentPosition: PhoneHikePosition? = null,
+    val cursorPlannedSeconds: Double? = null,
     val currentFixElapsedMillis: Long? = null,
     val currentDeliveryIntervalMillis: Long = 3_000L,
     val cameraRequest: Long = 0L,
@@ -405,6 +406,7 @@ internal class PhoneHikeViewModel(
                 pendingTodayId = null,
                 pickingCheckpoint = false,
                 currentPosition = null,
+                cursorPlannedSeconds = null,
                 cameraRequest =
                     state.value.cameraRequest + 1L,
                 cameraReturnToLive = false,
@@ -423,6 +425,20 @@ internal class PhoneHikeViewModel(
             ),
             debounce = true,
         )
+        mutableState.value = state.value.copy(cursorPlannedSeconds = null)
+    }
+
+    fun inspectPlannedTime(seconds: Double) {
+        val model = state.value.model ?: return
+        val plan = state.value.plan ?: return
+        val timeline = PhoneHikeTimeline(model, plan)
+        val time = seconds.coerceIn(0.0, timeline.totalSeconds)
+        val point = timeline.atSeconds(time)
+        updatePlan(
+            plan.copy(cursorSegmentIndex = point.segmentIndex, cursorFraction = point.fraction, inspecting = true),
+            debounce = true,
+        )
+        mutableState.value = state.value.copy(cursorPlannedSeconds = time)
     }
 
     fun returnToLive() {

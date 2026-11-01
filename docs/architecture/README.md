@@ -18,6 +18,7 @@ This folder documents the watch-side architecture and major runtime flows.
   - Shared, platform-neutral trail geometry boundary used by the phone and watch.
 
 - `active-hike-sync.md`
+- `todays-hike-weather.md`
   - Watch-owned live navigation snapshot shared with the companion dashboard.
 - `activity-elevation-profile.md`
   - Corrected distance, grey gap connectors, loading, and display sampling for saved activities.

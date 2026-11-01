@@ -85,6 +85,71 @@ class PhoneHikeWeatherTest {
         assertEquals(Instant.parse("2026-10-24T06:00:00Z"), before.departureInstant(ZoneId.of("UTC")))
         assertEquals(Instant.parse("2026-10-25T07:00:00Z"), after.departureInstant(ZoneId.of("UTC")))
     }
+
+    @Test
+    fun routeWeatherDoesNotFillAFailedSampleFromADistantLocation() {
+        val model = PhoneHikeRouteModel(hikeRoute())
+        val plan = PhoneHikePlan(model.route.id)
+        val start = requireNotNull(model.atDistance(0.0))
+        val end = requireNotNull(model.atDistance(model.totalDistanceMeters))
+        val forecast = weatherSample("UTC", "2026-10-15T08:00")
+        val samples = listOf(forecast.copy(segmentIndex = start.segmentIndex, fraction = start.fraction))
+        val time = Instant.parse("2026-10-15T08:00:00Z")
+        val lookup = PhoneHikeForecastLookup(model, plan, samples)
+        assertNotNull(lookup.at(start, time, ZoneId.of("UTC")))
+        assertNull(lookup.at(end, time, ZoneId.of("UTC")))
+    }
+
+    @Test
+    fun forecastAtSameStopChangesWhenTheProjectedTimeChanges() {
+        val model = PhoneHikeRouteModel(hikeRoute())
+        val plan = PhoneHikePlan(model.route.id)
+        val start = requireNotNull(model.atDistance(0.0))
+        val first = weatherSample("UTC", "2026-10-15T08:00")
+        val secondHour =
+            first.forecast.hourly
+                .single()
+                .copy(timeIso8601 = "2026-10-15T09:00", temperatureCelsius = 4.0)
+        val sample =
+            first.copy(
+                segmentIndex = start.segmentIndex,
+                fraction = start.fraction,
+                forecast = first.forecast.copy(hourly = first.forecast.hourly + secondHour),
+            )
+        val lookup = PhoneHikeForecastLookup(model, plan, listOf(sample))
+        val zone = ZoneId.of("UTC")
+        assertEquals(12.0, lookup.at(start, Instant.parse("2026-10-15T08:00:00Z"), zone)?.outlook?.temperatureCelsius)
+        assertEquals(4.0, lookup.at(start, Instant.parse("2026-10-15T09:00:00Z"), zone)?.outlook?.temperatureCelsius)
+        assertNull(lookup.at(start, Instant.parse("2026-10-16T09:00:00Z"), zone))
+    }
+
+    @Test
+    fun changingDepartureRecomputesBandsFromTheSameForecasts() {
+        val model = PhoneHikeRouteModel(hikeRoute())
+        val plan = PhoneHikePlan(model.route.id, checkpoints = listOf(checkpoint(0, 0.0, 180)))
+        val timeline = PhoneHikeTimeline(model, plan)
+        val base = weatherSample("UTC", "2026-10-15T08:00")
+        val firstHour =
+            base.forecast.hourly
+                .single()
+                .copy(weatherCode = 0)
+        val rainyHour = firstHour.copy(timeIso8601 = "2026-10-15T09:00", weatherCode = 61)
+        val samples =
+            phoneHikeWeatherPositions(model, plan).map {
+                base.copy(
+                    segmentIndex = it.segmentIndex,
+                    fraction = it.fraction,
+                    forecast = base.forecast.copy(hourly = listOf(firstHour, rainyHour)),
+                )
+            }
+        val lookup = PhoneHikeForecastLookup(model, plan, samples)
+        val zone = ZoneId.of("UTC")
+        val early = phoneHikeWeatherBands(timeline, lookup, Instant.parse("2026-10-15T08:00:00Z"), zone)
+        val late = phoneHikeWeatherBands(timeline, lookup, Instant.parse("2026-10-15T09:00:00Z"), zone)
+        assertEquals(PhoneHikeCondition.CLEAR, early.first().condition)
+        assertEquals(PhoneHikeCondition.RAIN, late.first().condition)
+        assertNull(late.last().condition)
+    }
 }
 
 private fun weatherSample(

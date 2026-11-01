@@ -1,10 +1,8 @@
 package com.glancemap.glancemapcompanionapp.hike
 
 import android.os.SystemClock
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -18,20 +16,11 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.ProgressBarRangeInfo
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.progressBarRangeInfo
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.semantics.setProgress
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
@@ -44,8 +33,6 @@ import com.glancemap.glancemapcompanionapp.map.PhoneGuidanceSessionStore
 import com.glancemap.glancemapcompanionapp.map.isPhoneGuidanceFixFresh
 import com.glancemap.glancemapcompanionapp.weather.weatherConditionText
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.collect
-import kotlinx.coroutines.flow.distinctUntilChanged
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalTime
@@ -75,6 +62,7 @@ internal fun PhoneHikeWorkspace(
         }
     }
     val context = LocalContext.current
+    val uriHandler = LocalUriHandler.current
     val metric = remember(context) { PhoneGeneralSettingsPreferences(context).load().isMetric }
     var scheduleOpen by rememberSaveable { mutableStateOf(false) }
     var selectedCheckpoints by rememberSaveable(ui.data.selectedId, ui.data.previewSelected) {
@@ -140,45 +128,99 @@ internal fun PhoneHikeWorkspace(
                 overflow = TextOverflow.Ellipsis,
                 style = MaterialTheme.typography.titleSmall,
             )
-            PhoneHikeGraph(model, plan, selected, current, controller::inspect)
-            val arrival =
-                phoneHikeArrivalInstant(
-                    model,
-                    plan,
-                    selected,
-                    zone,
-                    current.takeIf {
-                        live
-                    },
-                    Instant.ofEpochMilli(nowMillis).takeIf { live },
-                )
-            val sample =
-                ui.weather.minByOrNull { sample ->
-                    abs(
-                        (model.position(sample.segmentIndex, sample.fraction)?.distanceMeters ?: Double.MAX_VALUE) -
-                            selected.distanceMeters,
-                    )
+            val timeline = remember(model, plan.checkpoints) { PhoneHikeTimeline(model, plan) }
+            val departure = plan.departureInstant(zone)
+            val finish = departure?.plusSeconds(timeline.totalSeconds.toLong())
+            val timeFormat = DateTimeFormatter.ofPattern("HH:mm")
+            val finishLabel =
+                finish?.atZone(zone)?.let { finishTime ->
+                    if (finishTime.toLocalDate() == departure.atZone(zone).toLocalDate()) {
+                        finishTime.format(timeFormat)
+                    } else {
+                        finishTime.format(DateTimeFormatter.ofPattern("MMM d, HH:mm"))
+                    }
+                } ?: "—"
+            val selectedSeconds =
+                ui.cursorPlannedSeconds?.takeIf { seconds ->
+                    plan.inspecting &&
+                        abs(timeline.atSeconds(seconds).distanceMeters - selected.distanceMeters) < 0.1
+                } ?: timeline.secondsAt(selected)
+            val arrival = departure?.plusSeconds(selectedSeconds.toLong())
+            val lookup =
+                remember(model, plan.checkpoints, ui.weather) {
+                    PhoneHikeForecastLookup(model, plan, ui.weather)
                 }
-            val forecast = arrival?.let { sample?.outlookAt(it, zone) }
+            val bands =
+                remember(timeline, lookup, departure, zone, ui.weather) {
+                    if (ui.weather.isEmpty()) emptyList() else phoneHikeWeatherBands(timeline, lookup, departure, zone)
+                }
+            val match = arrival?.let { lookup.at(selected, it, zone) }
+            val sample = match?.sample
+            val forecast = match?.outlook
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                TextButton(onClick = { scheduleOpen = true }, modifier = Modifier.testTag("hike-departure")) {
+                    Text(stringResource(R.string.hike_planned_departure, plan.startTime ?: "—"))
+                }
+                Text(
+                    stringResource(R.string.hike_planned_arrival, finishLabel),
+                    modifier = Modifier.align(Alignment.CenterVertically),
+                    style = MaterialTheme.typography.titleSmall,
+                )
+            }
+            Text(stringResource(R.string.hike_planned_timeline), style = MaterialTheme.typography.labelSmall)
+            PhoneHikeGraph(
+                PhoneHikeGraphInputs(model, plan, timeline, selectedSeconds, current, departure, zone, metric, bands),
+                controller::inspectPlannedTime,
+            )
             Text(
                 listOfNotNull(
+                    arrival?.atZone(zone)?.format(timeFormat),
                     hikeDistance(selected.distanceMeters, metric),
                     selected.elevationMeters?.let { hikeElevation(it, metric) },
-                    arrival?.atZone(zone)?.format(DateTimeFormatter.ofPattern("HH:mm")),
-                    forecast?.temperatureCelsius?.let { "${it.roundToInt()}°C" },
                 ).joinToString("  ·  "),
-                style = MaterialTheme.typography.bodySmall,
+                style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.testTag("hike-inspection-summary"),
             )
+            val weatherDetails =
+                listOfNotNull(
+                    forecast?.weatherCode?.let { weatherConditionText(LocalResources.current, it) },
+                    forecast?.temperatureCelsius?.let { "${it.roundToInt()}°C" },
+                    forecast?.precipitationProbabilityPercent?.let {
+                        stringResource(R.string.hike_weather_rain_probability, it.roundToInt())
+                    },
+                    forecast?.windGustKilometersPerHour?.let {
+                        stringResource(R.string.hike_weather_gusts, it.roundToInt())
+                    },
+                )
+            if (weatherDetails.isNotEmpty()) {
+                Text(
+                    weatherDetails.joinToString("  ·  "),
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.testTag("hike-inspection-weather"),
+                )
+            } else {
+                Text(
+                    stringResource(
+                        when {
+                            departure == null -> R.string.hike_time_unavailable
+                            ui.weather.isEmpty() -> R.string.hike_weather_not_loaded
+                            else -> R.string.hike_forecast_graph_unavailable
+                        },
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            if (ui.weather.isNotEmpty()) {
+                PhoneHikeWeatherLegend(bands)
+                Text(stringResource(R.string.hike_forecast_approximate), style = MaterialTheme.typography.labelSmall)
+                if (ui.weather.any { it.stale }) {
+                    Text(stringResource(R.string.hike_forecast_some_stale), style = MaterialTheme.typography.labelSmall)
+                }
+            }
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                 TextButton(onClick = controller::beginCheckpoint) {
                     Icon(Icons.Default.Add, null, Modifier.size(16.dp))
                     Text(stringResource(R.string.hike_checkpoint))
-                }
-                TextButton(onClick = { scheduleOpen = true }) {
-                    Text(
-                        plan.startTime ?: stringResource(R.string.hike_departure),
-                    )
                 }
                 if (plan.inspecting) {
                     IconButton(onClick = controller::returnToLive, modifier = Modifier.size(36.dp)) {
@@ -361,6 +403,9 @@ internal fun PhoneHikeWorkspace(
                         style = MaterialTheme.typography.bodySmall,
                     )
                 }
+                TextButton(onClick = { runCatching { uriHandler.openUri("https://open-meteo.com/") } }) {
+                    Text(stringResource(R.string.briefing_weather_data_by_open_meteo_com))
+                }
             }
             if (!ui.data.previewSelected) {
                 PhoneGuidancePanel()
@@ -402,142 +447,6 @@ internal fun PhoneHikeWorkspace(
                     onClick = controller::dismissPromotion,
                 ) { Text(stringResource(R.string.common_action_cancel)) }
             },
-        )
-    }
-}
-
-@Composable
-private fun PhoneHikeGraph(
-    model: PhoneHikeRouteModel,
-    plan: PhoneHikePlan,
-    selected: PhoneHikePosition,
-    current: PhoneHikePosition?,
-    onInspect: (Double) -> Unit,
-) {
-    val scroll = rememberScrollState()
-    val dragged by scroll.interactionSource.collectIsDraggedAsState()
-    val latestInspect by rememberUpdatedState(onInspect)
-    var programmatic by remember { mutableStateOf(false) }
-    val primary = MaterialTheme.colorScheme.primary
-    val cursorColor = Color(0xFF9333EA)
-    val profileDescription = stringResource(R.string.hike_profile_description)
-    val checkpoints = remember(model, plan.checkpoints) { model.orderedCheckpoints(plan) }
-    BoxWithConstraints(
-        Modifier.fillMaxWidth().height(106.dp).testTag("hike-profile").semantics {
-            contentDescription = profileDescription
-            progressBarRangeInfo = ProgressBarRangeInfo(selected.distanceMeters.toFloat(), 0f..model.totalDistanceMeters.toFloat())
-            setProgress { distance ->
-                latestInspect(distance.toDouble().coerceIn(0.0, model.totalDistanceMeters))
-                true
-            }
-        },
-    ) {
-        val viewport = with(LocalDensity.current) { maxWidth.toPx() }
-        val contentWidth = maxWidth * 3f
-        val graphWidth = viewport * 2f
-        LaunchedEffect(model, scroll, graphWidth) {
-            var userScroll = false
-            snapshotFlow { Triple(scroll.value, scroll.isScrollInProgress, dragged) }.distinctUntilChanged().collect { (value, scrolling, dragging) ->
-                if (dragging) userScroll = true
-                if (userScroll &&
-                    !programmatic
-                ) {
-                    latestInspect(
-                        (value / graphWidth * model.totalDistanceMeters).coerceIn(0.0, model.totalDistanceMeters),
-                    )
-                }
-                if (!scrolling) userScroll = false
-            }
-        }
-        LaunchedEffect(model, selected.distanceMeters, scroll.isScrollInProgress, graphWidth) {
-            if (!scroll.isScrollInProgress) {
-                programmatic = true
-                try {
-                    scroll.scrollTo(
-                        (
-                            selected.distanceMeters /
-                                model.totalDistanceMeters.coerceAtLeast(
-                                    1.0,
-                                ) * graphWidth
-                        ).roundToInt(),
-                    )
-                } finally {
-                    programmatic = false
-                }
-            }
-        }
-        Box(Modifier.fillMaxSize().horizontalScroll(scroll)) {
-            Canvas(Modifier.width(contentWidth).fillMaxHeight()) {
-                val finite = model.graphPoints.mapNotNull { it.elevationMeters?.takeIf(Double::isFinite) }
-                val minimum = finite.minOrNull() ?: 0.0
-                val span = ((finite.maxOrNull() ?: minimum) - minimum).coerceAtLeast(1.0)
-
-                fun x(distance: Double): Float = viewport / 2f + graphWidth * (distance / model.totalDistanceMeters.coerceAtLeast(1.0)).toFloat()
-                val path = Path()
-                var drawing = false
-                model.graphPoints.forEach { point ->
-                    val elevation = point.elevationMeters
-                    if (elevation == null || !elevation.isFinite()) {
-                        drawing = false
-                    } else {
-                        val y =
-                            8.dp.toPx() + (size.height - 20.dp.toPx()) * (1.0 - (elevation - minimum) / span).toFloat()
-                        if (!drawing ||
-                            point.startsNewSegment
-                        ) {
-                            path.moveTo(x(point.distanceMeters), y)
-                        } else {
-                            path.lineTo(x(point.distanceMeters), y)
-                        }
-                        drawing = true
-                    }
-                }
-                drawPath(path, primary, style = Stroke(2.dp.toPx()))
-                drawLine(
-                    Color.Gray.copy(alpha = .5f),
-                    Offset(viewport / 2f, size.height - 6.dp.toPx()),
-                    Offset(
-                        viewport / 2f + graphWidth,
-                        size.height - 6.dp.toPx(),
-                    ),
-                )
-                checkpoints.forEach { (_, point) ->
-                    drawCircle(
-                        primary,
-                        4.dp.toPx(),
-                        Offset(
-                            x(point.distanceMeters),
-                            size.height - 6.dp.toPx(),
-                        ),
-                    )
-                }
-                current?.let {
-                    drawLine(
-                        Color(0xFF0284C7),
-                        Offset(x(it.distanceMeters), 0f),
-                        Offset(x(it.distanceMeters), size.height),
-                        2.dp.toPx(),
-                    )
-                }
-            }
-        }
-        Canvas(Modifier.fillMaxSize()) {
-            drawLine(cursorColor, Offset(size.width / 2f, 0f), Offset(size.width / 2f, size.height), 2.dp.toPx())
-        }
-        if (model.graphPoints.none {
-                it.elevationMeters != null
-            }
-        ) {
-            Text(
-                stringResource(R.string.hike_elevation_unavailable),
-                Modifier.align(Alignment.Center),
-                style = MaterialTheme.typography.bodySmall,
-            )
-        }
-        Text(
-            stringResource(R.string.hike_profile_scroll_hint),
-            Modifier.align(Alignment.TopStart),
-            style = MaterialTheme.typography.labelSmall,
         )
     }
 }

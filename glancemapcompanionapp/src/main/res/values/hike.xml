@@ -1,7 +1,23 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="hike_profile_description">Route elevation profile. Adjust to explore the route.</string>
+    <string name="hike_profile_description">Planned route elevation and time profile. Adjust to explore the route.</string>
     <string name="hike_back_pois">Back to POIs</string>
     <string name="hike_checkpoint_near_route">Choose a point closer to the GPX. Slide the profile first where the route overlaps.</string>
     <string name="hike_weather_partial">Some route forecasts are unavailable. Loaded forecasts remain available.</string>
+    <string name="hike_planned_departure">Departure · %1$s</string>
+    <string name="hike_planned_arrival">Arrival · %1$s</string>
+    <string name="hike_planned_timeline">Planned timeline</string>
+    <string name="hike_forecast_approximate">Nearest route sample and forecast hour · boundaries are approximate</string>
+    <string name="hike_weather_not_loaded">Load route weather to see conditions along the profile.</string>
+    <string name="hike_weather_rain_probability">Rain %1$d%%</string>
+    <string name="hike_weather_gusts">Gusts %1$d km/h</string>
+    <string name="hike_time_unavailable">Set departure</string>
+    <string name="hike_forecast_graph_unavailable">Forecast unavailable for this time or route section</string>
+    <string name="hike_forecast_some_stale">Some route forecasts are older saved data.</string>
+    <string name="hike_event_rain">Rain</string>
+    <string name="hike_event_snow">Snow</string>
+    <string name="hike_event_storm">Storm</string>
+    <string name="hike_condition_clear">Clear</string>
+    <string name="hike_condition_cloudy">Cloudy / fog</string>
+    <string name="hike_condition_unknown">Unavailable</string>
 </resources>

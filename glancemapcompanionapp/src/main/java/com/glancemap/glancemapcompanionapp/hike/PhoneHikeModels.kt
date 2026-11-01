@@ -344,9 +344,14 @@ internal class PhoneHikeRouteModel(
     fun plannedSecondsAt(
         position: PhoneHikePosition,
         plan: PhoneHikePlan,
+    ): Double = plannedSecondsAt(position, orderedCheckpoints(plan))
+
+    fun plannedSecondsAt(
+        position: PhoneHikePosition,
+        checkpoints: List<Pair<PhoneHikeCheckpoint, PhoneHikePosition>>,
     ): Double =
         position.elapsedSeconds +
-            orderedCheckpoints(plan).filter { it.second.distanceMeters < position.distanceMeters - 0.01 }.sumOf {
+            checkpoints.filter { it.second.distanceMeters < position.distanceMeters - 0.01 }.sumOf {
                 it.first.stopMinutes *
                     60.0
             }
