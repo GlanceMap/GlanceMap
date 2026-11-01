@@ -9,7 +9,6 @@ import androidx.compose.foundation.selection.selectable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CreateNewFolder
-import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -26,6 +25,7 @@ import com.glancemap.glancemapcompanionapp.R
 internal fun libraryFolderNavigation(
     organization: PhoneLibraryOrganization,
     browse: PhoneLibraryBrowseState,
+    category: PhoneLibraryFilter,
     actions: PhoneLibraryOrganizationActions,
     onParent: () -> Unit,
 ) {
@@ -50,7 +50,7 @@ internal fun libraryFolderNavigation(
     if (creating) {
         libraryCreateFolderDialog(
             onCreate = { name ->
-                actions.onCreateFolder(browse.folderId, name)
+                actions.onCreateFolder(browse.folderId, name, category)
                 creating = false
             },
             onDismiss = { creating = false },
@@ -82,23 +82,6 @@ private fun libraryCreateFolderDialog(
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_action_cancel)) } },
     )
-}
-
-@Composable
-internal fun libraryFolderRow(
-    folder: PhoneLibraryFolder,
-    onAppearance: (() -> Unit)? = null,
-    onOpen: () -> Unit,
-) {
-    Card(onClick = onOpen, modifier = Modifier.fillMaxWidth().testTag("library-folder-${folder.id}")) {
-        Row(Modifier.padding(12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Icon(Icons.Filled.Folder, contentDescription = null)
-            Text(folder.name, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-            onAppearance?.let { action ->
-                TextButton(onClick = action) { Text(stringResource(R.string.gpx_appearance_customize)) }
-            }
-        }
-    }
 }
 
 @Composable
@@ -170,7 +153,8 @@ internal fun libraryMoveDialog(
                         onDismiss()
                     }, enabled = actions.enabled) { Text(stringResource(R.string.library_folder_root)) }
                 }
-                items(organization.folders.sortedBy { organization.folderPath(it.id) }, key = { it.id }) { folder ->
+                val folders = organization.folders.filter { it.category == item.filter }
+                items(folders.sortedBy { organization.folderPath(it.id) }, key = { it.id }) { folder ->
                     TextButton(onClick = {
                         actions.onMoveItem(item, folder.id)
                         onDismiss()

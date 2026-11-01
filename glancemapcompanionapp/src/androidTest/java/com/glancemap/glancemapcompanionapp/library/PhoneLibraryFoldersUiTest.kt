@@ -123,6 +123,26 @@ class PhoneLibraryFoldersUiTest {
         }
     }
 
+    @Test
+    fun foldersRenameAndDeleteOnlyAfterConfirmation() {
+        setContent()
+        createFolder("Alps")
+        composeRule.onNodeWithTag("library-folder-menu-folder-1").performClick()
+        composeRule.onNodeWithTag("library-folder-rename").performClick()
+        composeRule.onNodeWithTag("library-folder-rename-name").performTextClearance()
+        composeRule.onNodeWithTag("library-folder-rename-name").performTextInput("Pyrenees")
+        composeRule.onNodeWithTag("library-folder-rename-confirm").performClick()
+        composeRule.onNodeWithText("Pyrenees").assertExists()
+        composeRule.onNodeWithTag("library-folder-menu-folder-1").performClick()
+        composeRule.onNodeWithTag("library-folder-delete").performClick()
+        composeRule.onNodeWithText(label(R.string.common_action_cancel)).performClick()
+        composeRule.onNodeWithText("Pyrenees").assertExists()
+        composeRule.onNodeWithTag("library-folder-menu-folder-1").performClick()
+        composeRule.onNodeWithTag("library-folder-delete").performClick()
+        composeRule.onNodeWithTag("library-folder-delete-confirm").performClick()
+        composeRule.onNodeWithText("Pyrenees").assertDoesNotExist()
+    }
+
     private fun createFolder(name: String) {
         val description = label(R.string.library_create_folder)
         composeRule.onNodeWithTag("library-list").performScrollToNode(hasContentDescription(description))
@@ -144,10 +164,14 @@ class PhoneLibraryFoldersUiTest {
                     libraryTestActions().copy(
                         organization =
                             PhoneLibraryOrganizationActions(
-                                onCreateFolder = { parent, name ->
+                                onCreateFolder = { parent, name, category ->
                                     organization.value =
-                                        organization.value.createFolder("folder-${++folderSequence}", name, parent)
+                                        organization.value.createFolder("folder-${++folderSequence}", name, parent, category)
                                 },
+                                onRenameFolder = { id, name ->
+                                    organization.value = organization.value.renameFolder(id, name)
+                                },
+                                onDeleteFolder = { id -> organization.value = organization.value.deleteFolder(id) },
                                 onMoveItem = { item, folder ->
                                     organization.value = organization.value.move(item, folder)
                                 },

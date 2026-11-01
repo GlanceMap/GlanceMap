@@ -4821,6 +4821,7 @@ internal fun CompanionMapScreen(
                         },
                         onRenameGpxItem = { item -> openContentRename(PhoneMapManagedContent.Gpx(item)) },
                         onDeleteGpxItem = { item -> openContentDelete(PhoneMapManagedContent.Gpx(item)) },
+                        onDeleteGpxItemNow = { item -> deleteContent(PhoneMapManagedContent.Gpx(item)) },
                         onOpenRouteTools = onOpenRouteTools,
                         onGpxSettingsChanged = { settings ->
                             if (!settings.inspectionEnabled) clearRouteAnalysis() else invalidateRouteAnalysisRequest()
@@ -4853,6 +4854,7 @@ internal fun CompanionMapScreen(
                         onPoiSourceVisibilityChanged = onPoiSourceVisibilityChanged,
                         onRenamePoiSource = { source -> openContentRename(PhoneMapManagedContent.Poi(source)) },
                         onDeletePoiSource = { source -> openContentDelete(PhoneMapManagedContent.Poi(source)) },
+                        onDeletePoiSourceNow = { source -> deleteContent(PhoneMapManagedContent.Poi(source)) },
                         onPoiSettingsChanged = { settings ->
                             poiSettings = poiSettingsPreferences.save(settings)
                         },

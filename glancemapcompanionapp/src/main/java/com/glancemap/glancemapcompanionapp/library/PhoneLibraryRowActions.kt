@@ -79,7 +79,7 @@ private fun libraryStartButton(row: PhoneLibraryRowState) {
     }
 }
 
-private fun setLibraryItemVisible(
+internal fun setLibraryItemVisible(
     item: PhoneLibraryItem,
     visible: Boolean,
     actions: MapToolsPanelActions,

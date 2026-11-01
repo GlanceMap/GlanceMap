@@ -47,11 +47,13 @@ internal fun libraryItemDetails(
                 }
                 libraryDetailActions(item, actions, onOpenOfflineMap, onDismiss)
                 libraryActivitySetting(item, organization, actions.organization)
-                OutlinedButton(
-                    onClick = { actions.onMoveItem(item) },
-                    enabled = actions.organization.enabled,
-                    modifier = Modifier.fillMaxWidth(),
-                ) { Text(stringResource(R.string.library_move_to_folder)) }
+                if (item.filter.hasFolders) {
+                    OutlinedButton(
+                        onClick = { actions.onMoveItem(item) },
+                        enabled = actions.organization.enabled,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text(stringResource(R.string.library_move_to_folder)) }
+                }
             }
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_action_close)) } },

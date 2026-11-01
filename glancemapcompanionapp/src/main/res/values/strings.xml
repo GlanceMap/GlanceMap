@@ -63,6 +63,21 @@
     <string name="library_create_folder">Create folder</string>
     <string name="library_folder_create">Create</string>
     <string name="library_folder_name">Folder name</string>
+    <string name="library_folder_options">Folder options</string>
+    <string name="library_folder_delete_title">Delete folder?</string>
+    <string name="library_folder_delete_failed">Some items could not be deleted, so the folder was kept. Items already deleted cannot be restored.</string>
+    <plurals name="library_folder_delete_message">
+        <item quantity="one">%1$s and the %2$d item inside will be deleted, including any subfolders. This can\'t be undone.</item>
+        <item quantity="other">%1$s and the %2$d items inside will be deleted, including any subfolders. This can\'t be undone.</item>
+    </plurals>
+    <plurals name="library_folder_delete_device_files">
+        <item quantity="one">%1$d file in your selected device folder will also be deleted from your device.</item>
+        <item quantity="other">%1$d files in your selected device folder will also be deleted from your device.</item>
+    </plurals>
+    <plurals name="library_folder_delete_region_pois">
+        <item quantity="one">%1$d POI collection belongs to an offline region and will stay in your Library.</item>
+        <item quantity="other">%1$d POI collections belong to an offline region and will stay in your Library.</item>
+    </plurals>
     <string name="library_folder_root">Library root</string>
     <string name="library_folder_parent">Parent folder</string>
     <string name="library_move_to_folder">Move to folder</string>

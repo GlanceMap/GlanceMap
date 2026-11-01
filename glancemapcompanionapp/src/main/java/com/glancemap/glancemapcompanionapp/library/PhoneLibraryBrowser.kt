@@ -2,7 +2,6 @@ package com.glancemap.glancemapcompanionapp.library
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Icon
@@ -52,6 +51,7 @@ internal val phoneLibraryBrowseSaver =
 internal data class PhoneLibraryBrowserPresentation(
     val browse: PhoneLibraryBrowseState,
     val navigation: PhoneLibraryBrowserActions,
+    val allItems: List<PhoneLibraryItem> = emptyList(),
 )
 
 internal data class PhoneLibraryBrowserActions(
@@ -136,28 +136,18 @@ internal fun libraryBrowserList(
                     if (browse.folderId == null) {
                         libraryCount(state)
                     } else {
-                        libraryFolderNavigation(state.organization, browse, actions.organization) {
+                        libraryFolderNavigation(state.organization, browse, state.filter, actions.organization) {
                             navigation.onBrowse(state.organization.parentBrowse(browse))
                         }
                     }
                 }
-                if (browse.folderId == null) {
-                    libraryFolderNavigation(state.organization, browse, actions.organization) {}
+                if (browse.folderId == null && state.filter.hasFolders) {
+                    libraryFolderNavigation(state.organization, browse, state.filter, actions.organization) {}
                 }
             }
             if (browse.folderId != null) libraryCount(state)
         }
-        val folders =
-            state.organization.folders
-                .filter { it.parentId == browse.folderId && browse.query.isBlank() }
-                .sortedBy { it.name }
-        items(folders, key = { "folder/${it.id}" }) { folder ->
-            libraryFolderRow(
-                folder,
-                onAppearance =
-                    if (state.filter == PhoneLibraryFilter.GPX) ({ actions.onFolderGpxAppearance(folder) }) else null,
-            ) { navigation.onBrowse(browse.copy(folderId = folder.id, query = "")) }
-        }
+        libraryFolderEntries(state, mapState, mapActions, actions, browser)
         libraryEntries(state, mapState, mapActions, actions, navigation.onDetails)
         if (state.filter == PhoneLibraryFilter.MAPS) {
             item(key = "offline-data") {

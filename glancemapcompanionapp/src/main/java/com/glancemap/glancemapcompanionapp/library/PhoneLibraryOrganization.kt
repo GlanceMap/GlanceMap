@@ -28,7 +28,13 @@ internal data class PhoneLibraryFolder(
     val name: String,
     @field:SerializedName("parentId")
     val parentId: String? = null,
+    // Null only on folders saved before each tab had its own folders.
+    @field:SerializedName("category")
+    val category: PhoneLibraryFilter? = PhoneLibraryFilter.GPX,
 )
+
+internal val PhoneLibraryFilter.hasFolders: Boolean
+    get() = this == PhoneLibraryFilter.GPX || this == PhoneLibraryFilter.POIS
 
 internal data class PhoneLibraryEntryOrganization(
     @field:SerializedName("folderId")
@@ -66,13 +72,35 @@ internal data class PhoneLibraryOrganization(
         id: String,
         name: String,
         parentId: String?,
+        category: PhoneLibraryFilter? = PhoneLibraryFilter.GPX,
     ): PhoneLibraryOrganization {
         val trimmed = name.trim()
         require(id.isNotBlank() && folders.none { it.id == id })
-        require(parentId == null || folder(parentId) != null)
-        require(trimmed.isNotBlank() && trimmed.length <= 80)
-        require(folders.none { it.parentId == parentId && it.name.equals(trimmed, ignoreCase = true) })
-        return copy(folders = folders + PhoneLibraryFolder(id, trimmed, parentId))
+        require(parentId == null || folder(parentId)?.category == category)
+        requireFolderName(trimmed, parentId, category)
+        return copy(folders = folders + PhoneLibraryFolder(id, trimmed, parentId, category))
+    }
+
+    fun folderTree(id: String): Set<String> {
+        val tree = linkedSetOf(id)
+        var added = true
+        while (added) {
+            added = tree.addAll(folders.filter { it.parentId in tree }.map(PhoneLibraryFolder::id))
+        }
+        return tree
+    }
+
+    internal fun requireFolderName(
+        name: String,
+        parentId: String?,
+        category: PhoneLibraryFilter?,
+    ) {
+        require(name.isNotBlank() && name.length <= 80)
+        require(
+            folders.none {
+                it.parentId == parentId && it.category == category && it.name.equals(name, ignoreCase = true)
+            },
+        )
     }
 
     fun move(
@@ -115,7 +143,10 @@ internal data class PhoneLibraryBrowseState(
 
 internal data class PhoneLibraryOrganizationActions(
     val enabled: Boolean = true,
-    val onCreateFolder: (String?, String) -> Unit = { _, _ -> },
+    val onCreateFolder: (String?, String, PhoneLibraryFilter) -> Unit = { _, _, _ -> },
+    val onRenameFolder: (String, String) -> Unit = { _, _ -> },
+    val onDeleteFolder: (String) -> Unit = {},
+    val onDeleteReceivedGpx: suspend (PhoneLibraryItem.ReceivedGpx) -> Unit = {},
     val onMoveItem: (PhoneLibraryItem, String?) -> Unit = { _, _ -> },
     val onActivity: (PhoneLibraryItem, PhoneLibraryActivity) -> Unit = { _, _ -> },
 )
@@ -145,7 +176,9 @@ internal fun browsePhoneLibraryItems(
     filterPhoneLibraryItems(items, category, browse.query).filter { item ->
         val entry = organization.entry(item)
         val inFolder =
-            if (browse.query.isBlank()) {
+            if (!category.hasFolders) {
+                true
+            } else if (browse.query.isBlank()) {
                 entry.folderId == browse.folderId
             } else {
                 organization.containsFolder(browse.folderId, entry.folderId)
@@ -183,11 +216,11 @@ internal fun validatePhoneLibraryOrganization(organization: PhoneLibraryOrganiza
     while (remaining.isNotEmpty()) {
         val ready = remaining.filter { it.parentId == null || checked.folder(it.parentId) != null }
         require(ready.isNotEmpty())
-        ready.forEach { checked = checked.createFolder(it.id, it.name, it.parentId) }
+        ready.forEach { checked = checked.createFolder(it.id, it.name, it.parentId, it.category) }
         remaining.removeAll(ready.toSet())
     }
     entries.forEach { (key, entry) -> validateLibraryEntry(key, entry, checked) }
-    return checked.copy(entries = entries)
+    return checked.copy(entries = entries).withFolderCategories()
 }
 
 private fun requiredLibraryText(value: String?): String = requireNotNull(value).also { require(it.isNotBlank()) }

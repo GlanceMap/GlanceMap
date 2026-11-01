@@ -155,6 +155,7 @@ class PhoneGpxAppearanceUiTest {
                 )
             }
         }
+        composeRule.onNodeWithTag("library-folder-menu-parent").performClick()
         composeRule.onNodeWithText(text(R.string.gpx_appearance_customize)).performClick()
         setWidth(9f)
         composeRule.onNodeWithText(text(R.string.map_poi_save)).performClick()

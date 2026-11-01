@@ -60,8 +60,9 @@ internal class PhoneLibraryViewModel(
     fun createFolder(
         parentId: String?,
         name: String,
+        category: PhoneLibraryFilter,
     ) {
-        updateOrganization { it.createFolder(UUID.randomUUID().toString(), name, parentId) }
+        updateOrganization { it.createFolder(UUID.randomUUID().toString(), name, parentId, category) }
     }
 
     fun moveItem(
@@ -78,7 +79,7 @@ internal class PhoneLibraryViewModel(
         updateOrganization { it.classify(item, activity) }
     }
 
-    private fun updateOrganization(update: (PhoneLibraryOrganization) -> PhoneLibraryOrganization) {
+    fun updateOrganization(update: (PhoneLibraryOrganization) -> PhoneLibraryOrganization) {
         viewModelScope.launch {
             organizationMutex.withLock {
                 if (!state.value.organizationReady) return@withLock

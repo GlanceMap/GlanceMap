@@ -70,6 +70,9 @@ internal fun phoneLibraryScreen(
                     PhoneLibraryOrganizationActions(
                         enabled = local.organizationReady,
                         onCreateFolder = model::createFolder,
+                        onRenameFolder = { id, name -> model.updateOrganization { it.renameFolder(id, name) } },
+                        onDeleteFolder = { id -> model.updateOrganization { it.deleteFolder(id) } },
+                        onDeleteReceivedGpx = { deletePhoneLibraryReceivedGpx(it, model::refresh) },
                         onMoveItem = model::moveItem,
                         onActivity = model::setActivity,
                     ),
@@ -117,6 +120,11 @@ internal fun libraryPanelContent(
         remember(state.items, state.filter, browse, state.organization) {
             browsePhoneLibraryItems(state.items, state.filter, browse, state.organization)
         }
+    LaunchedEffect(state.filter, state.organization) {
+        if (state.organization.folder(browse.folderId)?.category != state.filter) {
+            browse = browse.copy(folderId = null)
+        }
+    }
     BackHandler(enabled = state.filter == PhoneLibraryFilter.BUNDLES && browse.folderId == null) {
         actions.onFilterChanged(PhoneLibraryFilter.MAPS)
     }
@@ -135,6 +143,7 @@ internal fun libraryPanelContent(
                 PhoneLibraryBrowserPresentation(
                     browse,
                     PhoneLibraryBrowserActions({ browse = it }, { checkpointsOpen = true }, { selectedKey = it.key }),
+                    state.items,
                 ),
             )
         }
