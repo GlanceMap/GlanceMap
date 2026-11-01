@@ -95,4 +95,29 @@ class PhoneLibraryGpxActionsUiTest {
         composeRule.onNodeWithTag("library-item-${item.key}").performTouchInput { longClick() }
         assertEquals(item, openedItem)
     }
+
+    @Test
+    fun sendToWatchIsHiddenUntilAWatchIsKnown() {
+        val item = PhoneLibraryItem.Gpx(libraryTestRoute())
+        val mapState = mutableStateOf(libraryTestMapState(composeRule.activity))
+        val watchKnown = mutableStateOf(false)
+
+        composeRule.setContent {
+            MaterialTheme {
+                Column {
+                    libraryItemRow(
+                        PhoneLibraryRowState(item, true, watchKnown = watchKnown.value),
+                        mapState.value,
+                        libraryTestMapActions(mapState),
+                    ) {}
+                }
+            }
+        }
+
+        composeRule.onNodeWithTag("library-gpx-overflow-${item.key}").performClick()
+        composeRule.onNodeWithTag("library-gpx-send-watch").assertDoesNotExist()
+        composeRule.onNodeWithTag("library-gpx-details").assertExists()
+        composeRule.runOnIdle { watchKnown.value = true }
+        composeRule.onNodeWithTag("library-gpx-send-watch").assertExists()
+    }
 }

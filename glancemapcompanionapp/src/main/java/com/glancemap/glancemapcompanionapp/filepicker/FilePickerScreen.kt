@@ -110,6 +110,7 @@ import com.glancemap.glancemapcompanionapp.routes.missionPlanTodaySummary
 import com.glancemap.glancemapcompanionapp.routes.reversedForGuidance
 import com.glancemap.glancemapcompanionapp.routes.trailIntelligenceFor
 import com.glancemap.glancemapcompanionapp.routes.trailIntelligenceForProgress
+import com.glancemap.glancemapcompanionapp.transfer.rememberPhoneWatchKnown
 import com.glancemap.glancemapcompanionapp.weather.LocationWeatherViewModel
 import com.glancemap.glancemapcompanionapp.weather.RouteWeatherScreenState
 import com.glancemap.glancemapcompanionapp.weather.WeatherForecastLocation
@@ -932,6 +933,8 @@ internal fun FilePickerScreen(
                                                 onImportGpx = routeLibraryViewModel::importLibraryGpx,
                                                 onRenameRoute = routeLibraryViewModel::renameRoute,
                                                 onDeleteRoute = routeLibraryViewModel::deleteRoute,
+                                                watchKnown =
+                                                    rememberPhoneWatchKnown(uiState.availableWatches.isNotEmpty()),
                                                 guidanceStartingKey = guidanceStartingKey,
                                                 guidanceActive =
                                                     phoneGuidanceState.session != null ||

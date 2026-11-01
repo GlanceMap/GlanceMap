@@ -128,10 +128,12 @@ private fun libraryGpxActions(
         onDismiss()
         actions.onUseRoute(item.route.id)
     }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.library_use_for_hike)) }
-    OutlinedButton(onClick = {
-        onDismiss()
-        actions.onSendGpx(item.route.id)
-    }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.transfer_title_send_to_watch)) }
+    if (actions.watchKnown) {
+        OutlinedButton(onClick = {
+            onDismiss()
+            actions.onSendGpx(item.route.id)
+        }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.transfer_title_send_to_watch)) }
+    }
     OutlinedButton(onClick = {
         onDismiss()
         actions.onOpenMapTools(MapTool.GPX)

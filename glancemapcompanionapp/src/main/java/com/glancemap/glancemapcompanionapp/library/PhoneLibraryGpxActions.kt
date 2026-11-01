@@ -60,7 +60,7 @@ internal fun libraryGpxOverflowMenu(
             },
             modifier = Modifier.testTag("library-gpx-details"),
         )
-        if (item is PhoneLibraryItem.Gpx) {
+        if (item is PhoneLibraryItem.Gpx && row.watchKnown) {
             DropdownMenuItem(
                 text = { Text(stringResource(R.string.transfer_title_send_to_watch)) },
                 onClick = {
