@@ -128,8 +128,10 @@ class PhoneOfflineMapRevisionTest {
         )
     }
 
-    private fun identity(map: PhoneOfflineMap) =
-        PhoneMapsforgeBaseLayerIdentity(map.rendererIdentity, PhoneOfflineThemeCatalog.defaultConfig)
+    private fun identity(map: PhoneOfflineMap): PhoneMapsforgeBaseLayerIdentity {
+        val theme = PhoneOfflineThemeCatalog.defaultConfig
+        return PhoneMapsforgeBaseLayerIdentity(map.rendererIdentity, theme)
+    }
 
     private fun cacheId(map: PhoneOfflineMap) = phoneMapsforgeTileCacheId(identity(map))
 }
