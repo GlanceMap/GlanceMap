@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.os.SystemClock
 import android.util.Log
+import com.glancemap.glancemapcompanionapp.BuildConfig
 import earth.worldwind.layer.mercator.MercatorTileFactory
 import earth.worldwind.layer.mercator.MercatorTiledImageLayer
 import earth.worldwind.render.image.ImageSource
@@ -25,7 +26,10 @@ import org.mapsforge.map.reader.MapFile
 import org.mapsforge.map.rendertheme.rule.RenderThemeFuture
 import java.io.ByteArrayOutputStream
 import java.io.Closeable
+import java.io.File
 import java.util.concurrent.Executors
+
+private const val PHONE_WORLDWIND_TILE_CACHE_DIRECTORY = "worldwind-mapsforge-tiles"
 
 /** One datastore and bounded single-worker renderer per WorldWind view. */
 internal class PhoneWorldWindMapsforgeLayer(
@@ -43,9 +47,9 @@ internal class PhoneWorldWindMapsforgeLayer(
     private val heap = Runtime.getRuntime().maxMemory()
     private val density = context.resources.displayMetrics.density
     private val cache =
-        PhoneWorldWindTileCache(
-            phoneWorldWindCacheCapacity(heap),
-            cost = { key, bytes -> maxOf(bytes.size, key.resolution * key.resolution * 4) },
+        PhoneWorldWindDiskTileCache(
+            File(context.applicationContext.cacheDir, PHONE_WORLDWIND_TILE_CACHE_DIRECTORY),
+            BuildConfig.VERSION_CODE.toString(),
             onEviction = { diagnostics.evicted.incrementAndGet() },
         )
     private val worker =
@@ -74,8 +78,8 @@ internal class PhoneWorldWindMapsforgeLayer(
 
     init {
         diagnostics.setSummaryProvider {
-            "cache_charged_bytes=${cache.usedBytes()} cache_encoded_bytes=${cache.storedBytes()} " +
-                "cache_max=${cache.maximumBytes} pending=${coalescer.pendingCount()}"
+            "disk_cache_bytes=${cache.usedBytes()} disk_cache_max=${cache.maximumBytes} " +
+                "pending=${coalescer.pendingCount()}"
         }
     }
 
@@ -154,11 +158,14 @@ internal class PhoneWorldWindMapsforgeLayer(
 
     private suspend fun bitmap(key: PhoneWorldWindTileKey): Bitmap? {
         val cached = cache.get(key)
-        if (cached != null) {
+        val decoded = cached?.let { BitmapFactory.decodeByteArray(it, 0, it.size) }
+        if (decoded != null) {
             diagnostics.hits.incrementAndGet()
-            diagnostics.tile("memory", key, 0)
-            return BitmapFactory.decodeByteArray(cached, 0, cached.size)
+            diagnostics.tile("disk", key, 0)
+            return decoded
         }
+        // A tile file that no longer decodes is dropped and rendered again rather than failing forever.
+        if (cached != null) cache.remove(key)
         diagnostics.misses.incrementAndGet()
         diagnostics.tile("miss", key, 0)
         val bytes =
@@ -166,11 +173,8 @@ internal class PhoneWorldWindMapsforgeLayer(
                 coalescer.get(key) {
                     activity.track {
                         cache.get(key) ?: render(key)?.also {
-                            val context = currentCoroutineContext()
-                            synchronized(renderLock) {
-                                context.ensureActive()
-                                if (!closed) cache.put(key, it)
-                            }
+                            currentCoroutineContext().ensureActive()
+                            cache.put(key, it)
                         }
                     }
                 }
@@ -219,7 +223,6 @@ internal class PhoneWorldWindMapsforgeLayer(
         synchronized(renderLock) {
             if (closed) return
             closed = true
-            cache.clear()
             mapsforgeCache.destroy()
             labelStore.destroy()
             detailed?.theme?.decrementRefCount()

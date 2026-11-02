@@ -9,20 +9,14 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
+import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.TemporaryFolder
 import java.util.concurrent.atomic.AtomicInteger
 
 class PhoneWorldWindTilePipelineTest {
-    @Test
-    fun cacheCapacityIsHeapAwareAndBounded() {
-        val mib = 1024L * 1024
-        assertEquals(8 * mib, phoneWorldWindCacheCapacity(64 * mib).toLong())
-        assertEquals(16 * mib, phoneWorldWindCacheCapacity(128 * mib).toLong())
-        assertEquals(32 * mib, phoneWorldWindCacheCapacity(256 * mib).toLong())
-        assertEquals(64 * mib, phoneWorldWindCacheCapacity(2_048 * mib).toLong())
-    }
+    @get:Rule val folder = TemporaryFolder()
 
     @Test
     fun stableTileLevelBandsUseHighResolutionOnlyOnCapableDevices() {
@@ -35,19 +29,46 @@ class PhoneWorldWindTilePipelineTest {
     }
 
     @Test
-    fun resolutionAndIdentityArePartOfCacheKeyAndMemoryCost() {
+    fun diskCacheSurvivesANewViewButNeverReusesATileForChangedInputs() {
+        val directory = folder.newFolder()
         val key = PhoneWorldWindTileKey("map-a", "theme-a", 1f, PhoneWorldWindTile(16, 1, 2))
-        assertNotEquals(key, key.copy(resolution = 512))
-        assertNotEquals(key, key.copy(mapIdentity = "map-b"))
-        assertNotEquals(key, key.copy(themeIdentity = "theme-b"))
-        assertNotEquals(key, key.copy(scale = 2f))
-        val cache = PhoneWorldWindTileCache(20, cost = { _, bytes -> bytes.size * 2 })
-        cache.put(key, ByteArray(6))
-        cache.put(key.copy(resolution = 512), ByteArray(6))
-        assertNull(cache.get(key))
-        assertEquals(12, cache.usedBytes())
-        assertEquals(6, cache.storedBytes())
-        assertEquals(1, cache.evictionCount())
+        PhoneWorldWindDiskTileCache(directory, "1").put(key, byteArrayOf(1, 2, 3))
+        val reopened = PhoneWorldWindDiskTileCache(directory, "1")
+        assertEquals(listOf<Byte>(1, 2, 3), reopened.get(key)?.toList())
+        assertEquals(3L, reopened.usedBytes())
+        for (changed in listOf(
+            key.copy(resolution = 512),
+            key.copy(mapIdentity = "map-a:replaced"),
+            key.copy(themeIdentity = "theme-b"),
+            key.copy(scale = 2f),
+            key.copy(tile = PhoneWorldWindTile(16, 2, 1)),
+        )) {
+            assertNull(reopened.get(changed))
+        }
+        assertNull(PhoneWorldWindDiskTileCache(directory, "2").get(key))
+        reopened.remove(key)
+        assertNull(reopened.get(key))
+        assertEquals(0L, reopened.usedBytes())
+    }
+
+    @Test
+    fun diskCacheRemovesLeastRecentlyUsedTilesBelowItsLimit() {
+        val directory = folder.newFolder()
+        var evicted = 0
+        val cache = PhoneWorldWindDiskTileCache(directory, "1", maximumBytes = 25, onEviction = { evicted++ })
+        val keys = (0 until 3).map { PhoneWorldWindTileKey("map", "theme", 1f, PhoneWorldWindTile(10, it, 0)) }
+        keys.take(2).forEachIndexed { index, key ->
+            cache.put(key, ByteArray(10))
+            val written = directory.listFiles()!!.single { it.name.endsWith("_10_${index}_0_256.png") }
+            written.setLastModified(1_000_000L + index)
+        }
+        cache.get(keys[0])
+        cache.put(keys[2], ByteArray(10))
+        assertEquals(1, evicted)
+        assertNull(cache.get(keys[1]))
+        assertEquals(10, cache.get(keys[0])?.size)
+        assertEquals(20L, cache.usedBytes())
+        assertEquals(emptyList<String>(), directory.list()!!.filter { it.endsWith(".tmp") })
     }
 
     @Test

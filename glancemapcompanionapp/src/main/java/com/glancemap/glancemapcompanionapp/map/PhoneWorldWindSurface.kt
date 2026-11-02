@@ -63,6 +63,7 @@ import kotlinx.coroutines.withContext
 import org.mapsforge.core.model.BoundingBox
 import java.io.Closeable
 import java.util.Locale
+import java.util.concurrent.atomic.AtomicLong
 import javax.microedition.khronos.opengles.GL10
 
 private class PhoneWorldWindWindow(
@@ -75,7 +76,7 @@ private class PhoneWorldWindWindow(
     private val onViewportReady: () -> Unit,
     private val onFirstGlFrame: (Long) -> Unit,
 ) : WorldWindow(context) {
-    private val started = SystemClock.elapsedRealtime()
+    private val createdAt = SystemClock.elapsedRealtime()
     private var firstFrame = false
 
     init {
@@ -106,7 +107,9 @@ private class PhoneWorldWindWindow(
 
     @Volatile private var touching = false
     private var anchoredGround = 0.0
-    private var lastGestureDrawNanos = 0L
+
+    /** The first finger movement not yet shown on screen, so a resting finger is never counted as a slow frame. */
+    private val pendingMoveNanos = AtomicLong()
 
     private fun groundElevation(at: LookAt) = engine.globe.getElevation(at.position.latitude, at.position.longitude)
 
@@ -169,6 +172,7 @@ private class PhoneWorldWindWindow(
             touching = true
             onGestureActive(true)
         }
+        if (event.actionMasked == MotionEvent.ACTION_MOVE) pendingMoveNanos.compareAndSet(0L, System.nanoTime())
         val handled = super.onTouchEvent(event)
         if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) {
             touching = false
@@ -191,11 +195,11 @@ private class PhoneWorldWindWindow(
         super.onDrawFrame(gl)
         val finished = System.nanoTime()
         diagnostics.glFrames.record(finished - started)
-        if (touching && lastGestureDrawNanos != 0L) diagnostics.gestureFrameGaps.record(started - lastGestureDrawNanos)
-        lastGestureDrawNanos = if (touching) finished else 0L
+        val moved = pendingMoveNanos.getAndSet(0L)
+        if (moved != 0L) diagnostics.moveToFrame.record(finished - moved)
         if (!firstFrame) {
             firstFrame = true
-            val elapsed = SystemClock.elapsedRealtime() - started
+            val elapsed = SystemClock.elapsedRealtime() - createdAt
             post { onFirstGlFrame(elapsed) }
         }
     }

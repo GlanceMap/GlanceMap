@@ -91,6 +91,17 @@ class PhoneWorldWindElevationTest {
             assertEquals(PHONE_WORLDWIND_MAX_LOCAL_DEM_TILES, accesses)
         }
 
+    @Test
+    fun localTilesToPrepareMatchTheGridAndSkipCoarseGrids() {
+        assertEquals(
+            listOf(0 to 0, 0 to 1, 1 to 0, 1 to 1),
+            phoneWorldWindGridLocalDemTiles(PhoneWorldWindBounds(0.1, 0.1, 1.9, 1.9), 8 to 8).sortedBy { it.first * 10 + it.second },
+        )
+        val southWest = PhoneWorldWindBounds(-0.9, -0.9, -0.1, -0.1)
+        assertEquals(listOf(-1 to -1), phoneWorldWindGridLocalDemTiles(southWest, 8 to 8))
+        assertTrue(phoneWorldWindGridLocalDemTiles(PhoneWorldWindBounds(0.1, 0.1, 2.9, 2.9), 8 to 8).isEmpty())
+    }
+
     private val gridBounds = PhoneWorldWindBounds(0.1, 0.1, 0.9, 0.9)
 
     @Test

@@ -6,6 +6,8 @@ import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.io.File
+import java.security.MessageDigest
 
 private const val PHONE_WORLDWIND_MIB = 1024 * 1024
 internal const val PHONE_WORLDWIND_TILE_RETRY_MS = 30_000L
@@ -30,8 +32,87 @@ internal class PhoneWorldWindTileRetry(
     }
 }
 
-/** Budget decoded-equivalent pixels so 512px tiles cannot silently consume four times the cache budget. */
-internal fun phoneWorldWindCacheCapacity(maxHeapBytes: Long): Int = (maxHeapBytes / 8).coerceIn(4L * PHONE_WORLDWIND_MIB, 64L * PHONE_WORLDWIND_MIB).toInt()
+internal const val PHONE_WORLDWIND_DISK_CACHE_BYTES = 128L * PHONE_WORLDWIND_MIB
+
+/**
+ * Rendered Mapsforge tiles kept on disk, so reopening 3D or returning to an area skips rendering. WorldWind
+ * already keeps decoded textures while a view is open, which left an in-memory copy unused. The file name
+ * hashes the app version, map revision, theme and scale, so a changed input never reuses an old tile, and
+ * the least recently used tiles are removed beyond [maximumBytes].
+ */
+internal class PhoneWorldWindDiskTileCache(
+    private val directory: File,
+    private val version: String,
+    val maximumBytes: Long = PHONE_WORLDWIND_DISK_CACHE_BYTES,
+    private val onEviction: () -> Unit = {},
+) {
+    private val lock = Any()
+    private var used = tileFiles().sumOf(File::length)
+
+    fun usedBytes(): Long = synchronized(lock) { used }
+
+    fun get(key: PhoneWorldWindTileKey): ByteArray? {
+        val file = file(key)
+        return runCatching { file.readBytes().also { file.setLastModified(System.currentTimeMillis()) } }.getOrNull()
+    }
+
+    fun remove(key: PhoneWorldWindTileKey) {
+        val file = file(key)
+        val length = file.length()
+        if (file.delete()) synchronized(lock) { used -= length }
+    }
+
+    fun put(
+        key: PhoneWorldWindTileKey,
+        bytes: ByteArray,
+    ) {
+        if (!directory.isDirectory && !directory.mkdirs()) return
+        val target = file(key)
+        val previous = target.length()
+        // A unique temporary file and rename keep a concurrent reader from seeing a partial tile.
+        val temporary = File.createTempFile("tile-", ".tmp", directory)
+        val stored = runCatching { temporary.writeBytes(bytes) }.isSuccess && temporary.renameTo(target)
+        temporary.delete()
+        if (stored) synchronized(lock) { used += bytes.size - previous }
+        if (usedBytes() > maximumBytes) trim()
+    }
+
+    private fun trim() =
+        synchronized(lock) {
+            val files = tileFiles().sortedBy(File::lastModified)
+            used = files.sumOf(File::length)
+            // Trim below the limit so the next writes do not rescan the directory each time.
+            val target = maximumBytes * TRIM_PERCENT / 100
+            for (file in files) {
+                if (used <= target) break
+                val length = file.length()
+                if (file.delete()) {
+                    used -= length
+                    onEviction()
+                }
+            }
+        }
+
+    private fun tileFiles(): List<File> =
+        directory
+            .listFiles { file -> file.name.endsWith(TILE_SUFFIX) }
+            .orEmpty()
+            .toList()
+
+    private fun file(key: PhoneWorldWindTileKey): File {
+        val identity = "$version|${key.mapIdentity}|${key.themeIdentity}|${key.scale}"
+        val digest = MessageDigest.getInstance("SHA-256").digest(identity.toByteArray())
+        val prefix = digest.take(IDENTITY_BYTES).joinToString("") { "%02x".format(it) }
+        val tile = key.tile
+        return File(directory, "${prefix}_${tile.z}_${tile.x}_${tile.y}_${key.resolution}$TILE_SUFFIX")
+    }
+
+    private companion object {
+        const val TILE_SUFFIX = ".png"
+        const val TRIM_PERCENT = 90
+        const val IDENTITY_BYTES = 8
+    }
+}
 
 /** WorldWind's tile level is a stable proxy for visible texture detail; the same tile never changes bands. */
 internal fun phoneWorldWindTileResolution(

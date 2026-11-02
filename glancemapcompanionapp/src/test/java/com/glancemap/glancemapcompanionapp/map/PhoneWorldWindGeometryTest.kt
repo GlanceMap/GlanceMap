@@ -32,20 +32,11 @@ class PhoneWorldWindGeometryTest {
     }
 
     @Test
-    fun cacheKeysIncludeMapThemeAndScaleAndEvictLeastRecentlyUsed() {
-        val cache = PhoneWorldWindTileCache(4)
+    fun cacheKeysIncludeMapThemeAndScale() {
         val a = PhoneWorldWindTileKey("map-a", "theme-a", 1f, PhoneWorldWindTile(2, 1, 1))
-        val b = a.copy(themeIdentity = "theme-b")
-        val c = a.copy(mapIdentity = "map-b")
-        assertNotEquals(a, b)
-        assertNotEquals(a, c)
+        assertNotEquals(a, a.copy(themeIdentity = "theme-b"))
+        assertNotEquals(a, a.copy(mapIdentity = "map-b"))
         assertNotEquals(a, a.copy(scale = 2f))
-        cache.put(a, byteArrayOf(1, 2))
-        cache.put(b, byteArrayOf(3, 4))
-        assertEquals(1, cache.get(a)?.first()?.toInt())
-        cache.put(c, byteArrayOf(5, 6))
-        assertEquals(null, cache.get(b))
-        assertEquals(1, cache.get(a)?.first()?.toInt())
     }
 
     @Test

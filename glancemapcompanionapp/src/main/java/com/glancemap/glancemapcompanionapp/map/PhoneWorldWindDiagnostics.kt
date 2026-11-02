@@ -50,6 +50,8 @@ internal class PhoneWorldWindDiagnostics : Closeable {
     val elevationRequests = AtomicInteger()
     val elevationMillis = AtomicLong()
     val elevationIncomplete = AtomicInteger()
+    val demUnpacks = AtomicInteger()
+    val demUnpackMillis = AtomicLong()
     val demFailures = AtomicInteger()
     val tileFailures = AtomicInteger()
     val tileRetriesScheduled = AtomicInteger()
@@ -57,7 +59,9 @@ internal class PhoneWorldWindDiagnostics : Closeable {
     val cameraReanchors = AtomicInteger()
     val renderFrames = PhoneWorldWindFrameStats()
     val glFrames = PhoneWorldWindFrameStats()
-    val gestureFrameGaps = PhoneWorldWindFrameStats()
+
+    /** Time from a finger movement until a frame showing it finishes drawing; slow above two 60 Hz frames. */
+    val moveToFrame = PhoneWorldWindFrameStats(slowNanos = 2 * PHONE_WORLDWIND_SLOW_FRAME_NANOS)
     private val firstImage = AtomicBoolean()
     private val firstElevation = AtomicBoolean()
     private var summaryProvider: () -> String = { "" }
@@ -104,6 +108,15 @@ internal class PhoneWorldWindDiagnostics : Closeable {
         if (valid > 0 && firstElevation.compareAndSet(false, true)) {
             event("first_elevation", "elapsed_ms=${SystemClock.elapsedRealtime() - started}")
         }
+    }
+
+    fun demUnpacked(
+        tileId: String,
+        ms: Long,
+    ) {
+        demUnpacks.incrementAndGet()
+        demUnpackMillis.addAndGet(ms)
+        event("dem_unpack", "tile=$tileId ms=$ms")
     }
 
     fun elevationIncomplete() {
@@ -173,10 +186,11 @@ internal class PhoneWorldWindDiagnostics : Closeable {
                 "dem_standard=${demStandard.get()} dem_detailed=${demDetailed.get()} " +
                 "elevation_requests=${elevationRequests.get()} elevation_ms=${elevationMillis.get()} " +
                 "elevation_incomplete=${elevationIncomplete.get()} dem_failures=${demFailures.get()} " +
+                "dem_unpacks=${demUnpacks.get()} dem_unpack_ms=${demUnpackMillis.get()} " +
                 "tile_failures=${tileFailures.get()} tile_retries_scheduled=${tileRetriesScheduled.get()} " +
                 "tile_retries_fired=${tileRetriesFired.get()} camera_reanchors=${cameraReanchors.get()} " +
                 "${renderFrames.summary("render")} ${glFrames.summary("gl")} " +
-                "${gestureFrameGaps.summary("gesture_gap")} " +
+                "${moveToFrame.summary("move_to_frame")} " +
                 "heap_used=${runtime.totalMemory() - runtime.freeMemory()} ${summaryProvider()}",
         )
     }

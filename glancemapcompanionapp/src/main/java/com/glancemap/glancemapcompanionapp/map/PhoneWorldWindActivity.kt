@@ -21,9 +21,9 @@ internal class PhoneWorldWindActivity {
 
     suspend fun <T> track(work: suspend () -> T): T {
         synchronized(lock) {
-            val current = state.value
+            val batch = state.value.takeUnless { it.complete } ?: PhoneWorldWindProgress()
             // A new batch starts once everything earlier has loaded, so the ring stays full until then.
-            state.value = if (current.complete) PhoneWorldWindProgress(0, 1) else current.copy(started = current.started + 1)
+            state.value = batch.copy(started = batch.started + 1)
         }
         try {
             return work()

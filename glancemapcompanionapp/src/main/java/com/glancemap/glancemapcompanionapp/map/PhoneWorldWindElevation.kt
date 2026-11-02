@@ -30,6 +30,7 @@ internal class PhoneWorldWindElevation(
 ) : AutoCloseable {
     private val closed = AtomicBoolean(false)
     private val demDispatcher = Dispatchers.IO.limitedParallelism(1)
+    private val unpackDispatcher = Dispatchers.IO.limitedParallelism(1)
     private val sector =
         Sector.fromDegrees(bounds.minLatitude, bounds.minLongitude, bounds.latitudeSpan, bounds.longitudeSpan)
     private val matrices =
@@ -56,17 +57,18 @@ internal class PhoneWorldWindElevation(
                         object : ElevationSource.ElevationDataFactory {
                             override suspend fun fetchElevationData(): Buffer? =
                                 activity.track {
+                                    val tile = tileMatrix.tileSector(row, column)
+                                    val bounds =
+                                        PhoneWorldWindBounds(
+                                            tile.minLatitude.inDegrees,
+                                            tile.minLongitude.inDegrees,
+                                            tile.maxLatitude.inDegrees,
+                                            tile.maxLongitude.inDegrees,
+                                        )
+                                    prepareLocalTiles(bounds, tileMatrix.tileWidth to tileMatrix.tileHeight)
                                     withContext(demDispatcher) {
                                         if (closed.get()) return@withContext null
                                         val started = android.os.SystemClock.elapsedRealtime()
-                                        val tile = tileMatrix.tileSector(row, column)
-                                        val bounds =
-                                            PhoneWorldWindBounds(
-                                                tile.minLatitude.inDegrees,
-                                                tile.minLongitude.inDegrees,
-                                                tile.maxLatitude.inDegrees,
-                                                tile.maxLongitude.inDegrees,
-                                            )
                                         val zoom =
                                             phoneWorldWindOnlineDemZoom(
                                                 bounds.south,
@@ -102,6 +104,28 @@ internal class PhoneWorldWindElevation(
                     )
             },
         ).apply { displayName = "Phone elevation" }
+
+    /**
+     * Unpacking a compressed HGT file takes seconds, so it runs on its own lane. Grids whose files are
+     * ready keep loading on the elevation lane meanwhile, instead of queueing behind the unpack.
+     */
+    private suspend fun prepareLocalTiles(
+        bounds: PhoneWorldWindBounds,
+        dimensions: Pair<Int, Int>,
+    ) {
+        val local = repository ?: return
+        val tiles = phoneWorldWindGridLocalDemTiles(bounds, dimensions)
+        withContext(unpackDispatcher) {
+            for ((latitude, longitude) in tiles) {
+                if (closed.get()) break
+                val started = android.os.SystemClock.elapsedRealtime()
+                if (local.prepareTile(latitude, longitude)) {
+                    val elapsed = android.os.SystemClock.elapsedRealtime() - started
+                    diagnostics?.demUnpacked(phoneDemTileId(latitude, longitude), elapsed)
+                }
+            }
+        }
+    }
 
     override fun close() {
         closed.set(true)
@@ -160,6 +184,33 @@ internal fun phoneWorldWindCellCenter(
     count: Int,
 ): Double = start + (end - start) * (index + 0.5) / count
 
+private fun phoneWorldWindGridLatitudes(
+    bounds: PhoneWorldWindBounds,
+    height: Int,
+): DoubleArray =
+    DoubleArray(height) { y ->
+        phoneWorldWindCellCenter(bounds.north, bounds.south, y, height).coerceIn(-89.999999, 89.999999)
+    }
+
+private fun phoneWorldWindGridLongitudes(
+    bounds: PhoneWorldWindBounds,
+    width: Int,
+): DoubleArray =
+    DoubleArray(width) { x ->
+        phoneWorldWindCellCenter(bounds.west, bounds.east, x, width).coerceIn(-179.999999, 179.999999)
+    }
+
+/** The 1° HGT tiles a grid samples locally, or none when it is too coarse to read local files. */
+internal fun phoneWorldWindGridLocalDemTiles(
+    bounds: PhoneWorldWindBounds,
+    dimensions: Pair<Int, Int>,
+): List<Pair<Int, Int>> {
+    val latitudeTiles = phoneWorldWindGridLatitudes(bounds, dimensions.second).map { floor(it).toInt() }.distinct()
+    val longitudeTiles = phoneWorldWindGridLongitudes(bounds, dimensions.first).map { floor(it).toInt() }.distinct()
+    val tiles = latitudeTiles.flatMap { latitude -> longitudeTiles.map { longitude -> latitude to longitude } }
+    return tiles.takeIf { it.size <= PHONE_WORLDWIND_MAX_LOCAL_DEM_TILES }.orEmpty()
+}
+
 /**
  * Group points by HGT tile to reuse each decoded tile even when the small repository LRU churns.
  * Returns null when a source failed, because WorldWind keeps a returned grid but retries a missing one.
@@ -173,14 +224,8 @@ internal suspend fun phoneWorldWindElevationGrid(
 ): ShortArray? {
     val (width, height) = dimensions
     val heights = ShortArray(width * height) { Short.MIN_VALUE }
-    val latitudes =
-        DoubleArray(height) { y ->
-            phoneWorldWindCellCenter(bounds.north, bounds.south, y, height).coerceIn(-89.999999, 89.999999)
-        }
-    val longitudes =
-        DoubleArray(width) { x ->
-            phoneWorldWindCellCenter(bounds.west, bounds.east, x, width).coerceIn(-179.999999, 179.999999)
-        }
+    val latitudes = phoneWorldWindGridLatitudes(bounds, height)
+    val longitudes = phoneWorldWindGridLongitudes(bounds, width)
     val groups = LinkedHashMap<Pair<Int, Int>, MutableList<Int>>()
     for (y in 0 until height) {
         for (x in 0 until width) {

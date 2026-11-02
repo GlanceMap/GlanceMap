@@ -25,6 +25,10 @@ import java.io.FileInputStream
 import java.io.FilterInputStream
 import java.io.InputStream
 import java.io.RandomAccessFile
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
+import java.nio.ShortBuffer
+import java.nio.channels.FileChannel
 import java.util.LinkedHashMap
 import java.util.Locale
 import java.util.concurrent.Executors
@@ -135,6 +139,7 @@ internal fun String.isPhoneDemFileName(): Boolean {
 internal class PhoneElevationRepository(
     private val demRootDirsProvider: () -> List<File>,
     private val logTileFailures: Boolean = true,
+    private val unpackedDirectory: File? = null,
 ) {
     constructor(demRootDirsProvider: () -> List<File>) : this(demRootDirsProvider, true)
 
@@ -143,7 +148,11 @@ internal class PhoneElevationRepository(
     constructor(
         context: Context,
         logTileFailures: Boolean = true,
-    ) : this({ PhoneElevationStore(context).readDirectories() }, logTileFailures)
+    ) : this(
+        { PhoneElevationStore(context).readDirectories() },
+        logTileFailures,
+        File(context.applicationContext.cacheDir, PHONE_DEM_UNPACKED_DIRECTORY),
+    )
 
     @Volatile internal var onTileAccess: ((Boolean, PhoneDemTile?) -> Unit)? = null
 
@@ -200,9 +209,7 @@ internal class PhoneElevationRepository(
         }
         val loaded =
             runCatching {
-                resolveDemFile(tileId)?.let { file ->
-                    readDemBytes(file)?.let(::decodeDemBytes)
-                }
+                resolveDemFile(tileId)?.let { file -> openDemTile(file, tileId) }
             }.onFailure { error ->
                 if (logTileFailures) Log.w(PHONE_TERRAIN_TAG, "Could not read DEM $tileId", error)
                 onTileFailure?.invoke(tileId, error)
@@ -221,6 +228,29 @@ internal class PhoneElevationRepository(
         }
         if (!outOfMemory) onTileAccess?.invoke(false, tile)
         return tile
+    }
+
+    /**
+     * Unpacks a compressed tile ahead of [loadTile], so a caller can do the slow part on another thread.
+     * Returns true only when this call wrote a new unpacked copy.
+     */
+    internal fun prepareTile(
+        latitudeTile: Int,
+        longitudeTile: Int,
+    ): Boolean {
+        val directory = unpackedDirectory
+        val tileId = phoneDemTileId(latitudeTile, longitudeTile)
+        val loaded = synchronized(tileCache) { tileCache.containsKey(tileId) }
+        val source = if (directory == null || loaded) null else resolveDemFile(tileId)
+        val compressed = source?.takeIf { it.isCompressedPhoneDem() }
+        return when {
+            compressed == null || directory == null || phoneUnpackedDemExists(compressed, tileId, directory) -> false
+            else ->
+                runCatching { phoneUnpackedDemFile(compressed, tileId, directory) != null }
+                    .onFailure { error ->
+                        if (logTileFailures) Log.w(PHONE_TERRAIN_TAG, "Could not unpack DEM $tileId", error)
+                    }.getOrDefault(false)
+        }
     }
 
     internal fun tileExceededMemory(
@@ -247,40 +277,30 @@ internal class PhoneElevationRepository(
             .flatMap { root -> phoneDemTileCandidates(root, tileId) }
             .firstOrNull { file -> file.isFile && file.length() > 0L }
 
-    private fun readDemBytes(file: File): ByteArray? =
-        when {
-            file.name.endsWith(".zip", ignoreCase = true) ->
-                ZipInputStream(FileInputStream(file).buffered()).use { zip ->
-                    val entry =
-                        generateSequence { zip.nextEntry }
-                            .firstOrNull { item ->
-                                !item.isDirectory && item.name.endsWith(".hgt", ignoreCase = true)
-                            }
-                    entry?.let { zip.readBytes() }
-                }
-            file.name.endsWith(".gz", ignoreCase = true) ->
-                GZIPInputStream(FileInputStream(file).buffered()).use(InputStream::readBytes)
-            else -> file.readBytes()
-        }
+    /** Plain HGT is memory-mapped so a lookup reads only the pages it touches instead of decoding the whole file. */
+    private fun openDemTile(
+        file: File,
+        tileId: String,
+    ): PhoneDemTile? {
+        if (!file.isCompressedPhoneDem()) return mapPhoneDemFile(file)
+        val unpacked =
+            unpackedDirectory?.let { directory ->
+                runCatching { phoneUnpackedDemFile(file, tileId, directory) }
+                    .onFailure { error ->
+                        if (logTileFailures) Log.w(PHONE_TERRAIN_TAG, "Could not unpack DEM $tileId", error)
+                    }.getOrNull()
+            }
+        return unpacked?.let(::mapPhoneDemFile)
+            ?: openPhoneDemStream(file)?.use(InputStream::readBytes)?.let(::decodeDemBytes)
+    }
 
-    @Suppress("ReturnCount") // Invalid or non-square DEM input exits before allocating a tile.
     private fun decodeDemBytes(bytes: ByteArray): PhoneDemTile? {
-        if (bytes.size < 4 || bytes.size % 2 != 0) return null
-        val pointCount = bytes.size / 2
-        val rowLength = kotlin.math.sqrt(pointCount.toDouble()).toInt()
-        if (rowLength < 2 || rowLength * rowLength != pointCount) return null
-        val samples = ShortArray(pointCount)
-        var offset = 0
-        samples.indices.forEach { index ->
-            val highByte = bytes[offset].toInt() and 0xff
-            val lowByte = bytes[offset + 1].toInt() and 0xff
-            samples[index] = ((highByte shl 8) or lowByte).toShort()
-            offset += 2
-        }
+        val rowLength = phoneDemRowLength(bytes.size.toLong()) ?: return null
+        // HGT is big-endian, so the read bytes are viewed in place rather than copied into a second array.
         return PhoneDemTile(
             axisLength = rowLength - 1,
             rowLength = rowLength,
-            samples = samples,
+            samples = ByteBuffer.wrap(bytes).order(ByteOrder.BIG_ENDIAN).asShortBuffer(),
         )
     }
 
@@ -302,10 +322,10 @@ internal class PhoneElevationRepository(
         val columnFraction = (column - column0).coerceIn(0.0, 1.0)
         val samples =
             listOf(
-                tile.samples[row0 * tile.rowLength + column0] to (1.0 - rowFraction) * (1.0 - columnFraction),
-                tile.samples[row0 * tile.rowLength + column1] to (1.0 - rowFraction) * columnFraction,
-                tile.samples[row1 * tile.rowLength + column0] to rowFraction * (1.0 - columnFraction),
-                tile.samples[row1 * tile.rowLength + column1] to rowFraction * columnFraction,
+                tile.samples.get(row0 * tile.rowLength + column0) to (1.0 - rowFraction) * (1.0 - columnFraction),
+                tile.samples.get(row0 * tile.rowLength + column1) to (1.0 - rowFraction) * columnFraction,
+                tile.samples.get(row1 * tile.rowLength + column0) to rowFraction * (1.0 - columnFraction),
+                tile.samples.get(row1 * tile.rowLength + column1) to rowFraction * columnFraction,
             )
         var value = 0.0
         var weight = 0.0
@@ -324,11 +344,133 @@ internal data class PhoneDemElevationSample(
     val axisLen: Int,
 )
 
-internal data class PhoneDemTile(
+/** Absolute reads only, so one tile can be sampled from several threads. */
+internal class PhoneDemTile(
     val axisLength: Int,
     val rowLength: Int,
-    val samples: ShortArray,
+    val samples: ShortBuffer,
 )
+
+private fun File.isCompressedPhoneDem(): Boolean {
+    val lower = name.lowercase(Locale.ROOT)
+    return lower.endsWith(".zip") || lower.endsWith(".gz")
+}
+
+private fun openPhoneDemStream(file: File): InputStream? =
+    when {
+        file.name.endsWith(".zip", ignoreCase = true) -> {
+            val zip = ZipInputStream(FileInputStream(file).buffered())
+            val entry =
+                runCatching {
+                    generateSequence { zip.nextEntry }
+                        .firstOrNull { item -> !item.isDirectory && item.name.endsWith(".hgt", ignoreCase = true) }
+                }.onFailure { zip.close() }.getOrThrow()
+            if (entry == null) zip.close()
+            zip.takeIf { entry != null }
+        }
+        file.name.endsWith(".gz", ignoreCase = true) -> GZIPInputStream(FileInputStream(file).buffered())
+        else -> FileInputStream(file).buffered()
+    }
+
+private fun phoneDemRowLength(byteCount: Long): Int? {
+    if (byteCount < 8 || byteCount % 2 != 0L || byteCount > Int.MAX_VALUE) return null
+    val pointCount = byteCount / 2
+    val rowLength = kotlin.math.sqrt(pointCount.toDouble()).toInt()
+    return rowLength.takeIf { it >= 2 && it.toLong() * it == pointCount }
+}
+
+private fun mapPhoneDemFile(file: File): PhoneDemTile? {
+    val length = file.length()
+    val rowLength = phoneDemRowLength(length) ?: return null
+    // The mapping stays valid after the file is closed and lives outside the Java heap.
+    val bytes = RandomAccessFile(file, "r").use { it.channel.map(FileChannel.MapMode.READ_ONLY, 0, length) }
+    return PhoneDemTile(rowLength - 1, rowLength, bytes.order(ByteOrder.BIG_ENDIAN).asShortBuffer())
+}
+
+/**
+ * Unpacks a compressed HGT once into [directory] so later loads can memory-map it. The name carries the
+ * source's path, size and modification time, so a replaced source unpacks again. Older copies beyond
+ * [PHONE_DEM_UNPACKED_BUDGET_BYTES] are removed, least recently used first.
+ */
+internal fun phoneUnpackedDemFile(
+    source: File,
+    tileId: String,
+    directory: File,
+    budgetBytes: Long = PHONE_DEM_UNPACKED_BUDGET_BYTES,
+): File? {
+    val target = phoneUnpackedDemTarget(source, tileId, directory)
+    val reusable = target.isFile && phoneDemRowLength(target.length()) != null
+    return when {
+        reusable -> target.also { it.setLastModified(System.currentTimeMillis()) }
+        !directory.isDirectory && !directory.mkdirs() -> null
+        else -> {
+            val written = writePhoneUnpackedDem(source, tileId, target)
+            written?.also { trimPhoneUnpackedDems(directory, budgetBytes, keep = it) }
+        }
+    }
+}
+
+private fun phoneUnpackedDemTarget(
+    source: File,
+    tileId: String,
+    directory: File,
+): File {
+    val version = "${source.absolutePath}:${source.length()}:${source.lastModified()}".hashCode().toUInt().toString(16)
+    return File(directory, "$tileId-$version.hgt")
+}
+
+private fun phoneUnpackedDemExists(
+    source: File,
+    tileId: String,
+    directory: File,
+): Boolean {
+    val target = phoneUnpackedDemTarget(source, tileId, directory)
+    return target.isFile && phoneDemRowLength(target.length()) != null
+}
+
+/** Each writer has its own temporary file, and the rename publishes only a complete copy. */
+private fun writePhoneUnpackedDem(
+    source: File,
+    tileId: String,
+    target: File,
+): File? {
+    val directory = requireNotNull(target.parentFile)
+    val temporary = File.createTempFile("$tileId-", PHONE_DEM_UNPACK_SUFFIX, directory)
+    try {
+        val copied =
+            openPhoneDemStream(source)?.use { input -> temporary.outputStream().use { output -> input.copyTo(output) } }
+        val complete = copied != null && phoneDemRowLength(temporary.length()) != null
+        if (complete) {
+            directory
+                .listFiles { file -> file.name.startsWith("$tileId-") && file.name.endsWith(".hgt") }
+                ?.forEach(File::delete)
+        }
+        return target.takeIf { complete && temporary.renameTo(it) }
+    } finally {
+        temporary.delete()
+    }
+}
+
+private fun trimPhoneUnpackedDems(
+    directory: File,
+    budgetBytes: Long,
+    keep: File,
+) {
+    val staleWrite = System.currentTimeMillis() - PHONE_DEM_STALE_UNPACK_MS
+    // A write interrupted by the process being killed leaves its temporary file behind.
+    directory
+        .listFiles { file -> file.name.endsWith(PHONE_DEM_UNPACK_SUFFIX) && file.lastModified() < staleWrite }
+        ?.forEach(File::delete)
+    var used = 0L
+    directory
+        .listFiles { file -> file.name.endsWith(".hgt") }
+        .orEmpty()
+        .sortedByDescending { if (it == keep) Long.MAX_VALUE else it.lastModified() }
+        .forEach { file ->
+            used += file.length()
+            if (used > budgetBytes && file != keep) file.delete()
+        }
+}
 
 internal fun phoneDemTileId(
     latitudeTile: Int,
@@ -834,6 +976,12 @@ private fun wrapPhonePixelX(
 private const val PHONE_TERRAIN_TAG = "PhoneTerrain"
 private const val PHONE_DEM_SCAN_MAX_DEPTH = 6
 private const val PHONE_DEM_CACHE_ENTRIES = 3
+private const val PHONE_DEM_UNPACKED_DIRECTORY = "phone-dem-unpacked"
+private const val PHONE_DEM_UNPACK_SUFFIX = ".tmp"
+private const val PHONE_DEM_STALE_UNPACK_MS = 60L * 60 * 1000
+
+/** About ten 1-arc-second tiles, or a hundred 3-arc-second tiles. */
+internal const val PHONE_DEM_UNPACKED_BUDGET_BYTES = 256L * 1024 * 1024
 private const val PHONE_DEM_VOID_SAMPLE: Short = Short.MIN_VALUE
 private const val PHONE_HILLSHADE_MAX_INPUT_AXIS = 1800
 private const val PHONE_RELIEF_MIN_ZOOM = 13
