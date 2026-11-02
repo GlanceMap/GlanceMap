@@ -73,6 +73,7 @@ private fun libraryCreateFolderDialog(
                 onValueChange = { name = it.take(80) },
                 label = { Text(stringResource(R.string.library_folder_name)) },
                 singleLine = true,
+                modifier = Modifier.testTag("library-folder-name"),
             )
         },
         confirmButton = {

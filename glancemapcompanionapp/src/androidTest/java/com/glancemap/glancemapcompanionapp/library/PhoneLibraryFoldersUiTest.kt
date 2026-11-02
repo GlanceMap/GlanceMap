@@ -147,7 +147,7 @@ class PhoneLibraryFoldersUiTest {
         val description = label(R.string.library_create_folder)
         composeRule.onNodeWithTag("library-list").performScrollToNode(hasContentDescription(description))
         composeRule.onNodeWithContentDescription(description).performClick()
-        composeRule.onNode(hasSetTextAction()).performTextInput(name)
+        composeRule.onNodeWithTag("library-folder-name").performTextInput(name)
         composeRule.onNodeWithText(label(R.string.library_folder_create)).performClick()
     }
 
