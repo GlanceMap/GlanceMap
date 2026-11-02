@@ -211,7 +211,8 @@ internal fun LazyListScope.libraryEntries(
         libraryItemRow(
             PhoneLibraryRowState(
                 item = item,
-                enabled = !state.isImporting && !state.isLoading,
+                // The offline data rescan can take a while; map toggles do not depend on it.
+                enabled = !state.isImporting,
                 organization = state.organization,
                 guidanceEnabled = !actions.guidanceActive && actions.guidanceStartingKey == null,
                 guidanceLoading = actions.guidanceStartingKey == item.key,

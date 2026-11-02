@@ -134,6 +134,39 @@ class PhoneLibraryVisibilityUiTest {
     }
 
     @Test
+    fun rowsStayUsableWhileTheLibraryIsStillScanning() {
+        val mapState = mutableStateOf(libraryTestMapState(composeRule.activity))
+        val loading = mutableStateOf(true)
+        composeRule.setContent {
+            MaterialTheme {
+                libraryPanelContent(
+                    PhoneLibraryListState(
+                        items =
+                            listOf(
+                                PhoneLibraryItem.Pois(
+                                    mapState.value.poi.sources
+                                        .single(),
+                                ),
+                            ),
+                        filter = PhoneLibraryFilter.POIS,
+                        isLoading = loading.value,
+                    ),
+                    mapState.value,
+                    libraryTestMapActions(mapState),
+                    libraryTestActions(),
+                )
+            }
+        }
+        composeRule
+            .onNodeWithTag("library-visibility-poi/spring.poi")
+            .assertIsEnabled()
+            .performClick()
+            .assertIsOn()
+        composeRule.runOnIdle { loading.value = false }
+        composeRule.onNodeWithTag("library-visibility-poi/spring.poi").assertIsOn()
+    }
+
+    @Test
     fun categoryAndSearchSurviveReturningFromTheirSettings() {
         val mapState = mutableStateOf(libraryTestMapState(composeRule.activity))
         val filter = mutableStateOf(PhoneLibraryFilter.POIS)
