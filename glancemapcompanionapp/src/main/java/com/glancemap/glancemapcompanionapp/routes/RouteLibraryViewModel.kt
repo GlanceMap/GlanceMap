@@ -46,6 +46,7 @@ class RouteLibraryViewModel(
 
     init {
         refresh()
+        viewModelScope.launch { RouteLibraryUpdates.changes.collect { refresh() } }
     }
 
     fun refresh() {

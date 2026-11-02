@@ -19,7 +19,9 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.glancemap.glancemapcompanionapp.R
 import com.glancemap.glancemapcompanionapp.map.MapToolsPanelActions
 import com.glancemap.glancemapcompanionapp.map.MapToolsPanelState
+import com.glancemap.glancemapcompanionapp.routes.RouteLibraryRoute
 import com.glancemap.glancemapcompanionapp.routes.RouteLibraryUiState
+import com.glancemap.glancemapcompanionapp.routes.isFromWatch
 import kotlin.math.roundToInt
 
 @Composable
@@ -259,22 +261,7 @@ internal fun librarySearch(
 @Composable
 internal fun libraryItemSummary(item: PhoneLibraryItem): String =
     when (item) {
-        is PhoneLibraryItem.Gpx -> {
-            val distance = item.route.summary.distanceMeters / 1000.0
-            val gain =
-                item.route.summary.elevationGainMeters
-                    .roundToInt()
-            if (item.route.isRecording) {
-                stringResource(
-                    R.string.library_gpx_summary,
-                    stringResource(R.string.library_item_recording),
-                    distance,
-                    gain,
-                )
-            } else {
-                stringResource(R.string.library_route_summary, distance, gain)
-            }
-        }
+        is PhoneLibraryItem.Gpx -> libraryRouteSummary(item.route)
         is PhoneLibraryItem.FolderGpx ->
             stringResource(R.string.library_folder_gpx_summary, item.item.track.points.size)
         is PhoneLibraryItem.ReceivedGpx ->
@@ -305,3 +292,17 @@ internal fun libraryItemSummary(item: PhoneLibraryItem): String =
                 Formatter.formatShortFileSize(LocalContext.current, item.sizeBytes),
             )
     }
+
+@Composable
+private fun libraryRouteSummary(route: RouteLibraryRoute): String {
+    val distance = route.summary.distanceMeters / 1000.0
+    val gain = route.summary.elevationGainMeters.roundToInt()
+    val summary =
+        if (route.isRecording) {
+            val kind = stringResource(R.string.library_item_recording)
+            stringResource(R.string.library_gpx_summary, kind, distance, gain)
+        } else {
+            stringResource(R.string.library_route_summary, distance, gain)
+        }
+    return if (route.isFromWatch) stringResource(R.string.library_from_watch_summary, summary) else summary
+}

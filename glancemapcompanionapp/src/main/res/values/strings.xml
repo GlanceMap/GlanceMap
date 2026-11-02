@@ -4,6 +4,7 @@
     <string name="library_more_options">Library options</string>
     <string name="library_filter_planned">Planned</string>
     <string name="library_on_map">On map</string>
+    <string name="library_from_watch_summary">From watch · %1$s</string>
     <string name="library_map_using_now">Using now</string>
     <string name="library_map_mode_offline">Offline</string>
     <string name="library_map_details">Map details</string>
@@ -1503,7 +1504,8 @@
     <string name="transfer_status_stopping">"Stopping..."</string>
     <string name="transfer_status_waiting">"Waiting..."</string>
     <string name="transfer_status_sending_2">"Sending..."</string>
-    <string name="gpx_notification_saved_to_downloads_glancemap">"Saved to Downloads/GlanceMap"</string>
+    <string name="gpx_notification_added_to_routes">"Added to Routes"</string>
+    <string name="gpx_notification_routes_added">"Routes added from your watch: %1$d"</string>
     <string name="gpx_notification_received_from_watch">"Received from watch"</string>
     <string name="gpx_notification_save_copy">"Save copy"</string>
     <string name="gpx_notification_open">"Open"</string>
@@ -1511,7 +1513,6 @@
     <string name="gpx_notification_could_not_receive_gpx">"Could not receive GPX"</string>
     <string name="gpx_notification_invalid_gpx_export_request">"Invalid GPX export request."</string>
     <string name="gpx_notification_received_gpx_checksum_did_not_match">"Received GPX checksum did not match."</string>
-    <string name="gpx_notification_unable_to_open_downloads_destination">"Unable to open Downloads destination."</string>
     <string name="gpx_notification_share_gpx">"Share GPX"</string>
     <string name="gpx_notification_gpx_ready">"GPX ready"</string>
     <string name="gpx_notification_gpx_transfer_failed">"GPX transfer failed"</string>

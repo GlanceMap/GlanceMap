@@ -3,19 +3,19 @@ package com.glancemap.glancemapcompanionapp.transfer
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
-import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
-import android.os.Environment
-import android.provider.MediaStore
+import android.os.Bundle
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.content.FileProvider
 import com.glancemap.glancemapcompanionapp.MainActivityMobile
 import com.glancemap.glancemapcompanionapp.R
 import com.glancemap.glancemapcompanionapp.map.PhoneOfflineStorage
+import com.glancemap.glancemapcompanionapp.routes.RouteLibraryRepository
+import com.glancemap.glancemapcompanionapp.routes.WatchRouteImport
 import com.glancemap.shared.transfer.TransferDataLayerContract
 import com.google.android.gms.wearable.ChannelClient
 import com.google.android.gms.wearable.Wearable
@@ -41,16 +41,17 @@ internal data class WatchGpxSuccessNotificationDescription(
     val shareActionLabel: String,
 )
 
+/** [addedRoutes] counts routes added while the notification stayed open; 0 means the import failed. */
 internal fun buildWatchGpxSuccessNotificationDescription(
     fileName: String,
-    downloadsUriAvailable: Boolean,
+    addedRoutes: Int,
     text: (Int) -> String,
 ): WatchGpxSuccessNotificationDescription {
     val location =
-        if (downloadsUriAvailable) {
-            text(R.string.gpx_notification_saved_to_downloads_glancemap)
-        } else {
-            text(R.string.gpx_notification_received_from_watch)
+        when {
+            addedRoutes <= 0 -> text(R.string.gpx_notification_received_from_watch)
+            addedRoutes == 1 -> text(R.string.gpx_notification_added_to_routes)
+            else -> text(R.string.gpx_notification_routes_added).format(addedRoutes)
         }
     return WatchGpxSuccessNotificationDescription(
         contentText = text(R.string.gpx_notification_content).format(location, fileName),
@@ -126,74 +127,62 @@ class WatchGpxExportListenerService : WearableListenerService() {
                 tempFile.copyTo(finalFile, overwrite = true)
                 tempFile.delete()
             }
-
-            val downloadsUri = runCatching { copyToDownloads(finalFile) }.getOrNull()
-            showCompletion(finalFile, downloadsUri)
+            importIntoRoutes(finalFile, actualSha256)
         } finally {
             tempFile.delete()
             runCatching { channelClient.close(channel) }
         }
     }
 
-    private fun copyToDownloads(file: File): Uri? =
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
-            null
-        } else {
-            val values =
-                ContentValues().apply {
-                    put(MediaStore.MediaColumns.DISPLAY_NAME, file.name)
-                    put(MediaStore.MediaColumns.MIME_TYPE, WATCH_GPX_MIME_TYPE)
-                    put(
-                        MediaStore.MediaColumns.RELATIVE_PATH,
-                        "${Environment.DIRECTORY_DOWNLOADS}/GlanceMap",
-                    )
-                    put(MediaStore.MediaColumns.IS_PENDING, 1)
-                }
-
-            val resolver = contentResolver
-            resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)?.also { uri ->
-                runCatching {
-                    resolver.openOutputStream(uri)?.use { output ->
-                        file.inputStream().use { input ->
-                            input.copyTo(output, WATCH_GPX_COPY_BUFFER_BYTES)
-                        }
-                    } ?: error(getString(R.string.gpx_notification_unable_to_open_downloads_destination))
-
-                    values.clear()
-                    values.put(MediaStore.MediaColumns.IS_PENDING, 0)
-                    resolver.update(uri, values, null, null)
-                }.onFailure {
-                    resolver.delete(uri, null, null)
-                    throw it
-                }
+    /** The received copy is only kept when import fails, so the Library can still offer a manual import. */
+    @Suppress("TooGenericExceptionCaught") // Any import failure keeps the verified file for a manual retry.
+    private suspend fun importIntoRoutes(
+        file: File,
+        sha256: String,
+    ) {
+        val repository = RouteLibraryRepository(applicationContext)
+        val imported =
+            try {
+                repository.importWatchRoute(file, sha256)
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (error: Exception) {
+                Log.w(TAG, "Watch GPX kept for manual import", error)
+                showCompletion(file.name, file.shareUri(this), addedRoutes = 0)
+                return
             }
+        file.delete()
+        val routeUri = repository.contentUriFor(imported.route.id)
+        if (imported is WatchRouteImport.Added && routeUri != null) {
+            val added = notificationManager.watchRoutesAdded(ROUTES_NOTIFICATION_ID, EXTRA_ADDED_ROUTES) + 1
+            showCompletion(imported.route.displayName, routeUri, addedRoutes = added)
         }
+    }
 
     private fun showCompletion(
-        file: File,
-        downloadsUri: Uri?,
+        displayName: String,
+        fileUri: Uri,
+        addedRoutes: Int,
     ) {
-        val fileUri = file.shareUri(this)
         val openIntent =
-            Intent(Intent.ACTION_VIEW).apply {
-                setDataAndType(downloadsUri ?: fileUri, WATCH_GPX_MIME_TYPE)
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            Intent(this, MainActivityMobile::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
             }
         val openPendingIntent =
             PendingIntent.getActivity(
                 this,
-                file.name.hashCode(),
+                ROUTES_NOTIFICATION_ID,
                 openIntent,
                 PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
             )
         val savePendingIntent =
             PendingIntent.getActivity(
                 this,
-                file.name.hashCode() + SAVE_REQUEST_OFFSET,
+                ROUTES_NOTIFICATION_ID + SAVE_REQUEST_OFFSET,
                 buildWatchGpxSaveIntent(
                     context = this,
                     fileUri = fileUri,
-                    fileName = file.name,
+                    fileName = gpxFileName(displayName),
                 ),
                 PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
             )
@@ -206,14 +195,14 @@ class WatchGpxExportListenerService : WearableListenerService() {
         val sharePendingIntent =
             PendingIntent.getActivity(
                 this,
-                file.name.hashCode() + SHARE_REQUEST_OFFSET,
+                ROUTES_NOTIFICATION_ID + SHARE_REQUEST_OFFSET,
                 Intent.createChooser(shareIntent, getString(R.string.gpx_notification_share_gpx)),
                 PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
             )
         val description =
             buildWatchGpxSuccessNotificationDescription(
-                fileName = file.name,
-                downloadsUriAvailable = downloadsUri != null,
+                fileName = displayName,
+                addedRoutes = addedRoutes,
                 text = this::getString,
             )
 
@@ -224,13 +213,16 @@ class WatchGpxExportListenerService : WearableListenerService() {
                 .setContentTitle(getString(R.string.gpx_notification_gpx_ready))
                 .setContentText(description.contentText)
                 .setStyle(NotificationCompat.BigTextStyle().bigText(description.expandedText))
+                .setContentIntent(openPendingIntent)
                 .setAutoCancel(true)
+                .setOnlyAlertOnce(true)
+                .addExtras(Bundle().apply { putInt(EXTRA_ADDED_ROUTES, addedRoutes) })
                 .addAction(android.R.drawable.ic_menu_save, description.saveCopyActionLabel, savePendingIntent)
                 .addAction(android.R.drawable.ic_menu_view, description.openActionLabel, openPendingIntent)
                 .addAction(android.R.drawable.ic_menu_share, description.shareActionLabel, sharePendingIntent)
                 .build()
 
-        runCatching { notificationManager.notify(file.name.hashCode(), notification) }
+        runCatching { notificationManager.notify(ROUTES_NOTIFICATION_ID, notification) }
     }
 
     private fun showError(message: String) {
@@ -311,6 +303,8 @@ class WatchGpxExportListenerService : WearableListenerService() {
         const val ERROR_NOTIFICATION_ID = 57_230
         const val SHARE_REQUEST_OFFSET = 10_000
         const val SAVE_REQUEST_OFFSET = 20_000
+        const val ROUTES_NOTIFICATION_ID = 57_231
+        const val EXTRA_ADDED_ROUTES = "com.glancemap.glancemapcompanionapp.extra.WATCH_ROUTES_ADDED"
     }
 }
 
@@ -326,6 +320,21 @@ private fun buildWatchGpxSaveIntent(
         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
     }
+
+/** Counts routes still listed in the open notification, so one notification covers a batch. */
+private fun NotificationManager.watchRoutesAdded(
+    id: Int,
+    key: String,
+): Int =
+    runCatching {
+        activeNotifications
+            .firstOrNull { it.id == id }
+            ?.notification
+            ?.extras
+            ?.getInt(key)
+    }.getOrNull() ?: 0
+
+private fun gpxFileName(name: String): String = if (name.endsWith(".gpx", ignoreCase = true)) name else "$name.gpx"
 
 private fun File.shareUri(context: Context): Uri =
     FileProvider.getUriForFile(

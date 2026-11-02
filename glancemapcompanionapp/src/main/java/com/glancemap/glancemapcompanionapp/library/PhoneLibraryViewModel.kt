@@ -10,6 +10,7 @@ import com.glancemap.glancemapcompanionapp.map.PhoneOfflineMapStore
 import com.glancemap.glancemapcompanionapp.map.PhoneOfflineStorage
 import com.glancemap.glancemapcompanionapp.map.PhoneOfflineStorageLocation
 import com.glancemap.glancemapcompanionapp.map.phoneOfflineBundleHealth
+import com.glancemap.glancemapcompanionapp.routes.RouteLibraryUpdates
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -43,6 +44,7 @@ internal class PhoneLibraryViewModel(
     private val organizationMutex = Mutex()
 
     init {
+        viewModelScope.launch { RouteLibraryUpdates.changes.collect { refresh() } }
         viewModelScope.launch {
             organizationMutex.withLock {
                 try {

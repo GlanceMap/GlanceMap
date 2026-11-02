@@ -155,6 +155,38 @@ class RouteLibraryRepository(
             )
         }
 
+    /** Watch files carry their checksum, so a re-sent recording or route is never stored twice. */
+    internal suspend fun importWatchRoute(
+        file: File,
+        sha256: String,
+    ): WatchRouteImport =
+        mutex
+            .withLock {
+                val stored = readIndex().routes.filter { File(routesDirectory, it.storedFileName).isFile }
+                stored.findWatchRoute(sha256)?.let { return@withLock WatchRouteImport.AlreadyInLibrary(it) }
+                routesDirectory.mkdirs()
+                val destination = File(routesDirectory, "${UUID.randomUUID()}.gpx")
+                file.copyTo(destination)
+                val parsed =
+                    runCatching {
+                        destination.inputStream().use(CompanionGpxRouteParser::parse)
+                    }.getOrElse { error ->
+                        destination.delete()
+                        val message =
+                            error.message ?: appContext.getString(R.string.route_library_could_not_read_the_gpx_route)
+                        throw IllegalArgumentException(message, error)
+                    }
+                val state =
+                    saveParsedRouteLocked(
+                        destination = destination,
+                        parsed = parsed,
+                        displayName = file.name,
+                        isRecording = parsed.activityStatistics != null,
+                        sourceExportId = watchRouteExportId(sha256),
+                    )
+                WatchRouteImport.Added(state.routes.first { it.id == destination.nameWithoutExtension })
+            }.also { RouteLibraryUpdates.notifyChanged() }
+
     suspend fun saveGeneratedRoute(output: BRouterRouteOutput): RouteLibraryUiState = saveGpxRoute(output.title, output.gpxBytes)
 
     /** Shared GPX import/index flow for generated and discovered routes. */

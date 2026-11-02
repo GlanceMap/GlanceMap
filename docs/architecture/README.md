@@ -26,6 +26,9 @@ This folder documents the watch-side architecture and major runtime flows.
 - `phone-offline-map-data.md`
   - Per-map elevation and routing downloads and their recovery path.
 
+- `watch-route-sync.md`
+  - Phone side of watch GPX transfers: checksum-based import into Routes.
+
 ## Location Contributor Docs
 
 - `docs/location/ARCHITECTURE.md`
