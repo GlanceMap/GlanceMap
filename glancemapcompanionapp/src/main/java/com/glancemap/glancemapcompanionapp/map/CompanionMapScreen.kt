@@ -2813,11 +2813,17 @@ internal fun CompanionMapScreen(
     val activeOnlineBaseProviderId = selectedOnlineProvider.id.takeIf { activeOnlineBaseSource != null }
     val activeOnlineComparisonSource = onlineComparison?.source
     val activeOnlineComparisonProviderId = onlineComparisonProvider?.id
+    val terrainAttributionLabel = stringResource(R.string.map_tools_maps_terrain_attribution)
     val mapProviderAttributions =
         listOfNotNull(
             selectedOnlineProvider.takeIf { activeOnlineBaseSource != null },
             onlineComparisonProvider.takeIf { terrainPreview == null && onlineComparisonActive },
-        ).map(OnlineMapProvider::attribution)
+        ).map(OnlineMapProvider::attribution) +
+            listOfNotNull(
+                terrainPreview
+                    ?.takeIf { it.onlineProvider != null && it.onlineElevationEnabled }
+                    ?.let { "<a href=\"$PHONE_ONLINE_DEM_ATTRIBUTION_URL\">$terrainAttributionLabel</a>" },
+            )
     val activeOnlineBase = PhoneMapLibreActiveSource(activeOnlineBaseSource, activeOnlineBaseProviderId)
     val activeOnlineComparison =
         PhoneMapLibreActiveSource(activeOnlineComparisonSource, activeOnlineComparisonProviderId)

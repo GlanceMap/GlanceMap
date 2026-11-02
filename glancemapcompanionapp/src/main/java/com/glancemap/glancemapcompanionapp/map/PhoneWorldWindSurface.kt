@@ -7,7 +7,6 @@ import android.view.MotionEvent
 import android.view.View
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -33,7 +32,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.semantics.progressBarRangeInfo
@@ -256,7 +254,6 @@ internal fun phoneWorldWindSurface(
     callbacks: PhoneWorldWindCallbacks,
 ) {
     val context = LocalContext.current
-    val uriHandler = LocalUriHandler.current
     val lifecycle by LocalLifecycleOwner.current.lifecycle.currentStateAsState()
     val latestCallbacks by rememberUpdatedState(callbacks)
     val activity = remember(preview) { PhoneWorldWindActivity() }
@@ -457,33 +454,6 @@ internal fun phoneWorldWindSurface(
             prepared?.elevationStatus?.let { Text(stringResource(it), color = MaterialTheme.colorScheme.error) }
             if (onlineUnavailable) {
                 Text(stringResource(R.string.phone_worldwind_online_dem_unavailable), color = MaterialTheme.colorScheme.error)
-            }
-        }
-        preview.onlineProvider?.takeIf { prepared != null }?.let { provider ->
-            Column(
-                modifier =
-                    Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(bottom = 72.dp)
-                        .background(Color.White.copy(alpha = 0.8f))
-                        .padding(4.dp),
-            ) {
-                Text(
-                    text =
-                        android.text.Html
-                            .fromHtml(provider.attribution, android.text.Html.FROM_HTML_MODE_LEGACY)
-                            .toString(),
-                    color = Color.Black,
-                    style = MaterialTheme.typography.labelSmall,
-                )
-                if (prepared?.online != null) {
-                    Text(
-                        text = stringResource(R.string.map_tools_maps_terrain_attribution),
-                        modifier = Modifier.clickable { uriHandler.openUri(PHONE_ONLINE_DEM_ATTRIBUTION_URL) },
-                        color = Color.Black,
-                        style = MaterialTheme.typography.labelSmall,
-                    )
-                }
             }
         }
     }
