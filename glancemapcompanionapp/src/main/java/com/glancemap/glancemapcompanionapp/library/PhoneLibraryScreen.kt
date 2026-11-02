@@ -217,6 +217,7 @@ internal fun LazyListScope.libraryEntries(
                 guidanceEnabled = !actions.guidanceActive && actions.guidanceStartingKey == null,
                 guidanceLoading = actions.guidanceStartingKey == item.key,
                 watchKnown = actions.watchKnown,
+                routeUri = actions.routeUri,
                 onStartGuidance = actions.onStartGuidance,
                 onSendGpx = actions.onSendGpx,
                 onPreviewGpx = actions.onPreviewGpx,

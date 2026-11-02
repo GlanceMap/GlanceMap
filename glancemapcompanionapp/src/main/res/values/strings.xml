@@ -4,6 +4,10 @@
     <string name="library_more_options">Library options</string>
     <string name="library_filter_planned">Planned</string>
     <string name="library_on_map">On map</string>
+    <string name="library_share_route">Share</string>
+    <string name="library_export_route">Export GPX</string>
+    <string name="library_route_exported">GPX exported</string>
+    <string name="library_route_export_failed">Couldn\'t export this GPX. Try again.</string>
     <string name="library_from_watch_summary">From watch · %1$s</string>
     <string name="library_map_using_now">Using now</string>
     <string name="library_map_mode_offline">Offline</string>

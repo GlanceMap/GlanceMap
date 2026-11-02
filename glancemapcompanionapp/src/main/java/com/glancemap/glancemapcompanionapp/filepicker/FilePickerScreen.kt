@@ -935,6 +935,11 @@ internal fun FilePickerScreen(
                                                 onDeleteRoute = routeLibraryViewModel::deleteRoute,
                                                 watchKnown =
                                                     rememberPhoneWatchKnown(uiState.availableWatches.isNotEmpty()),
+                                                routeUri = { id ->
+                                                    withContext(Dispatchers.IO) {
+                                                        runCatching { routeLibraryViewModel.contentUriFor(id) }.getOrNull()
+                                                    }
+                                                },
                                                 guidanceStartingKey = guidanceStartingKey,
                                                 guidanceActive =
                                                     phoneGuidanceState.session != null ||

@@ -43,6 +43,7 @@ internal fun libraryGpxOverflowMenu(
     var expanded by remember { mutableStateOf(false) }
     var dialog by remember(row.item.key) { mutableStateOf(GpxRowDialog.NONE) }
     val item = row.item
+    val sharing = rememberLibraryRouteSharing(row)
 
     IconButton(
         onClick = { expanded = true },
@@ -52,14 +53,7 @@ internal fun libraryGpxOverflowMenu(
         Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.hike_route_details))
     }
     DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-        DropdownMenuItem(
-            text = { Text(stringResource(R.string.hike_route_details)) },
-            onClick = {
-                expanded = false
-                onDetails()
-            },
-            modifier = Modifier.testTag("library-gpx-details"),
-        )
+        libraryRouteShareItems(sharing, onDetails) { expanded = false }
         if (item is PhoneLibraryItem.Gpx && row.watchKnown) {
             DropdownMenuItem(
                 text = { Text(stringResource(R.string.transfer_title_send_to_watch)) },
