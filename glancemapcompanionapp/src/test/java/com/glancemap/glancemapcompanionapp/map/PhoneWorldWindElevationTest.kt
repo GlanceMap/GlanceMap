@@ -73,6 +73,24 @@ class PhoneWorldWindElevationTest {
             assertEquals(Short.MIN_VALUE, result[7])
         }
 
+    @Test
+    fun coarseGridSkipsLocalFilesAndUsesOnlineElevation() =
+        runBlocking {
+            val root = folder.newFolder()
+            val local = PhoneElevationRepository(listOf(root))
+            var accesses = 0
+            local.onTileAccess = { _, _ -> accesses++ }
+            val wide = PhoneWorldWindBounds(0.1, 0.1, 2.9, 2.9)
+            val offline = phoneWorldWindElevationGrid(wide, 8 to 8, local, null, 0)
+            assertEquals(0, accesses)
+            assertTrue(offline!!.all { it == Short.MIN_VALUE })
+            val online = PhoneOnlineElevationRepository(fetchTile = { PhoneTerrariumTile(IntArray(4) { 0xff801400.toInt() }, 2) })
+            assertTrue(phoneWorldWindElevationGrid(wide, 8 to 8, local, online, 5)!!.all { it == 20.toShort() })
+            assertEquals(0, accesses)
+            phoneWorldWindElevationGrid(PhoneWorldWindBounds(0.1, 0.1, 1.9, 1.9), 8 to 8, local, null, 0)
+            assertEquals(PHONE_WORLDWIND_MAX_LOCAL_DEM_TILES, accesses)
+        }
+
     private val gridBounds = PhoneWorldWindBounds(0.1, 0.1, 0.9, 0.9)
 
     @Test

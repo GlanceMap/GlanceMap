@@ -110,6 +110,9 @@ internal class PhoneWorldWindElevation(
     }
 }
 
+/** Matches the four-tile online limit; a grid spanning more 1° HGT files leaves local elevation out. */
+internal const val PHONE_WORLDWIND_MAX_LOCAL_DEM_TILES = 4
+
 /** Match the DEM resolution to the grid while limiting each grid to four online tiles. */
 internal fun phoneWorldWindOnlineDemZoom(
     south: Double,
@@ -185,7 +188,9 @@ internal suspend fun phoneWorldWindElevationGrid(
             groups.getOrPut(tile) { mutableListOf() }.add(y * width + x)
         }
     }
-    val sampler = PhoneWorldWindGridSampler(latitudes, longitudes, heights, local, online, zoom)
+    // Coarse grids would decode or probe one full HGT file per degree, so they use online elevation or stay empty.
+    val tileLocal = local.takeIf { groups.size <= PHONE_WORLDWIND_MAX_LOCAL_DEM_TILES }
+    val sampler = PhoneWorldWindGridSampler(latitudes, longitudes, heights, tileLocal, online, zoom)
     val complete = groups.all { (tileId, indices) -> sampler.fill(tileId, indices) }
     return heights.takeIf { complete }
 }

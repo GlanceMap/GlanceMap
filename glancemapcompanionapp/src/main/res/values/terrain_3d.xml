@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="phone_worldwind_loading">Loading 3D terrain</string>
+    <string name="phone_worldwind_loading_percent">Loading 3D terrain, %1$d%%</string>
+    <string name="phone_worldwind_loaded">3D terrain loaded</string>
 </resources>

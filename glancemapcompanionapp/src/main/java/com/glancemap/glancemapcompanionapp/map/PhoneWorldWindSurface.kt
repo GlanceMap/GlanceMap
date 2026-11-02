@@ -5,6 +5,7 @@ import android.os.SystemClock
 import android.util.Log
 import android.view.MotionEvent
 import android.view.View
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -34,6 +35,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.semantics.progressBarRangeInfo
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
@@ -256,7 +260,7 @@ internal fun phoneWorldWindSurface(
     val lifecycle by LocalLifecycleOwner.current.lifecycle.currentStateAsState()
     val latestCallbacks by rememberUpdatedState(callbacks)
     val activity = remember(preview) { PhoneWorldWindActivity() }
-    val processing by activity.isActive.collectAsState()
+    val progress by activity.progress.collectAsState()
     var gestureActive by remember(preview) { mutableStateOf(false) }
     var viewportReady by remember(preview) { mutableStateOf(false) }
     var onlineUnavailable by remember(preview) { mutableStateOf(false) }
@@ -293,7 +297,12 @@ internal fun phoneWorldWindSurface(
                                 }
                             if (map == null) {
                                 onlineImagery =
-                                    PhoneWorldWindOnlineImagery(context.applicationContext, requireNotNull(provider), diagnostics)
+                                    PhoneWorldWindOnlineImagery(
+                                        context.applicationContext,
+                                        requireNotNull(provider),
+                                        diagnostics,
+                                        activity,
+                                    )
                             }
                             val imagery = offlineImagery?.layer ?: requireNotNull(onlineImagery).layer
                             val bounds = offlineImagery?.bounds ?: BoundingBox(-85.0, -180.0, 85.0, 180.0)
@@ -429,9 +438,11 @@ internal fun phoneWorldWindSurface(
                 }
             })
         }
-        val initializing = prepared == null || !firstFrame
-        if (!failure && (initializing || processing)) {
-            phoneWorldWindActivityIndicator(Modifier.align(Alignment.CenterStart).padding(start = 16.dp))
+        if (!failure) {
+            phoneWorldWindProgressIndicator(
+                fraction = if (prepared == null || !firstFrame) 0f else progress.fraction,
+                modifier = Modifier.align(Alignment.CenterStart).padding(start = 16.dp),
+            )
         }
         Column(Modifier.align(Alignment.TopCenter).padding(top = 120.dp)) {
             if (failure) {
@@ -478,16 +489,37 @@ internal fun phoneWorldWindSurface(
     }
 }
 
+/** Fills as requested imagery and elevation arrive and stays full once nothing is left to load. */
 @Composable
-private fun phoneWorldWindActivityIndicator(modifier: Modifier = Modifier) {
+private fun phoneWorldWindProgressIndicator(
+    fraction: Float,
+    modifier: Modifier = Modifier,
+) {
+    val shown by animateFloatAsState(fraction, label = "terrainProgress")
+    val description =
+        if (fraction >= 1f) {
+            stringResource(R.string.phone_worldwind_loaded)
+        } else {
+            stringResource(R.string.phone_worldwind_loading_percent, (fraction * 100).toInt())
+        }
     Box(
-        modifier = modifier.size(36.dp).background(Color.Black.copy(alpha = 0.7f), CircleShape),
+        modifier =
+            modifier
+                .size(36.dp)
+                .background(Color.Black.copy(alpha = 0.7f), CircleShape)
+                .semantics { progressBarRangeInfo = ProgressBarRangeInfo(fraction, 0f..1f) },
         contentAlignment = Alignment.Center,
     ) {
-        CircularProgressIndicator(Modifier.size(32.dp), color = Color(0xFFFFB300), strokeWidth = 2.dp)
+        CircularProgressIndicator(
+            progress = { shown },
+            modifier = Modifier.size(32.dp),
+            color = Color(0xFFFFB300),
+            strokeWidth = 2.dp,
+            trackColor = Color.White.copy(alpha = 0.25f),
+        )
         Icon(
             Icons.Filled.Landscape,
-            contentDescription = stringResource(R.string.phone_worldwind_loading),
+            contentDescription = description,
             modifier = Modifier.size(18.dp),
             tint = Color(0xFFFFB300),
         )

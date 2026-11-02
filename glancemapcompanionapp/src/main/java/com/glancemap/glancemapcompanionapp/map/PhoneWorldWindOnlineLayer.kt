@@ -65,6 +65,7 @@ internal class PhoneWorldWindOnlineImagery(
     context: Context,
     provider: OnlineMapProvider,
     diagnostics: PhoneWorldWindDiagnostics,
+    activity: PhoneWorldWindActivity,
 ) : Closeable {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val retry = phoneWorldWindTileRetry(scope, diagnostics)
@@ -83,8 +84,10 @@ internal class PhoneWorldWindOnlineImagery(
                     ): ImageSource? {
                         val url = phoneWorldWindOnlineTileUrl(provider, PhoneWorldWindTile(z, x, y)) ?: return null
                         return phoneWorldWindRetryingImage(retry) { onTransientFailure ->
-                            withContext(Dispatchers.IO) {
-                                phoneWorldWindDownloadTile(context, url, diagnostics, onTransientFailure)
+                            activity.track {
+                                withContext(Dispatchers.IO) {
+                                    phoneWorldWindDownloadTile(context, url, diagnostics, onTransientFailure)
+                                }
                             }
                         }
                     }

@@ -4,23 +4,32 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
+/** Requests finished out of those started since the view last had nothing left to load. */
+internal data class PhoneWorldWindProgress(
+    val finished: Int = 0,
+    val started: Int = 0,
+) {
+    val complete: Boolean get() = finished >= started
+
+    val fraction: Float get() = if (started == 0) 1f else finished.toFloat() / started
+}
+
 internal class PhoneWorldWindActivity {
     private val lock = Any()
-    private var pending = 0
-    private val active = MutableStateFlow(false)
-    val isActive: StateFlow<Boolean> = active.asStateFlow()
+    private val state = MutableStateFlow(PhoneWorldWindProgress())
+    val progress: StateFlow<PhoneWorldWindProgress> = state.asStateFlow()
 
     suspend fun <T> track(work: suspend () -> T): T {
         synchronized(lock) {
-            pending++
-            active.value = true
+            val current = state.value
+            // A new batch starts once everything earlier has loaded, so the ring stays full until then.
+            state.value = if (current.complete) PhoneWorldWindProgress(0, 1) else current.copy(started = current.started + 1)
         }
         try {
             return work()
         } finally {
             synchronized(lock) {
-                pending--
-                active.value = pending > 0
+                state.value = state.value.let { it.copy(finished = it.finished + 1) }
             }
         }
     }
