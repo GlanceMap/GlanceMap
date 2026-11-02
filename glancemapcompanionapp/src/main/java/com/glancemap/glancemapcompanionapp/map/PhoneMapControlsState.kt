@@ -20,7 +20,7 @@ internal fun PhoneMapCameraCommand.requestedZoom(
     viewportWidthPx: Double,
     tileSizePx: Double,
 ): Double =
-    target?.let {
+    target?.takeUnless { keepZoom }?.let {
         phoneMapZoomForScale(it.latitude, settings.zoomDefaultScaleMeters, viewportWidthPx, tileSizePx) ?: currentZoom
     } ?: (currentZoom + zoomDelta)
 
@@ -103,6 +103,8 @@ internal data class PhoneMapCameraCommand(
     val id: Long,
     val zoomDelta: Int = 0,
     val target: PhoneMapCoordinate? = null,
+    /** Startup centering moves only the camera target, like the watch `MapView.setCenter`. */
+    val keepZoom: Boolean = false,
 ) {
     init {
         require(id > 0L)

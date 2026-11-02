@@ -336,6 +336,13 @@ internal data class PhoneMapUiState(
             nextCameraCommandId = nextCameraCommandId + 1L,
         )
 
+    /** Startup centering keeps follow mode and zoom; only user camera actions detach. */
+    fun requestStartCenter(target: PhoneMapCoordinate): PhoneMapUiState =
+        copy(
+            cameraCommand = PhoneMapCameraCommand(id = nextCameraCommandId, target = target, keepZoom = true),
+            nextCameraCommandId = nextCameraCommandId + 1L,
+        )
+
     fun consumeCommand(id: Long): PhoneMapUiState = if (cameraCommand?.id == id) copy(cameraCommand = null) else this
 
     fun toggleMapOrientation(): PhoneMapUiState = copy(mapMode = mapMode.toggleOrientation())

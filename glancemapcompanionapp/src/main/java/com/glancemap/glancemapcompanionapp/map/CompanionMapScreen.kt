@@ -895,9 +895,34 @@ internal fun CompanionMapScreen(
         val initialState = PhoneMapUiState(toolPanel = mapSettingsPreferences.loadToolPanelSizing())
         mutableStateOf(initialTool?.let { initialState.openToolPage(it, initialToolSettings) } ?: initialState)
     }
-    val mapLocation =
+    val rawMapLocation =
         (recordingState.latestLocation.takeIf { recordingState.locationUpdatesActive } ?: mapSourceLocation)
             .takeUnless { mapUiState.mapMode.isOffline }
+    // Like the watch, a stale fix from before this map session neither places the marker nor moves the camera.
+    var hasAcceptedMapLocation by remember { mutableStateOf(false) }
+    val mapLocation =
+        rawMapLocation.takeIf {
+            shouldShowPhoneMapStartupLocation(
+                location = it,
+                hasAcceptedLocation = hasAcceptedMapLocation,
+                nowElapsedRealtimeMillis = SystemClock.elapsedRealtime(),
+                expectedIntervalMillis =
+                    recordingState.locationIntervalMillis
+                        ?: if (mapUiState.mapMode.follow == PhoneMapFollowMode.FOLLOW_LOCATION) {
+                            PhoneMapLocationRequestProfile.FOLLOW.expectedIntervalMillis
+                        } else {
+                            PhoneMapLocationRequestProfile.BROWSE.expectedIntervalMillis
+                        },
+            )
+        }
+    LaunchedEffect(mapLocation != null, mapUiState.mapMode.isOffline) {
+        // GPS-off stops tracking, so the next session must start from a fresh fix again.
+        if (mapUiState.mapMode.isOffline) {
+            hasAcceptedMapLocation = false
+        } else if (mapLocation != null) {
+            hasAcceptedMapLocation = true
+        }
+    }
     val settingsPage = initialToolSettings || initialTool == MapTool.SETTINGS
     var handledInitialTool by rememberSaveable { mutableStateOf(initialTool) }
     var handledToolSettings by rememberSaveable { mutableStateOf(initialToolSettings) }
@@ -1077,7 +1102,12 @@ internal fun CompanionMapScreen(
     var shouldCenterOnInitialLocation by rememberSaveable { mutableStateOf(true) }
     val completedBundle =
         (bundleUiState.download as? PhoneOfflineBundleDownloadState.Completed)?.bundle
-    var hasFittedGpxOverlay by rememberSaveable { mutableStateOf(false) }
+    // The watch never fits GPX tracks at startup; startup GPX centering is owned by phoneMapStartCenterMemory.
+    var hasFittedGpxOverlay by rememberSaveable { mutableStateOf(true) }
+    var startupFallbackReady by rememberSaveable { mutableStateOf(false) }
+    var startCenterMemory by rememberSaveable(stateSaver = phoneMapStartCenterMemorySaver) {
+        mutableStateOf(PhoneMapStartCenterMemory())
+    }
     var selectedPoi by remember { mutableStateOf<PhoneMapPoi?>(null) }
     var poiCreationActive by rememberSaveable { mutableStateOf(false) }
     var poiCreationPoint by remember { mutableStateOf<PhoneMapCoordinate?>(null) }
@@ -1394,9 +1424,9 @@ internal fun CompanionMapScreen(
     LaunchedEffect(compassSettings) {
         compassSensorSource.configure(compassSettings)
     }
-    LaunchedEffect(mapSettings.northReferenceMode, mapLocation) {
+    LaunchedEffect(mapSettings.northReferenceMode, rawMapLocation) {
         compassSensorSource.setNorthReferenceMode(mapSettings.northReferenceMode)
-        compassSensorSource.updateLocation(mapLocation)
+        compassSensorSource.updateLocation(rawMapLocation)
     }
     LaunchedEffect(elevationStore) {
         hasElevationData = withContext(Dispatchers.IO) { elevationStore.hasData() }
@@ -1720,12 +1750,66 @@ internal fun CompanionMapScreen(
             }
         }
 
-    LaunchedEffect(hasLocationPermission, mapLocation) {
-        if (!shouldCenterOnInitialLocation || !hasLocationPermission || mapLocation == null) {
+    // A usable fix cancels the startup fallback; follow mode itself then centers the camera.
+    LaunchedEffect(mapLocation != null) {
+        if (mapLocation != null) shouldCenterOnInitialLocation = false
+    }
+    // Detaching the camera (pan, rotate, search) cancels it like the watch onUserPanStarted.
+    LaunchedEffect(mapUiState.mapMode.follow) {
+        if (mapUiState.mapMode.follow == PhoneMapFollowMode.FREE) shouldCenterOnInitialLocation = false
+    }
+    val startupFallbackWaiting =
+        shouldWaitForPhoneMapStartupFallback(
+            startupCenteringPending = shouldCenterOnInitialLocation,
+            gpsOff = mapUiState.mapMode.isOffline,
+            hasLocation = mapLocation != null,
+        )
+    LaunchedEffect(startupFallbackWaiting) {
+        if (!startupFallbackWaiting || startupFallbackReady) return@LaunchedEffect
+        delay(PHONE_MAP_STARTUP_FALLBACK_GRACE_MS)
+        startupFallbackReady = true
+    }
+    val startCenterOfflineMapIdentity = (mapUiState.source as? PhoneMapSource.Offline)?.map?.selectionIdentity
+    var startCenterObservedOfflineMap by rememberSaveable { mutableStateOf(startCenterOfflineMapIdentity) }
+    LaunchedEffect(startCenterOfflineMapIdentity) {
+        if (startCenterOfflineMapIdentity != startCenterObservedOfflineMap) {
+            startCenterObservedOfflineMap = startCenterOfflineMapIdentity
+            startCenterMemory = startCenterMemory.onOfflineMapChanged(startCenterOfflineMapIdentity)
+        }
+    }
+    val startCenterContextKey =
+        remember(startCenterOfflineMapIdentity, savedGpxGeometry) {
+            phoneMapStartCenterContextKey(startCenterOfflineMapIdentity, savedGpxGeometry.map(PhoneMapGpxOverlay::id))
+        }
+    val startCenterGpxCenter = remember(savedGpxGeometry) { phoneMapGpxStartCenter(savedGpxGeometry) }
+    val onlineStartupCentering = startupFallbackReady && startupFallbackWaiting
+    val startCenteringEnabled = mapUiState.mapMode.isOffline || onlineStartupCentering
+    LaunchedEffect(startCenteringEnabled, onlineStartupCentering, startCenterContextKey, startCenterGpxCenter) {
+        if (!startCenteringEnabled) {
+            startCenterMemory = startCenterMemory.reset()
             return@LaunchedEffect
         }
-        shouldCenterOnInitialLocation = false
-        mapUiState = mapUiState.copy(mapMode = mapUiState.mapMode.recenterOnLocation())
+        val (memory, action) =
+            startCenterMemory.resolve(
+                contextKey = startCenterContextKey,
+                hasGpx = savedGpxGeometry.isNotEmpty(),
+                gpxCenter = startCenterGpxCenter,
+                deferWhenNoCenter = !mapUiState.mapMode.isOffline,
+            )
+        startCenterMemory = memory
+        if (action is PhoneMapStartCenterAction.Center) {
+            mapUiState = mapUiState.requestStartCenter(action.target)
+            if (onlineStartupCentering) shouldCenterOnInitialLocation = false
+        }
+    }
+    LaunchedEffect(mapUiState.mapMode.isOffline, startCenterContextKey, mapCamera.latitude, mapCamera.longitude) {
+        if (mapUiState.mapMode.isOffline) {
+            startCenterMemory =
+                startCenterMemory.saveViewport(
+                    contextKey = startCenterContextKey,
+                    center = PhoneMapCoordinate(mapCamera.latitude, mapCamera.longitude),
+                )
+        }
     }
 
     LaunchedEffect(offlineMapStore, mapFolderSource) {
@@ -1894,7 +1978,7 @@ internal fun CompanionMapScreen(
         if (!mapActive) return@LaunchedEffect
         if (!mapSettings.autoRecenterEnabled || !mapUiState.mapMode.canAutoRecenter) return@LaunchedEffect
         delay(mapSettings.autoRecenterDelaySeconds * 1_000L)
-        if (mapUiState.mapMode.canAutoRecenter && mapLocation != null) {
+        if (mapUiState.mapMode.canAutoRecenter) {
             mapUiState = mapUiState.copy(mapMode = mapUiState.mapMode.recenterOnLocation())
             mapLocationMessage = null
         }
