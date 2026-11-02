@@ -194,6 +194,17 @@ class MapToolPanelStateTest {
     }
 
     @Test
+    fun threeDSettingsOpenOnlyFromMapsAndReturnToTheSettingsRoot() {
+        val root = MapToolPanelState().select(MapTool.MAPS).showFeatureSettings()
+        val terrain3d = root.showFeatureSettingsSection(MapToolFeatureSettingsSection.MAP_3D)
+
+        assertEquals(MapToolFeatureSettingsSection.MAP_3D, terrain3d.featureSettingsSection)
+        assertEquals(root, terrain3d.back())
+        val poiSettings = MapToolPanelState().select(MapTool.POI).showFeatureSettings()
+        assertEquals(poiSettings, poiSettings.showFeatureSettingsSection(MapToolFeatureSettingsSection.MAP_3D))
+    }
+
+    @Test
     fun featureSettingsRejectSectionsBelongingToAnotherTool() {
         val poiSettings = MapToolPanelState().select(MapTool.POI).showFeatureSettings()
 

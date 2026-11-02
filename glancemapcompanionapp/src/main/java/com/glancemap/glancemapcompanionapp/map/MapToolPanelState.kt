@@ -36,6 +36,7 @@ internal enum class MapToolFeatureSettingsSection {
     MAP_THEME,
     MAP_DISPLAY,
     MAP_TERRAIN,
+    MAP_3D,
     MAP_COMPASS,
     MAP_ZOOM,
     GPX_SOURCES,
@@ -154,6 +155,7 @@ internal data class MapToolPanelState(
                 MapToolFeatureSettingsSection.MAP_THEME,
                 MapToolFeatureSettingsSection.MAP_DISPLAY,
                 MapToolFeatureSettingsSection.MAP_TERRAIN,
+                MapToolFeatureSettingsSection.MAP_3D,
                 MapToolFeatureSettingsSection.MAP_COMPASS,
                 MapToolFeatureSettingsSection.MAP_ZOOM,
             )

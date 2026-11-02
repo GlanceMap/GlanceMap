@@ -2,4 +2,11 @@
 <resources>
     <string name="phone_worldwind_loading_percent">Loading 3D terrain, %1$d%%</string>
     <string name="phone_worldwind_loaded">3D terrain loaded</string>
+    <string name="map_tools_maps_settings_3d_title">3D view</string>
+    <string name="map_tools_maps_settings_3d_summary">Elevation colours and relief shading</string>
+    <string name="map_tools_maps_3d_elevation_colors">Elevation colours</string>
+    <string name="map_tools_maps_3d_elevation_colors_summary">Tints the 3D terrain from blue for the lowest visible ground to red for the highest.</string>
+    <string name="map_tools_maps_3d_relief_strength">Relief strength: %1$d%%</string>
+    <string name="map_tools_maps_3d_relief_strength_off">Relief strength: off</string>
+    <string name="map_tools_maps_3d_relief_strength_summary">Shades slopes from the north-west to make the terrain shape easier to read.</string>
 </resources>

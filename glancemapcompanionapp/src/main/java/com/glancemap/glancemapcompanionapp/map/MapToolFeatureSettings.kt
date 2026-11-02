@@ -65,6 +65,7 @@ internal fun MapToolFeatureSettingsSection.titleResource(tool: MapTool): Int =
         MapToolFeatureSettingsSection.MAP_THEME -> R.string.map_tools_maps_settings_theme_heading
         MapToolFeatureSettingsSection.MAP_DISPLAY -> R.string.map_tools_maps_settings_display_title
         MapToolFeatureSettingsSection.MAP_TERRAIN -> R.string.map_tools_maps_settings_terrain_title
+        MapToolFeatureSettingsSection.MAP_3D -> R.string.map_tools_maps_settings_3d_title
         MapToolFeatureSettingsSection.MAP_COMPASS -> R.string.map_tools_maps_compass_heading
         MapToolFeatureSettingsSection.MAP_ZOOM -> R.string.map_tools_maps_settings_zoom_heading
         MapToolFeatureSettingsSection.GPX_SOURCES -> R.string.map_tools_gpx_settings_sources_heading
@@ -164,6 +165,13 @@ private fun mapToolsMapsSettingsPanel(
                     },
                 )
                 mapToolsSettingsSection(
+                    title = stringResource(R.string.map_tools_maps_settings_3d_title),
+                    summary = stringResource(R.string.map_tools_maps_settings_3d_summary),
+                    onClick = {
+                        actions.onOpenSettingsSection(MapToolFeatureSettingsSection.MAP_3D)
+                    },
+                )
+                mapToolsSettingsSection(
                     title = stringResource(R.string.map_tools_maps_compass_heading),
                     summary = stringResource(R.string.map_tools_maps_compass_summary),
                     onClick = {
@@ -188,6 +196,8 @@ private fun mapToolsMapsSettingsPanel(
                 mapToolsMapDisplaySettings(state.settings, actions.onSettingsChanged)
             }
         MapToolFeatureSettingsSection.MAP_TERRAIN -> mapToolsMapsTerrainSettings(state, actions)
+        MapToolFeatureSettingsSection.MAP_3D ->
+            mapToolPanelColumn { mapToolsMap3dSettings(state.settings, actions.onSettingsChanged) }
         MapToolFeatureSettingsSection.MAP_COMPASS ->
             mapToolPanelColumn { mapToolsCompassSettings(state, actions) }
         MapToolFeatureSettingsSection.MAP_ZOOM ->
@@ -708,6 +718,38 @@ private fun mapToolsMapTerrainSettings(
             },
         onSelect = { mode -> onSettingsChanged(settings.copy(northReferenceMode = mode)) },
     )
+}
+
+/** Both 3D options start off; the view updates as they change, without reloading terrain. */
+@Composable
+private fun mapToolsMap3dSettings(
+    settings: PhoneMapSettings,
+    onSettingsChanged: (PhoneMapSettings) -> Unit,
+) {
+    mapToolsMapsToggle(
+        label = stringResource(R.string.map_tools_maps_3d_elevation_colors),
+        checked = settings.terrain3dElevationColorsEnabled,
+        onCheckedChange = { enabled -> onSettingsChanged(settings.copy(terrain3dElevationColorsEnabled = enabled)) },
+    )
+    Text(stringResource(R.string.map_tools_maps_3d_elevation_colors_summary))
+    val strength = settings.terrain3dReliefStrengthPercent
+    Text(
+        if (strength == 0) {
+            stringResource(R.string.map_tools_maps_3d_relief_strength_off)
+        } else {
+            stringResource(R.string.map_tools_maps_3d_relief_strength, strength)
+        },
+    )
+    Slider(
+        value = strength.toFloat(),
+        onValueChange = { value ->
+            onSettingsChanged(settings.copy(terrain3dReliefStrengthPercent = value.roundToInt()))
+        },
+        valueRange = 0f..100f,
+        steps = 9,
+        modifier = Modifier.fillMaxWidth(),
+    )
+    Text(stringResource(R.string.map_tools_maps_3d_relief_strength_summary))
 }
 
 @Composable

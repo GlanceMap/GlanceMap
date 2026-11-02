@@ -88,6 +88,17 @@ class PhoneMapSettingsTest {
     }
 
     @Test
+    fun terrain3dOptionsStartOffAndReliefStrengthIsClamped() {
+        val settings = PhoneMapSettings()
+        assertFalse(settings.terrain3dElevationColorsEnabled)
+        assertEquals(0, settings.terrain3dReliefStrengthPercent)
+        val tooStrong = PhoneMapSettings(terrain3dReliefStrengthPercent = 150).normalized()
+        val negative = PhoneMapSettings(terrain3dReliefStrengthPercent = -5).normalized()
+        assertEquals(100, tooStrong.terrain3dReliefStrengthPercent)
+        assertEquals(0, negative.terrain3dReliefStrengthPercent)
+    }
+
+    @Test
     fun normalizationClampsSlopeReliefOpacity() {
         val normalized = PhoneMapSettings(reliefOverlayOpacityPercent = 150).normalized()
 

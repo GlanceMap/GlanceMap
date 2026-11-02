@@ -123,6 +123,8 @@ internal data class PhoneMapSettings(
     val nightModeEnabled: Boolean = false,
     val northReferenceMode: PhoneMapNorthReferenceMode = PhoneMapNorthReferenceMode.TRUE,
     val demSource: PhoneOfflineDemSource = PhoneOfflineDemSource.DEFAULT,
+    val terrain3dElevationColorsEnabled: Boolean = false,
+    val terrain3dReliefStrengthPercent: Int = 0,
     val hiddenOnlineSources: Set<PhoneOnlineMapSource> = emptySet(),
     val onlineSourceOrder: List<PhoneOnlineMapSource> = PhoneOnlineMapSource.entries,
 ) {
@@ -143,6 +145,7 @@ internal data class PhoneMapSettings(
             zoomMinScaleMeters = orderedFarthestOut,
             zoomMaxScaleMeters = orderedClosestIn,
             reliefOverlayOpacityPercent = reliefOverlayOpacityPercent.coerceIn(0, 100),
+            terrain3dReliefStrengthPercent = terrain3dReliefStrengthPercent.coerceIn(0, 100),
             onlineSourceOrder = normalizePhoneOnlineSourceOrder(onlineSourceOrder),
         )
     }
@@ -253,6 +256,8 @@ internal class PhoneMapSettingsPreferences(
                     PhoneOfflineDemSource.fromId(
                         preferences.getString(KEY_DEM_SOURCE, PhoneOfflineDemSource.DEFAULT.id),
                     ),
+                terrain3dElevationColorsEnabled = preferences.getBoolean(KEY_TERRAIN_3D_ELEVATION_COLORS, false),
+                terrain3dReliefStrengthPercent = preferences.getInt(KEY_TERRAIN_3D_RELIEF_STRENGTH, 0),
                 hiddenOnlineSources =
                     PhoneOnlineMapSource.entries.filterTo(mutableSetOf()) { source ->
                         source.name in hiddenOnlineSourceNames
@@ -295,6 +300,8 @@ internal class PhoneMapSettingsPreferences(
             .putBoolean(KEY_NIGHT_MODE_ENABLED, normalized.nightModeEnabled)
             .putString(KEY_NORTH_REFERENCE_MODE, normalized.northReferenceMode.storageValue)
             .putString(KEY_DEM_SOURCE, normalized.demSource.id)
+            .putBoolean(KEY_TERRAIN_3D_ELEVATION_COLORS, normalized.terrain3dElevationColorsEnabled)
+            .putInt(KEY_TERRAIN_3D_RELIEF_STRENGTH, normalized.terrain3dReliefStrengthPercent)
             .putStringSet(KEY_HIDDEN_ONLINE_SOURCES, normalized.hiddenOnlineSources.map { it.name }.toSet())
             .putString(KEY_ONLINE_SOURCE_ORDER, normalized.onlineSourceOrder.joinToString(",") { it.name })
             .apply()
@@ -346,6 +353,8 @@ internal class PhoneMapSettingsPreferences(
         const val KEY_NIGHT_MODE_ENABLED = "night_mode_enabled"
         const val KEY_NORTH_REFERENCE_MODE = "north_reference_mode"
         const val KEY_DEM_SOURCE = "dem_source"
+        const val KEY_TERRAIN_3D_ELEVATION_COLORS = "terrain_3d_elevation_colors"
+        const val KEY_TERRAIN_3D_RELIEF_STRENGTH = "terrain_3d_relief_strength_percent"
         const val KEY_HIDDEN_ONLINE_SOURCES = "hidden_online_sources"
         const val KEY_ONLINE_SOURCE_ORDER = "online_source_order"
     }

@@ -104,6 +104,8 @@ private class PhoneWorldWindWindow(
     val currentLookAt = LookAt()
     val tracksLayer = RenderableLayer("Tracks")
     val positionLayer = RenderableLayer("Position")
+    var reliefLayer: PhoneWorldWindReliefLayer? = null
+    val elevationColorsLayer = phoneWorldWindElevationColorsLayer()
 
     @Volatile private var touching = false
     private var anchoredGround = 0.0
@@ -390,6 +392,7 @@ internal fun phoneWorldWindSurface(
         }
     }
     phoneWorldWindOverlayEffects(window, live)
+    phoneWorldWind3dSettingsEffects(window, live.mapSettings, offline = preview.map != null)
     phoneWorldWindCameraEffects(window, viewportReady, gestureActive, live) { commandId ->
         latestCallbacks.onCommandHandled(commandId)
     }
@@ -416,8 +419,10 @@ internal fun phoneWorldWindSurface(
                             .clearCoverages()
                         (view.engine.tessellator as? BasicTessellator)?.detailControl = 12.0
                         view.engine.globe.verticalExaggeration = phoneWorldWindExaggeration(1.0)
-                        phoneWorldWindEnableRelief(view, offline = preview.map != null)
+                        view.reliefLayer = phoneWorldWindEnableRelief(view)
                         view.engine.layers.addLayer(prepared.imagery)
+                        view.engine.layers.addLayer(phoneWorldWindSkyLayer())
+                        view.engine.layers.addLayer(view.elevationColorsLayer)
                         prepared.elevation?.let {
                             view.engine.globe.elevationModel
                                 .addCoverage(it.coverage)
@@ -501,6 +506,26 @@ private fun phoneWorldWindProgressIndicator(
 }
 
 @Composable
+private fun phoneWorldWind3dSettingsEffects(
+    window: PhoneWorldWindWindow?,
+    settings: PhoneMapSettings,
+    offline: Boolean,
+) {
+    LaunchedEffect(window, settings.terrain3dReliefStrengthPercent, offline) {
+        val relief = window?.reliefLayer ?: return@LaunchedEffect
+        val strength = phoneWorldWindReliefStrength(settings.terrain3dReliefStrengthPercent, offline)
+        relief.terrainLambert = strength
+        relief.isEnabled = strength > 0f
+        WorldWind.requestRedraw()
+    }
+    LaunchedEffect(window, settings.terrain3dElevationColorsEnabled) {
+        val view = window ?: return@LaunchedEffect
+        view.elevationColorsLayer.isEnabled = settings.terrain3dElevationColorsEnabled
+        WorldWind.requestRedraw()
+    }
+}
+
+@Composable
 private fun phoneWorldWindOverlayEffects(
     window: PhoneWorldWindWindow?,
     live: PhoneWorldWindLiveState,
@@ -569,10 +594,7 @@ private fun phoneWorldWindSetCamera(
     WorldWind.requestRedraw()
 }
 
-private fun phoneWorldWindEnableRelief(
-    window: WorldWindow,
-    offline: Boolean,
-) {
+private fun phoneWorldWindEnableRelief(window: WorldWindow): PhoneWorldWindReliefLayer {
     window.engine.lightDirectionProvider = { context ->
         phoneWorldWindReliefDirection(
             context.camera.position.latitude.inRadians,
@@ -580,7 +602,8 @@ private fun phoneWorldWindEnableRelief(
             context.lightDirection,
         )
     }
-    window.engine.layers.addLayer(
-        PhoneWorldWindReliefLayer(if (offline) 0.28f else 0.12f),
-    )
+    // Strength comes from the 3D settings, which start with relief off.
+    return PhoneWorldWindReliefLayer(0f)
+        .apply { isEnabled = false }
+        .also(window.engine.layers::addLayer)
 }
