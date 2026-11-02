@@ -45,13 +45,19 @@ private data class PersistedPhoneDebugCapture(
     val sections: Map<String, String>,
 )
 
-/** Explicit user diagnostics survive a process termination without collecting background telemetry. */
+/**
+ * Explicit user diagnostics survive a process termination without collecting background telemetry. A capture
+ * whose process ended while it was active resumes when the app reopens within [RESUME_WINDOW_MS] of its last
+ * write, so Android reclaiming a backgrounded app does not silently end it; an older one is kept as interrupted.
+ */
 @Suppress("TooManyFunctions") // Lifecycle, journal, and export ownership deliberately stay together.
 object PhoneDebugCapture {
     private const val MAX_LINES = 4000
     private const val STORAGE_VERSION = 1
     private const val CURRENT_FILE = "phone-debug-capture-current.bin"
     private const val PREVIOUS_FILE = "phone-debug-capture-previous.bin"
+    private const val RESUME_WINDOW_MS = 60L * 60 * 1000
+    private const val RESUMED_EVENT = "event=resumed_after_process_end"
 
     private val enabled = AtomicBoolean(false)
     private val lock = Any()
@@ -246,7 +252,7 @@ object PhoneDebugCapture {
             appendLine("SessionId: ${capture.state.sessionId}")
             appendLine("ActiveAtExport: ${capture.state.active}")
             appendLine("Interrupted: ${capture.state.interrupted}")
-            if (capture.state.interrupted) appendLine("Termination: process ended before capture stopped")
+            if (capture.state.interrupted) appendLine(phoneDebugTermination(capture.lines.any { RESUMED_EVENT in it }))
             appendLine("StartedAt: ${formatTime(capture.state.startedAtMs)}")
             appendLine("EndedAt: ${formatTime(capture.state.endedAtMs)}")
             appendLine("BufferedLines: ${capture.state.bufferedLines}")
@@ -269,22 +275,27 @@ object PhoneDebugCapture {
         }
     }
 
-    private fun restoreCurrentCapture() {
+    private fun restoreCurrentCapture(nowMs: Long = System.currentTimeMillis()) {
         val restored = readCapture(CURRENT_FILE) ?: return
+        val lastWriteMs = directory?.let { File(it, CURRENT_FILE).lastModified() } ?: 0L
+        val gapMs = nowMs - lastWriteMs
+        val resume = restored.state.active && gapMs in 0L..RESUME_WINDOW_MS
         val recovered =
-            if (restored.state.active) {
-                restored
-                    .copy(state = restored.state.copy(active = false, interrupted = true, endedAtMs = null))
-                    .also { writeCapture(CURRENT_FILE, it) }
-            } else {
-                restored
+            when {
+                resume -> restored.copy(state = restored.state.copy(interrupted = true))
+                restored.state.active ->
+                    restored
+                        .copy(state = restored.state.copy(active = false, interrupted = true, endedAtMs = null))
+                        .also { writeCapture(CURRENT_FILE, it) }
+                else -> restored
             }
         lines.clear()
         lines.addAll(recovered.lines.takeLast(MAX_LINES))
         sections.clear()
         sections.putAll(recovered.sections)
-        enabled.set(false)
+        enabled.set(resume)
         stateFlow.value = recovered.state.copy(bufferedLines = lines.size)
+        if (resume) log("PhoneDebugCapture", "$RESUMED_EVENT gap_ms=$gapMs")
     }
 
     private fun captureFor(slot: PhoneDebugCaptureSlot): PersistedPhoneDebugCapture? =
@@ -437,8 +448,9 @@ object PhoneDebugCapture {
         }
     }
 
+    /** Defaults to a reload long after the last write, as when the app reopens after the resume window. */
     @VisibleForTesting
-    internal fun reloadFromStorageForTest() {
+    internal fun reloadFromStorageForTest(nowMs: Long = System.currentTimeMillis() + 2 * RESUME_WINDOW_MS) {
         flushForTest()
         synchronized(lock) {
             lines.clear()
@@ -446,7 +458,7 @@ object PhoneDebugCapture {
             previous = null
             enabled.set(false)
             stateFlow.value = PhoneDebugCaptureState()
-            restoreCurrentCapture()
+            restoreCurrentCapture(nowMs)
             previous = readCapture(PREVIOUS_FILE)
             stateFlow.value = stateFlow.value.copy(hasPreviousCapture = previous != null)
         }
@@ -470,6 +482,13 @@ object PhoneDebugCapture {
     @Suppress("MaxLineLength") // One direct timestamp conversion is clearer than another formatting helper.
     private fun formatTime(epochMs: Long?): String = epochMs?.let { tsFormatter.format(Instant.ofEpochMilli(it)) } ?: "na"
 }
+
+internal fun phoneDebugTermination(resumed: Boolean): String =
+    if (resumed) {
+        "Termination: process ended during capture; logging resumed when the app reopened"
+    } else {
+        "Termination: process ended before capture stopped"
+    }
 
 internal fun phoneDebugReportSections(
     capturedSections: Map<String, String>,

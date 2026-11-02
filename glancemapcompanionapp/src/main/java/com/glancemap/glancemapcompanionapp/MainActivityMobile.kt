@@ -109,6 +109,12 @@ class MainActivityMobile : ComponentActivity() {
         }
     }
 
+    override fun onStop() {
+        super.onStop()
+        // A backgrounded app can be ended without warning, so write the running summaries while it still can.
+        PhoneDebugCapture.checkpoint()
+    }
+
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(PhoneAppLanguageSettings.applyLegacy(this, newConfig))
     }

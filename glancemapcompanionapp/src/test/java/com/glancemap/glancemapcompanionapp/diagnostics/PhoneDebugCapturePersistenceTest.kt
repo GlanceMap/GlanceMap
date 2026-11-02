@@ -93,6 +93,49 @@ class PhoneDebugCapturePersistenceTest {
     }
 
     @Test
+    fun captureEndedWithItsProcessResumesWhenTheAppReopensSoonAfter() {
+        PhoneDebugCapture.start()
+        val sessionId = PhoneDebugCapture.state.value.sessionId
+        PhoneDebugCapture.log("PhoneWorldWind", "event=surface_pause")
+        PhoneDebugCapture.flushForTest()
+
+        PhoneDebugCapture.reloadFromStorageForTest(nowMs = System.currentTimeMillis() + 60_000L)
+
+        assertTrue(PhoneDebugCapture.isActive())
+        assertTrue(PhoneDebugCapture.state.value.interrupted)
+        assertEquals(sessionId, PhoneDebugCapture.activeSessionId())
+        assertTrue(PhoneDebugCapture.log("PhoneWorldWind", "event=surface_start"))
+        val logs = PhoneDebugCapture.snapshot()
+        assertEquals(3, logs.size)
+        assertTrue(logs[1].contains("event=resumed_after_process_end gap_ms="))
+        assertTrue(logs[2].contains("event=surface_start"))
+
+        PhoneDebugCapture.stop()
+        PhoneDebugCapture.reloadFromStorageForTest()
+        assertFalse(PhoneDebugCapture.isActive())
+        assertEquals(3, PhoneDebugCapture.snapshot().size)
+    }
+
+    @Test
+    fun captureEndedLongAgoStaysInterruptedAndIsNotResumed() {
+        PhoneDebugCapture.start()
+        PhoneDebugCapture.log("Map", "before")
+        PhoneDebugCapture.flushForTest()
+
+        PhoneDebugCapture.reloadFromStorageForTest(nowMs = System.currentTimeMillis() + 3 * 60 * 60 * 1000L)
+
+        assertFalse(PhoneDebugCapture.isActive())
+        assertFalse(PhoneDebugCapture.log("Map", "after"))
+        assertEquals(1, PhoneDebugCapture.snapshot().size)
+    }
+
+    @Test
+    fun reportExplainsWhetherLoggingResumedAfterTheProcessEnded() {
+        assertEquals("Termination: process ended before capture stopped", phoneDebugTermination(resumed = false))
+        assertTrue(phoneDebugTermination(resumed = true).contains("logging resumed"))
+    }
+
+    @Test
     fun startingAnotherCaptureRotatesTheOldCaptureAndSharingDoesNotDeleteIt() {
         PhoneDebugCapture.start()
         PhoneDebugCapture.log("Map", "first")
