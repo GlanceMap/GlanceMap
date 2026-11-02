@@ -71,7 +71,7 @@ class PhoneRecordingMenuUiTest {
     }
 
     @Test
-    fun activeMenuShowsFourColumnsAndLongRecordingStopOffersDiscard() {
+    fun activeMenuShowsFourColumnsAndStopRecapConfirmsDiscard() {
         val now = System.currentTimeMillis()
         val points =
             listOf(
@@ -128,8 +128,14 @@ class PhoneRecordingMenuUiTest {
         }
         assertTrue(metrics.chunked(4).zipWithNext().all { (top, bottom) -> top.first().bottom <= bottom.first().top })
         compose.onNodeWithContentDescription(label(R.string.phone_rec_stop)).performClick()
-        compose.onNodeWithText(label(R.string.phone_rec_stop_message)).assertIsDisplayed()
-        compose.onNodeWithText(label(R.string.phone_rec_discard)).assertIsDisplayed()
+        compose.onNodeWithText(label(R.string.phone_rec_stop_title)).assertIsDisplayed()
+        compose.onNodeWithTag("activity-statistics").assertExists()
+        compose.onNodeWithText(label(R.string.phone_rec_save)).assertIsEnabled()
+        compose.onNodeWithText(label(R.string.phone_rec_discard)).performClick()
+        compose.onNodeWithText(label(R.string.phone_rec_discard_confirm_title)).assertIsDisplayed()
+        compose.onNodeWithText(label(R.string.common_action_cancel)).performClick()
+        compose.onNodeWithText(label(R.string.phone_rec_discard_confirm_title)).assertDoesNotExist()
+        compose.onNodeWithText(label(R.string.phone_rec_stop_title)).assertIsDisplayed()
     }
 
     @Test

@@ -59,5 +59,11 @@ session step counter separately for presentation, tagged with the recording
 generation and restored from the draft; it does not change sensor acquisition,
 recording filters or saved statistics. Unsupported sensor metrics remain unknown.
 
+Stopping a phone recording follows the watch flow: Stop pauses an actively
+recording session and shows the recap with Save, Discard and Cancel. Save writes
+the GPX to the Library (disabled until two points exist), Discard asks for
+confirmation before deleting the session, and Cancel resumes only a session that
+the prompt itself paused. No second recap is shown after saving.
+
 References: [GPX 1.1](https://www.topografix.com/GPX/1/1/),
 [Garmin extension schema](https://www8.garmin.com/xmlschemas/TrackPointExtensionv1.xsd).

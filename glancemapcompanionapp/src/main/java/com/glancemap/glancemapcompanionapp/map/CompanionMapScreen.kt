@@ -5096,14 +5096,6 @@ internal fun CompanionMapScreen(
         },
     )
 
-    recordingState.completedRecording?.takeIf { mapActive }?.let { completed ->
-        phoneRecordingCompletedDialog(
-            recording = completed,
-            isMetric = generalSettings.isMetric,
-            onDismiss = { PhoneRecordingSessionStore.dismissCompletedRecording(completed.id) },
-        )
-    }
-
     selectedGpxAnalysis?.takeIf { isVisible }?.let { item ->
         PhoneMapGpxAnalysisDialog(
             item = item,

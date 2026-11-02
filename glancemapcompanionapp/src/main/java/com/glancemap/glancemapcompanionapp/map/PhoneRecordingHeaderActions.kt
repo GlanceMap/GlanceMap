@@ -31,7 +31,7 @@ internal fun phoneRecordingHeaderActions(
         rememberPhoneRecordingStartAction { granted ->
             if (!granted) Toast.makeText(context, R.string.phone_rec_status_permission, Toast.LENGTH_LONG).show()
         }
-    val stop = phoneRecordingStopAction(recording, alwaysConfirm = true)
+    val stop = phoneRecordingStopAction(recording)
     val active = recording.session.isActive
     val paused = recording.session.phase == RecordingSessionPhase.PAUSED
     val busy = recording.session.phase == RecordingSessionPhase.SAVING

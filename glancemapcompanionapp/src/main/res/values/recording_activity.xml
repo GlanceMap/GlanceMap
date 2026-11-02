@@ -3,8 +3,6 @@
     <string name="activity_details_title">Activity details</string>
     <string name="activity_preview_map">Preview on map</string>
     <string name="activity_short_recording">Short recording</string>
-    <string name="activity_recording_saved">Recording saved</string>
-    <string name="activity_saved_to_library">Saved to Library</string>
     <string name="activity_details_loading">Loading activity details…</string>
     <string name="activity_details_failed">Could not read the recorded statistics. Check that the GPX file is still available.</string>
     <string name="activity_distance">Distance</string>

@@ -116,7 +116,7 @@ class PhoneRecordingQuickControlLayoutTest {
         )
         showMap(onRecenter = {})
         compose.onNodeWithContentDescription(label(R.string.phone_rec_stop)).assertIsEnabled().performClick()
-        compose.onNodeWithText(label(R.string.phone_rec_short_stop_title)).assertIsDisplayed()
+        compose.onNodeWithText(label(R.string.activity_short_recording)).assertIsDisplayed()
         compose.onNodeWithText(label(R.string.phone_rec_no_track_stop_message)).assertIsDisplayed()
         compose.onNodeWithText(label(R.string.phone_rec_save)).assertIsNotEnabled()
         compose.onNodeWithText(label(R.string.phone_rec_discard)).assertIsEnabled()
@@ -128,9 +128,9 @@ class PhoneRecordingQuickControlLayoutTest {
             PhoneRecordingSessionStore.publish(PhoneRecordingSessionStore.state.value.copy(points = points))
         }
         compose.onNodeWithText(label(R.string.phone_rec_save)).assertIsEnabled()
-        compose.onNodeWithText(label(R.string.phone_rec_short_stop_message)).assertIsDisplayed()
-        compose.onNodeWithText(label(R.string.phone_rec_keep_recording)).performClick()
-        compose.onNodeWithText(label(R.string.phone_rec_short_stop_title)).assertDoesNotExist()
+        compose.onNodeWithText(label(R.string.phone_rec_no_track_stop_message)).assertDoesNotExist()
+        compose.onNodeWithText(label(R.string.common_action_cancel)).performClick()
+        compose.onNodeWithTag("recording-stop-recap").assertDoesNotExist()
         compose.runOnIdle {
             assertEquals(RecordingSessionPhase.RECORDING, PhoneRecordingSessionStore.state.value.session.phase)
         }
