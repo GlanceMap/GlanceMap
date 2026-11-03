@@ -32,6 +32,32 @@ class PhoneWorldWindCameraTest {
         assertEquals(-4_000.0, phoneWorldWindEasedGround(-3_995.0, -4_000.0), 0.0)
     }
 
+    @Test
+    fun tiltKeepsTheChosenAngleUpCloseAndFlattensWhenFarOut() {
+        assertEquals(55.0, phoneWorldWindTiltForRange(55.0, 2_000.0), 0.0)
+        assertEquals(55.0, phoneWorldWindTiltForRange(55.0, 50_000.0), 0.0)
+        assertEquals(30.0, phoneWorldWindTiltForRange(55.0, 316_228.0), 0.01)
+        assertEquals(0.0, phoneWorldWindTiltForRange(55.0, 2_000_000.0), 0.0)
+        assertEquals(0.0, phoneWorldWindTiltForRange(55.0, 20_000_000.0), 0.0)
+        assertEquals(20.0, phoneWorldWindTiltForRange(20.0, 316_228.0), 0.0)
+        assertEquals(60.0, phoneWorldWindTiltForRange(80.0, 1_000.0), 0.0)
+    }
+
+    @Test
+    fun globeFitRangeShowsTheWholeGlobeAcrossTheNarrowerSide() {
+        val radius = 6_378_137.0
+        val portrait = phoneWorldWindGlobeFitRange(45.0, 720, 1280, radius)
+        val landscape = phoneWorldWindGlobeFitRange(45.0, 1280, 720, radius)
+        val halfWidth = kotlin.math.atan(kotlin.math.tan(Math.toRadians(22.5)) * 720 / 1280)
+        assertTrue(kotlin.math.asin(radius / (portrait + radius)) < halfWidth)
+        assertTrue(kotlin.math.asin(radius / (landscape + radius)) < Math.toRadians(22.5))
+        // WorldWind's own cap, twice the vertical fit, still crops a portrait screen.
+        val worldWindCap = 2 * (radius / kotlin.math.sin(Math.toRadians(22.5)) - radius)
+        assertTrue(portrait > worldWindCap)
+        assertTrue(landscape < portrait)
+        assertEquals(Double.MAX_VALUE, phoneWorldWindGlobeFitRange(45.0, 0, 1280, radius), 0.0)
+    }
+
     private fun camera() =
         LookAt().set(
             46.0.degrees,

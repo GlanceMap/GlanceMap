@@ -3,6 +3,7 @@ package com.glancemap.glancemapcompanionapp.map
 import android.os.SystemClock
 import com.glancemap.glancemapcompanionapp.diagnostics.PhoneDebugCapture
 import java.io.Closeable
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
@@ -72,6 +73,8 @@ internal class PhoneWorldWindDiagnostics : Closeable {
     val elevationRequests = AtomicInteger()
     val elevationMillis = AtomicLong()
     val elevationIncomplete = AtomicInteger()
+    val onlineTiles = AtomicInteger()
+    private val onlineZoomsSeen = ConcurrentHashMap.newKeySet<Int>()
     val demUnpacks = AtomicInteger()
     val demUnpackMillis = AtomicLong()
     val onlineDemPreloads = AtomicInteger()
@@ -162,6 +165,15 @@ internal class PhoneWorldWindDiagnostics : Closeable {
         if (ms >= PHONE_WORLDWIND_SLOW_PRELOAD_MS) event("online_dem_preload", "tiles=$tiles ms=$ms")
     }
 
+    /** The first imagery download at each zoom level shows whether world-scale levels load at all. */
+    fun onlineTileLoaded(
+        zoom: Int,
+        ms: Long,
+    ) {
+        onlineTiles.incrementAndGet()
+        if (onlineZoomsSeen.add(zoom)) event("online_tile_first", "z=$zoom ms=$ms")
+    }
+
     /**
      * A gap longer than a second means no frame was drawn for the movement, for example while a panel
      * covered the map, so it is counted as dropped instead of skewing the frame times.
@@ -250,7 +262,8 @@ internal class PhoneWorldWindDiagnostics : Closeable {
                 "dem_unpacks=${demUnpacks.get()} dem_unpack_ms=${demUnpackMillis.get()} " +
                 "online_dem_preloads=${onlineDemPreloads.get()} " +
                 "online_dem_preload_ms=${onlineDemPreloadMillis.get()} " +
-                "tile_failures=${tileFailures.get()} tile_retries_scheduled=${tileRetriesScheduled.get()} " +
+                "online_tiles=${onlineTiles.get()} tile_failures=${tileFailures.get()} " +
+                "tile_retries_scheduled=${tileRetriesScheduled.get()} " +
                 "tile_retries_fired=${tileRetriesFired.get()} camera_reanchors=${cameraReanchors.get()} " +
                 "${renderFrames.summary("render")} ${glFrames.summary("gl")} " +
                 "${moveToFrame.summary("move_to_frame")} move_to_frame_dropped=${moveToFrameDropped.get()} " +

@@ -5,8 +5,48 @@ import earth.worldwind.geom.AltitudeMode
 import earth.worldwind.geom.Angle.Companion.degrees
 import earth.worldwind.geom.LookAt
 import kotlin.math.abs
+import kotlin.math.atan
+import kotlin.math.ln
+import kotlin.math.min
+import kotlin.math.sin
+import kotlin.math.tan
 
 private const val PHONE_WORLDWIND_GROUND_ANCHOR_TOLERANCE_METERS = 5.0
+
+private const val PHONE_WORLDWIND_FULL_TILT_RANGE_METERS = 50_000.0
+private const val PHONE_WORLDWIND_FLAT_RANGE_METERS = 2_000_000.0
+private const val PHONE_WORLDWIND_GLOBE_FIT_MARGIN = 1.08
+
+/**
+ * The chosen tilt applies up to 50 km away, then its limit shrinks with the logarithm of the distance to
+ * straight down at 2,000 km. Tilted from that far, the globe sat at the bottom of the screen.
+ */
+internal fun phoneWorldWindTiltForRange(
+    preferredTilt: Double,
+    range: Double,
+): Double {
+    val distance = ln(range / PHONE_WORLDWIND_FULL_TILT_RANGE_METERS)
+    val span = ln(PHONE_WORLDWIND_FLAT_RANGE_METERS / PHONE_WORLDWIND_FULL_TILT_RANGE_METERS)
+    val progress = (distance / span).coerceIn(0.0, 1.0)
+    return min(phoneWorldWindClampedTilt(preferredTilt), PHONE_WORLDWIND_MAX_TILT_DEGREES * (1.0 - progress))
+}
+
+/**
+ * Looking straight down, the farthest the view can be while the whole globe still fits the narrower
+ * screen side, with a small margin. [verticalFieldOfViewDegrees] is WorldWind's camera field of view.
+ */
+internal fun phoneWorldWindGlobeFitRange(
+    verticalFieldOfViewDegrees: Double,
+    width: Int,
+    height: Int,
+    globeRadius: Double,
+): Double {
+    if (width <= 0 || height <= 0) return Double.MAX_VALUE
+    val halfVertical = Math.toRadians(verticalFieldOfViewDegrees / 2.0)
+    val halfHorizontal = atan(tan(halfVertical) * width / height)
+    val eyeDistance = globeRadius / sin(min(halfVertical, halfHorizontal)) * PHONE_WORLDWIND_GLOBE_FIT_MARGIN
+    return eyeDistance - globeRadius
+}
 
 private const val PHONE_WORLDWIND_GROUND_EASE_FRACTION = 0.25
 private const val PHONE_WORLDWIND_GROUND_SNAP_METERS = 10.0

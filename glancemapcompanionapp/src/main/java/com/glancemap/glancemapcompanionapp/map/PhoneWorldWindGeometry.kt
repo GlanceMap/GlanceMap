@@ -16,7 +16,9 @@ internal const val PHONE_WORLDWIND_DEFAULT_TILT_DEGREES = 55.0
 
 internal fun phoneWorldWindExaggeration(value: Double): Double = value.coerceIn(1.0, 1.25)
 
-internal fun phoneWorldWindClampedTilt(tilt: Double): Double = tilt.coerceIn(0.0, 60.0)
+internal const val PHONE_WORLDWIND_MAX_TILT_DEGREES = 60.0
+
+internal fun phoneWorldWindClampedTilt(tilt: Double): Double = tilt.coerceIn(0.0, PHONE_WORLDWIND_MAX_TILT_DEGREES)
 
 internal data class PhoneWorldWindTile(
     val z: Int,

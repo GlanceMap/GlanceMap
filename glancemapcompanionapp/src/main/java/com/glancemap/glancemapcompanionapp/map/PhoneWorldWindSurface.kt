@@ -83,10 +83,21 @@ private class PhoneWorldWindWindow(
         controller =
             object : BasicWorldWindowController(this) {
                 override fun applyChanges() {
-                    lookAt.tilt = phoneWorldWindClampedTilt(lookAt.tilt.inDegrees).degrees
-                    super.applyChanges()
+                    // Only a tilt gesture changes the chosen tilt; zooming out lowers the shown tilt alone.
+                    if (tilting) preferredTilt = phoneWorldWindClampedTilt(lookAt.tilt.inDegrees)
+                    placeView(lookAt)
+                    requestRedraw()
                     currentLookAt.copy(lookAt)
                     publishCamera(lookAt)
+                }
+
+                override fun handleTilt(recognizer: GestureRecognizer) {
+                    tilting = true
+                    try {
+                        super.handleTilt(recognizer)
+                    } finally {
+                        tilting = false
+                    }
                 }
 
                 override fun handlePan(recognizer: GestureRecognizer) {
@@ -108,6 +119,10 @@ private class PhoneWorldWindWindow(
     val elevationColorsLayer = phoneWorldWindElevationColorsLayer()
 
     @Volatile private var touching = false
+    private var tilting = false
+
+    /** The tilt the user chose; the shown tilt can be lower while zoomed far out. */
+    var preferredTilt = PHONE_WORLDWIND_DEFAULT_TILT_DEGREES
     private var anchoredGround = 0.0
     private var loggedGroundTarget = Double.NaN
     private val easedLookAt = LookAt()
@@ -118,7 +133,7 @@ private class PhoneWorldWindWindow(
     private fun groundElevation(at: LookAt) = engine.globe.getElevation(at.position.latitude, at.position.longitude)
 
     fun applyCamera(lookAt: LookAt) {
-        engine.cameraFromLookAt(lookAt)
+        placeView(lookAt)
         currentLookAt.copy(lookAt)
         anchoredGround = groundElevation(lookAt)
     }
@@ -161,7 +176,7 @@ private class PhoneWorldWindWindow(
         easedLookAt.copy(currentLookAt)
         easedLookAt.altitudeMode = AltitudeMode.ABSOLUTE
         easedLookAt.position.altitude = ground
-        engine.cameraFromLookAt(easedLookAt)
+        engine.cameraFromLookAtBeyondLimit(easedLookAt)
         anchoredGround = ground
     }
 
@@ -179,7 +194,7 @@ private class PhoneWorldWindWindow(
                 zoom = phoneWorldWindZoomForRange(latitude, lookAt.range),
                 bearingDegrees = normalizePhoneHeadingDegrees(lookAt.heading.inDegrees.toFloat()),
             ),
-            lookAt.tilt.inDegrees,
+            preferredTilt,
         )
     }
 
@@ -224,6 +239,35 @@ private class PhoneWorldWindWindow(
             val elapsed = SystemClock.elapsedRealtime() - createdAt
             post { onFirstGlFrame(elapsed) }
         }
+    }
+}
+
+/** Applies the zoom-dependent tilt and the whole-globe zoom limit, then positions the camera. */
+private fun PhoneWorldWindWindow.placeView(lookAt: LookAt) {
+    val fitRange =
+        phoneWorldWindGlobeFitRange(
+            engine.camera.fieldOfView.inDegrees,
+            width,
+            height,
+            engine.globe.equatorialRadius,
+        )
+    lookAt.range = lookAt.range.coerceAtMost(fitRange)
+    lookAt.tilt = phoneWorldWindTiltForRange(preferredTilt, lookAt.range).degrees
+    engine.cameraFromLookAtBeyondLimit(lookAt)
+}
+
+/**
+ * WorldWind caps the range at twice the distance that fits the globe vertically, which still crops it
+ * across a portrait screen. The view is straight down well before that cap, so the camera is raised by
+ * the remainder and [lookAt] keeps the wanted range.
+ */
+private fun WorldWind.cameraFromLookAtBeyondLimit(lookAt: LookAt) {
+    val wanted = lookAt.range
+    cameraFromLookAt(lookAt)
+    val remainder = wanted - lookAt.range
+    if (remainder > 0.0) {
+        camera.position.altitude += remainder
+        lookAt.range = wanted
     }
 }
 
@@ -613,6 +657,7 @@ private fun phoneWorldWindSetCamera(
             phoneWorldWindClampedTilt(tilt).degrees,
             0.0.degrees,
         )
+    window.preferredTilt = phoneWorldWindClampedTilt(tilt)
     window.applyCamera(lookAt)
     WorldWind.requestRedraw()
 }

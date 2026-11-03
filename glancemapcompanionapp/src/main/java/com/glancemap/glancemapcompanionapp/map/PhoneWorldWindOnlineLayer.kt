@@ -85,9 +85,10 @@ internal class PhoneWorldWindOnlineImagery(
                         val url = phoneWorldWindOnlineTileUrl(provider, PhoneWorldWindTile(z, x, y)) ?: return null
                         return phoneWorldWindRetryingImage(retry) { onTransientFailure ->
                             activity.track {
+                                val started = System.nanoTime()
                                 withContext(Dispatchers.IO) {
                                     phoneWorldWindDownloadTile(context, url, diagnostics, onTransientFailure)
-                                }
+                                }?.also { diagnostics.onlineTileLoaded(z, (System.nanoTime() - started) / 1_000_000L) }
                             }
                         }
                     }
