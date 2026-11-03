@@ -52,6 +52,19 @@ Valid heart rates (1–255 bpm) are also written as Garmin TrackPointExtension v
 Activity timing, pause bridging, segmentation, filtering, distance and elevation
 algorithms are unchanged.
 
+`fastestSpeedMps` is the fastest adjacent-segment geometric speed inside one
+continuous segment. Since `fastestSpeedMethod=continuous_segment_geometry_v2`, a
+segment whose geometric speed exceeds `max(endpoint Doppler speed) * 1.3 + 0.5 m/s`
+is treated as position error (sparse fixes cutting corners, 1 Hz jitter) and
+cannot become the maximum; Doppler speed only bounds the value and is never
+reported itself. Segments without endpoint Doppler speed are unguarded, so
+imported files without `speedMps` keep the `v1` result. Readers still accept
+persisted `v1` values.
+
+`recordingDistanceSource` is `WATCH_GPS` or `POD` for watch recordings and
+`PHONE_GPS` for companion recordings, which always measure distance from the
+phone's fused location.
+
 The phone REC menu displays a live view of the recap metrics. Track summaries are
 calculated from recorded points off the UI thread using the same elevation,
 speed and calorie helpers as the saved recap. The service publishes its existing

@@ -22,6 +22,7 @@ import com.glancemap.glancemapwearos.presentation.features.navigate.guidance.Rou
 import com.glancemap.glancemapwearos.presentation.features.navigate.guidance.buildGpxGuidanceSession
 import com.glancemap.glancemapwearos.presentation.features.navigate.guidance.haversineMeters
 import com.glancemap.glancemapwearos.presentation.features.recording.FASTEST_SPEED_METHOD_CONTINUOUS_SEGMENT_GEOMETRY_V1
+import com.glancemap.glancemapwearos.presentation.features.recording.FASTEST_SPEED_METHOD_CONTINUOUS_SEGMENT_GEOMETRY_V2
 import com.glancemap.glancemapwearos.presentation.features.recording.RECORDING_ACCURACY_INTERPRETATION_RAW
 import com.glancemap.glancemapwearos.presentation.features.recording.RecordedTracePoint
 import com.glancemap.glancemapwearos.presentation.features.recording.RecordingElevationProvider
@@ -2023,6 +2024,12 @@ private fun List<TrackPoint>.lastSegmentSpeedMps(): Float? {
     return (distanceMeters / elapsedSeconds).toFloat().takeIf { it.isFinite() && it >= 0f }
 }
 
+private val TRUSTED_PERSISTED_FASTEST_SPEED_METHODS =
+    setOf(
+        FASTEST_SPEED_METHOD_CONTINUOUS_SEGMENT_GEOMETRY_V1,
+        FASTEST_SPEED_METHOD_CONTINUOUS_SEGMENT_GEOMETRY_V2,
+    )
+
 internal fun resolveImportedFastestSpeedMps(
     recomputedSpeedMps: Double?,
     persistedSpeedMps: Double?,
@@ -2030,7 +2037,7 @@ internal fun resolveImportedFastestSpeedMps(
 ): Double? =
     recomputedSpeedMps
         ?: persistedSpeedMps?.takeIf {
-            persistedMethod == FASTEST_SPEED_METHOD_CONTINUOUS_SEGMENT_GEOMETRY_V1 &&
+            persistedMethod in TRUSTED_PERSISTED_FASTEST_SPEED_METHODS &&
                 it.isFinite() &&
                 it > 0.0
         }

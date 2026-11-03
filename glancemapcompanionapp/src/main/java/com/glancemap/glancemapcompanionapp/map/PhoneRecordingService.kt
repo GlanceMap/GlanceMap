@@ -54,7 +54,7 @@ import com.glancemap.trailcore.guidance.resolveTrailGuidanceGpsIntervalMs
 import com.glancemap.trailcore.guidance.shouldAlertForTurn
 import com.glancemap.trailcore.guidance.updateGuidanceOffRouteConfirmation
 import com.glancemap.trailcore.profile.TrailPoint
-import com.glancemap.trailcore.recording.FASTEST_SPEED_METHOD_CONTINUOUS_SEGMENT_GEOMETRY_V1
+import com.glancemap.trailcore.recording.FASTEST_SPEED_METHOD_CONTINUOUS_SEGMENT_GEOMETRY_V2
 import com.glancemap.trailcore.recording.RecordedTraceSummary
 import com.glancemap.trailcore.recording.RecordingAutoResumeFix
 import com.glancemap.trailcore.recording.RecordingAutoResumeRecoveryBuffer
@@ -2340,7 +2340,7 @@ internal class PhoneRecordingService :
             averageSpeedMps =
                 (state.distanceMeters / (activeDurationMillis / 1_000.0)).takeIf { activeDurationMillis > 0L },
             fastestSpeedMps = points.fastestRecordingPointSegmentSpeedMps(),
-            fastestSpeedMethod = FASTEST_SPEED_METHOD_CONTINUOUS_SEGMENT_GEOMETRY_V1,
+            fastestSpeedMethod = FASTEST_SPEED_METHOD_CONTINUOUS_SEGMENT_GEOMETRY_V2,
             gpsAccuracyMeters = points.lastOrNull()?.accuracyMeters,
             pointCount = points.size,
             gpsActiveDurationSeconds = gpsActiveDurationMillis / 1_000.0,
@@ -2379,7 +2379,7 @@ internal class PhoneRecordingService :
             maxPowerWatts = null,
             barometricPressureHpa = elevationDiagnostics.pressure.lastFilteredPressureHpa,
             recordingTrackSmoothingMode = settings.smoothingMode(profile),
-            recordingDistanceSource = RecordingSettings.DEFAULT_RECORDING_DISTANCE_SOURCE,
+            recordingDistanceSource = RecordingSettings.RECORDING_SENSOR_SOURCE_PHONE_GPS,
             recordingTrackFilterVersion = com.glancemap.trailcore.recording.RECORDING_TRACK_FILTER_VERSION,
             recordingElevationFilterVersion = com.glancemap.trailcore.recording.RECORDING_ELEVATION_FILTER_VERSION,
             smartElevationPressurePointCount = elevationDiagnostics.pressureDeltaCount,
