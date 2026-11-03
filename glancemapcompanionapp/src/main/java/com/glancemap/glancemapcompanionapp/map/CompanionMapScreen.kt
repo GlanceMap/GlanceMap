@@ -2875,7 +2875,9 @@ internal fun CompanionMapScreen(
     val offlineMapAttributions by produceState(emptyList<String>(), offlineMapCreditKey) {
         value =
             withContext(Dispatchers.IO) {
-                visibleOfflineMaps.map { map -> phoneOfflineMapAttribution(readPhoneOfflineMapHeaderComment(map)) }
+                visibleOfflineMaps.mapNotNull { map ->
+                    phoneOfflineMapAttribution(readPhoneOfflineMapHeaderComment(map))
+                }
             }
     }
     val mapProviderAttributions =

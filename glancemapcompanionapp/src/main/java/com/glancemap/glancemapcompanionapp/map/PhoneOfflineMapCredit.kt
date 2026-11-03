@@ -9,10 +9,9 @@ private const val FREIZEITKARTE_ATTRIBUTION =
 /**
  * The credit for an offline map, from the text its maker wrote in the Mapsforge header. Known makers
  * get a short linked credit, since their headers are long mixed-language lines; any other text is
- * shown as written. Maps without one get the OpenStreetMap credit, as Mapsforge maps are built from
- * OpenStreetMap data.
+ * shown as written. Maps without one show no credit.
  */
-internal fun phoneOfflineMapAttribution(headerComment: String?): String {
+internal fun phoneOfflineMapAttribution(headerComment: String?): String? {
     val comment = headerComment?.trim().orEmpty()
     return when {
         comment.contains("openandromaps", ignoreCase = true) ->
@@ -20,7 +19,7 @@ internal fun phoneOfflineMapAttribution(headerComment: String?): String {
         comment.contains("FZK project", ignoreCase = true) || comment.contains("freizeitkarte", ignoreCase = true) ->
             "$FREIZEITKARTE_ATTRIBUTION, $OPEN_STREET_MAP_ATTRIBUTION"
         comment.isNotEmpty() -> escapePhoneMapAttributionText(comment)
-        else -> OPEN_STREET_MAP_ATTRIBUTION
+        else -> null
     }
 }
 

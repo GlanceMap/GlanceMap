@@ -1,6 +1,7 @@
 package com.glancemap.glancemapcompanionapp.map
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -16,8 +17,8 @@ class PhoneOfflineMapCreditTest {
             "(c) Map: FZK project (CC-BY-3.0); Map data: OpenStreetMap contributors; " +
                 "Contour data: sonny.4lima.de"
 
-        val oamCredit = phoneOfflineMapAttribution(openAndroMaps)
-        val fzkCredit = phoneOfflineMapAttribution(freizeitkarte)
+        val oamCredit = requireNotNull(phoneOfflineMapAttribution(openAndroMaps))
+        val fzkCredit = requireNotNull(phoneOfflineMapAttribution(freizeitkarte))
 
         assertTrue(oamCredit.contains("OpenAndroMaps") && oamCredit.endsWith(OPEN_STREET_MAP_ATTRIBUTION))
         assertTrue(fzkCredit.contains("Freizeitkarte") && fzkCredit.endsWith(OPEN_STREET_MAP_ATTRIBUTION))
@@ -29,9 +30,9 @@ class PhoneOfflineMapCreditTest {
     }
 
     @Test
-    fun mapsWithoutHeaderCommentAreCreditedToOpenStreetMap() {
-        assertEquals(OPEN_STREET_MAP_ATTRIBUTION, phoneOfflineMapAttribution(null))
-        assertEquals(OPEN_STREET_MAP_ATTRIBUTION, phoneOfflineMapAttribution("   "))
+    fun mapsWithoutHeaderCommentShowNoCredit() {
+        assertNull(phoneOfflineMapAttribution(null))
+        assertNull(phoneOfflineMapAttribution("   "))
     }
 
     @Test
