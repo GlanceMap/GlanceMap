@@ -119,4 +119,34 @@ class PhoneMapSettingsTest {
         assertEquals(false, PhoneMapNorthIndicatorMode.COMPASS_ONLY.isVisibleFor(headingUp, false))
         assertEquals(false, PhoneMapNorthIndicatorMode.NEVER.isVisibleFor(northUp, true))
     }
+
+    @Test
+    fun planIgnV2IsHiddenOnceForSettingsSavedBeforeTheDefault() {
+        val plan = PhoneOnlineMapSource.PLAN_IGN_V2.name
+        val saved = setOf(PhoneOnlineMapSource.CYCLOSM.name)
+
+        val beforeDefault = phoneHiddenOnlineSourceNamesWithPlanIgnV2Default(saved, planIgnV2DefaultApplied = false)
+        val afterDefault = phoneHiddenOnlineSourceNamesWithPlanIgnV2Default(saved, planIgnV2DefaultApplied = true)
+
+        assertEquals(saved + plan, beforeDefault)
+        assertEquals(saved, afterDefault)
+    }
+
+    @Test
+    fun draggedSourceTargetsTheSlotItPassesHalfwayAndStaysInTheList() {
+        assertEquals(2, phoneOnlineSourceDragTargetIndex(2, dragOffsetPx = 49f, rowPitchPx = 100, count = 5))
+        assertEquals(3, phoneOnlineSourceDragTargetIndex(2, dragOffsetPx = 51f, rowPitchPx = 100, count = 5))
+        assertEquals(0, phoneOnlineSourceDragTargetIndex(2, dragOffsetPx = -260f, rowPitchPx = 100, count = 5))
+        assertEquals(4, phoneOnlineSourceDragTargetIndex(2, dragOffsetPx = 900f, rowPitchPx = 100, count = 5))
+        assertEquals(-1, phoneOnlineSourceDragTargetIndex(-1, dragOffsetPx = 300f, rowPitchPx = 100, count = 5))
+    }
+
+    @Test
+    fun rowsBetweenTheDraggedRowAndItsTargetSlideTowardTheOldSlot() {
+        // Dragging row 1 down to slot 3: rows 2 and 3 move up, the others stay.
+        assertEquals(listOf(0, 0, -1, -1, 0), (0..4).map { phoneOnlineSourceDragShift(it, 1, 3) })
+        // Dragging row 3 up to slot 1: rows 1 and 2 move down.
+        assertEquals(listOf(0, 1, 1, 0, 0), (0..4).map { phoneOnlineSourceDragShift(it, 3, 1) })
+        assertEquals(listOf(0, 0, 0), (0..2).map { phoneOnlineSourceDragShift(it, -1, -1) })
+    }
 }

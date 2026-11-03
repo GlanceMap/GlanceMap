@@ -154,6 +154,15 @@ internal data class PhoneMapSettings(
 internal fun normalizePhoneOnlineSourceOrder(order: List<PhoneOnlineMapSource>): List<PhoneOnlineMapSource> =
     (order + PhoneOnlineMapSource.entries).distinct()
 
+/**
+ * Plan IGN v2 is hidden by default. Settings saved before that default hide it once; showing it
+ * again afterwards is kept.
+ */
+internal fun phoneHiddenOnlineSourceNamesWithPlanIgnV2Default(
+    savedNames: Set<String>,
+    planIgnV2DefaultApplied: Boolean,
+): Set<String> = if (planIgnV2DefaultApplied) savedNames else savedNames + PhoneOnlineMapSource.PLAN_IGN_V2.name
+
 internal fun reorderPhoneOnlineSourceOrder(
     order: List<PhoneOnlineMapSource>,
     visibleSources: List<PhoneOnlineMapSource>,
@@ -182,12 +191,17 @@ internal class PhoneMapSettingsPreferences(
 
     @Suppress("LongMethod") // Preference keys are kept in one migration-safe read/write boundary.
     fun load(): PhoneMapSettings {
-        val hiddenOnlineSourceNames =
+        val savedHiddenOnlineSourceNames =
             preferences
                 .getStringSet(
                     KEY_HIDDEN_ONLINE_SOURCES,
                     DEFAULT_HIDDEN_ONLINE_MAP_SOURCES.map { it.name }.toSet(),
                 ).orEmpty()
+        val hiddenOnlineSourceNames =
+            phoneHiddenOnlineSourceNamesWithPlanIgnV2Default(
+                savedHiddenOnlineSourceNames,
+                planIgnV2DefaultApplied = preferences.getBoolean(KEY_PLAN_IGN_V2_HIDDEN_DEFAULT_APPLIED, false),
+            )
         val settings =
             PhoneMapSettings(
                 markerAnchor =
@@ -271,6 +285,7 @@ internal class PhoneMapSettingsPreferences(
                         }.orEmpty(),
             ).normalized()
         save(settings)
+        preferences.edit().putBoolean(KEY_PLAN_IGN_V2_HIDDEN_DEFAULT_APPLIED, true).apply()
         return settings
     }
 
@@ -357,6 +372,7 @@ internal class PhoneMapSettingsPreferences(
         const val KEY_TERRAIN_3D_RELIEF_STRENGTH = "terrain_3d_relief_strength_percent"
         const val KEY_HIDDEN_ONLINE_SOURCES = "hidden_online_sources"
         const val KEY_ONLINE_SOURCE_ORDER = "online_source_order"
+        const val KEY_PLAN_IGN_V2_HIDDEN_DEFAULT_APPLIED = "plan_ign_v2_hidden_default_applied"
     }
 }
 
