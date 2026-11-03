@@ -17,14 +17,6 @@ class PhoneMapStartCenteringTest {
     }
 
     @Test
-    fun startupFallbackWaitsOnlyOnlineWithoutFix() {
-        assertTrue(shouldWaitForPhoneMapStartupFallback(true, gpsOff = false, hasLocation = false))
-        assertFalse(shouldWaitForPhoneMapStartupFallback(true, gpsOff = false, hasLocation = true))
-        assertFalse(shouldWaitForPhoneMapStartupFallback(true, gpsOff = true, hasLocation = false))
-        assertFalse(shouldWaitForPhoneMapStartupFallback(false, gpsOff = false, hasLocation = false))
-    }
-
-    @Test
     fun gpxCenterIsBoundingBoxCenter() {
         assertEquals(PhoneMapCoordinate(45.5, 6.5), phoneMapGpxStartCenter(listOf(track("a"))))
         assertEquals(null, phoneMapGpxStartCenter(emptyList()))
@@ -34,16 +26,6 @@ class PhoneMapStartCenteringTest {
     fun contextKeyIgnoresGpxOrder() {
         assertEquals("gpx=a|b", phoneMapStartCenterContextKey(listOf("b", "a")))
         assertEquals("gpx=", phoneMapStartCenterContextKey(emptyList()))
-    }
-
-    @Test
-    fun onlineStartupWithoutGpxDefersUntilACenterExists() {
-        val (waiting, deferred) =
-            PhoneMapStartCenterMemory().resolve("gpx=", hasGpx = false, gpxCenter = null, deferWhenNoCenter = true)
-        assertEquals(PhoneMapStartCenterAction.Deferred, deferred)
-
-        val (_, centered) = waiting.resolve("gpx=a", hasGpx = true, gpxCenter = GPX_CENTER, deferWhenNoCenter = true)
-        assertEquals(PhoneMapStartCenterAction.Center(GPX_CENTER), centered)
     }
 
     @Test

@@ -14,14 +14,14 @@ The phone policy lives in `PhoneMapStartCentering.kt`; `CompanionMapScreen` owns
   the background, until a newer fix arrives. Turning GPS off ends the session.
 - The compass still uses the raw fix for magnetic declination.
 
-## Online startup without a fix
+## GPS on
 
-- The camera waits 15 seconds (`PHONE_MAP_STARTUP_FALLBACK_GRACE_MS`) for a fix.
-- It then centers on the bounding-box center of the visible GPX tracks, keeping the zoom and
-  follow mode. Without a GPX track it keeps waiting, as the watch does without a center.
-- A usable fix, detaching the camera (pan, rotation, search, discovery, point selection) or
-  GPS-off mode cancels the fallback. A first fix no longer forces follow mode on a camera the user already detached.
-- GPX tracks are not fitted at startup; GPX tracks never take the camera while following a fix.
+- GPX tracks never take the camera with GPS on: turning a track on, or opening the map before
+  the first fix, leaves the camera where it is. Only GPS-off mode centers on GPX tracks.
+- This differs from the watch, which centers on the GPX tracks 15 seconds after startup without a
+  fix. On the phone that made turning a track on center on it only while no fix had arrived yet.
+- A first fix does not force follow mode on a camera the user already detached.
+- GPX tracks are not fitted at startup.
 
 ## GPS-off mode
 

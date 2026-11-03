@@ -1100,12 +1100,10 @@ internal fun CompanionMapScreen(
     var mapLibreRenderErrors by remember { mutableStateOf(PhoneMapLibreRenderErrorState()) }
     var mapLocationMessage by remember { mutableStateOf<Int?>(null) }
     var hasLocationPermission by remember(context) { mutableStateOf(context.hasPhoneMapLocationPermission()) }
-    var shouldCenterOnInitialLocation by rememberSaveable { mutableStateOf(true) }
     val completedBundle =
         (bundleUiState.download as? PhoneOfflineBundleDownloadState.Completed)?.bundle
     // The watch never fits GPX tracks at startup; startup GPX centering is owned by phoneMapStartCenterMemory.
     var hasFittedGpxOverlay by rememberSaveable { mutableStateOf(true) }
-    var startupFallbackReady by rememberSaveable { mutableStateOf(false) }
     var startCenterMemory by rememberSaveable(stateSaver = phoneMapStartCenterMemorySaver) {
         mutableStateOf(PhoneMapStartCenterMemory())
     }
@@ -1752,30 +1750,12 @@ internal fun CompanionMapScreen(
         }
 
     // A usable fix cancels the startup fallback; follow mode itself then centers the camera.
-    LaunchedEffect(mapLocation != null) {
-        if (mapLocation != null) shouldCenterOnInitialLocation = false
-    }
-    // Detaching the camera (pan, rotate, search) cancels it like the watch onUserPanStarted.
-    LaunchedEffect(mapUiState.mapMode.follow) {
-        if (mapUiState.mapMode.follow == PhoneMapFollowMode.FREE) shouldCenterOnInitialLocation = false
-    }
-    val startupFallbackWaiting =
-        shouldWaitForPhoneMapStartupFallback(
-            startupCenteringPending = shouldCenterOnInitialLocation,
-            gpsOff = mapUiState.mapMode.isOffline,
-            hasLocation = mapLocation != null,
-        )
-    LaunchedEffect(startupFallbackWaiting) {
-        if (!startupFallbackWaiting || startupFallbackReady) return@LaunchedEffect
-        delay(PHONE_MAP_STARTUP_FALLBACK_GRACE_MS)
-        startupFallbackReady = true
-    }
     val startCenterContextKey =
         remember(savedGpxGeometry) { phoneMapStartCenterContextKey(savedGpxGeometry.map(PhoneMapGpxOverlay::id)) }
     val startCenterGpxCenter = remember(savedGpxGeometry) { phoneMapGpxStartCenter(savedGpxGeometry) }
-    val onlineStartupCentering = startupFallbackReady && startupFallbackWaiting
-    val startCenteringEnabled = mapUiState.mapMode.isOffline || onlineStartupCentering
-    LaunchedEffect(startCenteringEnabled, onlineStartupCentering, startCenterContextKey, startCenterGpxCenter) {
+    // GPX tracks only take the camera in GPS-off mode; with GPS on the camera stays on the user.
+    val startCenteringEnabled = mapUiState.mapMode.isOffline
+    LaunchedEffect(startCenteringEnabled, startCenterContextKey, startCenterGpxCenter) {
         if (!startCenteringEnabled) {
             startCenterMemory = startCenterMemory.reset()
             return@LaunchedEffect
@@ -1785,12 +1765,10 @@ internal fun CompanionMapScreen(
                 contextKey = startCenterContextKey,
                 hasGpx = savedGpxGeometry.isNotEmpty(),
                 gpxCenter = startCenterGpxCenter,
-                deferWhenNoCenter = !mapUiState.mapMode.isOffline,
             )
         startCenterMemory = memory
         if (action is PhoneMapStartCenterAction.Center) {
             mapUiState = mapUiState.requestStartCenter(action.target)
-            if (onlineStartupCentering) shouldCenterOnInitialLocation = false
         }
     }
     LaunchedEffect(mapUiState.mapMode.isOffline, startCenterContextKey, mapCamera.latitude, mapCamera.longitude) {
@@ -1995,7 +1973,6 @@ internal fun CompanionMapScreen(
 
     val onToggleOfflineMode = {
         val mode = mapUiState.mapMode.toggleOfflineMode()
-        shouldCenterOnInitialLocation = false
         mapUiState = mapUiState.copy(mapMode = mode)
         cameraState = cameraState.copy(camera = cameraState.camera.forMapMode(mode))
         mapLocationMessage = null
@@ -2526,7 +2503,6 @@ internal fun CompanionMapScreen(
         discoverySearchPoint = point
         searchSelection = null
         selectedPoi = null
-        shouldCenterOnInitialLocation = false
         hasFittedGpxOverlay = true
         discoveryViewModel.controller.submit(
             TrailDiscoveryQuery(GeoPoint(point.latitude, point.longitude)),
@@ -2549,7 +2525,6 @@ internal fun CompanionMapScreen(
             mapToolbarHidden = false
             searchOpen = false
             searchViewModel.controller.cancel()
-            shouldCenterOnInitialLocation = false
             hasFittedGpxOverlay = true
             discoveryPickingPoint = false
             discoveryNearMePending = false
@@ -2957,7 +2932,6 @@ internal fun CompanionMapScreen(
         viewport = hikeMapViewport,
         visible = mapUiState.contentVisibility.gpxTracks && hikeTrackEnabled && !settingsPage,
         onPan = { point ->
-            shouldCenterOnInitialLocation = false
             hasFittedGpxOverlay = true
             if (comparisonOwnsFollowAndCommands) onComparisonCameraInput() else onBaseCameraInput()
             mapUiState = mapUiState.requestSearchTarget(point, mapCamera.bearingDegrees)
@@ -3242,7 +3216,6 @@ internal fun CompanionMapScreen(
                             discoveryViewModel.settings.value.enabled,
                         )
                     }
-                    shouldCenterOnInitialLocation = false
                     hasFittedGpxOverlay = true
                     if (terrainPreview == null && comparisonOwnsFollowAndCommands) {
                         onComparisonCameraInput()
@@ -4765,7 +4738,6 @@ internal fun CompanionMapScreen(
                                     poiCreationPoint = point
                                     poiCreationDialogVisible = true
                                     poiCreationError = false
-                                    shouldCenterOnInitialLocation = false
                                     hasFittedGpxOverlay = true
                                     if (comparisonOwnsFollowAndCommands) {
                                         onComparisonCameraInput()
@@ -4839,7 +4811,6 @@ internal fun CompanionMapScreen(
                             val hadPreview = discoveredPreview != null
                             discoveredPreview = trail
                             if (trail != null && trail.geometry.isNotEmpty()) {
-                                shouldCenterOnInitialLocation = false
                                 hasFittedGpxOverlay = false
                                 mapUiState =
                                     mapUiState.copy(

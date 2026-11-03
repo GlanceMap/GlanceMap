@@ -6,12 +6,10 @@ import androidx.compose.runtime.saveable.listSaver
  * Phone port of the watch startup centering (`NavigateStartupCentering` and `OfflineStartCentering`).
  *
  * - A fix older than the marker freshness window is ignored until this map session accepted one.
- * - Online without a fix, the camera waits [PHONE_MAP_STARTUP_FALLBACK_GRACE_MS] before centering on
- *   the active GPX tracks; it never changes follow mode and a fix or user camera action cancels it.
  * - GPS-off mode centers once per GPX context and restores the last GPS-off viewport of that context.
- *   Unlike the watch, changing the base map keeps the current camera.
+ * - Unlike the watch, GPX tracks never take the camera with GPS on, not even before the first fix,
+ *   and changing the base map keeps the current camera.
  */
-internal const val PHONE_MAP_STARTUP_FALLBACK_GRACE_MS = 15_000L
 
 internal fun shouldShowPhoneMapStartupLocation(
     location: PhoneMapLocation?,
@@ -24,12 +22,6 @@ internal fun shouldShowPhoneMapStartupLocation(
             hasAcceptedLocation ||
                 isPhoneMapLocationFreshForMarker(location, nowElapsedRealtimeMillis, expectedIntervalMillis)
         )
-
-internal fun shouldWaitForPhoneMapStartupFallback(
-    startupCenteringPending: Boolean,
-    gpsOff: Boolean,
-    hasLocation: Boolean,
-): Boolean = startupCenteringPending && !gpsOff && !hasLocation
 
 /** Matches the watch: the GPX bounding-box center, with the camera zoom left unchanged. */
 internal fun phoneMapGpxStartCenter(overlays: List<PhoneMapGpxOverlay>): PhoneMapCoordinate? =
@@ -49,9 +41,6 @@ internal fun phoneMapStartCenterContextKey(gpxIds: List<String>): String =
 
 internal sealed interface PhoneMapStartCenterAction {
     data object None : PhoneMapStartCenterAction
-
-    /** Online startup without a center keeps waiting for a fix, as on the watch. */
-    data object Deferred : PhoneMapStartCenterAction
 
     data class Center(
         val target: PhoneMapCoordinate,
@@ -82,7 +71,6 @@ internal data class PhoneMapStartCenterMemory(
         contextKey: String,
         hasGpx: Boolean,
         gpxCenter: PhoneMapCoordinate?,
-        deferWhenNoCenter: Boolean = false,
     ): Pair<PhoneMapStartCenterMemory, PhoneMapStartCenterAction> {
         val forceStartupCenter = shouldForceStartCenter(contextKey, hasGpx)
         val savedCenter = savedViewportCenter?.takeIf { savedViewportContextKey == contextKey }
@@ -91,7 +79,6 @@ internal data class PhoneMapStartCenterMemory(
             !forceStartupCenter && savedCenter != null ->
                 markHandled(contextKey) to PhoneMapStartCenterAction.Center(savedCenter)
             entered.applied -> entered to PhoneMapStartCenterAction.None
-            deferWhenNoCenter && gpxCenter == null -> entered to PhoneMapStartCenterAction.Deferred
             // The watch falls back to the selected map center; the phone keeps the camera, and the
             // renderer opens an offline map at its start point when the camera is outside that map.
             else ->
