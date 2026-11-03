@@ -179,6 +179,19 @@ class PhoneWorldWindTilePipelineTest {
     }
 
     @Test
+    fun moveToFrameSpreadCountsEachRangeAndDropsMovesNeverDrawn() {
+        val stats = PhoneWorldWindFrameStats(slowNanos = 33_000_000L, bucketMillis = longArrayOf(16, 33))
+        val dropped = AtomicInteger()
+        listOf(10L, 16L, 20L, 40L).forEach { stats.recordUnlessStale(it * 1_000_000L, dropped) }
+        stats.recordUnlessStale(8_793_000_000L, dropped)
+        assertEquals(1, dropped.get())
+        assertEquals(
+            "move_frames=4 move_slow=1 move_max_ms=40 move_le_16ms=2 move_le_33ms=1 move_over_33ms=1",
+            stats.summary("move"),
+        )
+    }
+
+    @Test
     fun closedViewDropsPendingRetries() =
         runBlocking {
             val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)

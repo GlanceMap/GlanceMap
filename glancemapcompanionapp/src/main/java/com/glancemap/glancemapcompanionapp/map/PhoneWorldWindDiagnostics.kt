@@ -6,29 +6,50 @@ import java.io.Closeable
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.AtomicLongArray
 
 private const val PHONE_WORLDWIND_SLOW_FRAME_NANOS = 16_666_667L
 private const val PHONE_WORLDWIND_NANOS_PER_MILLI = 1_000_000L
 private const val PHONE_WORLDWIND_SLOW_PRELOAD_MS = 200L
+private const val PHONE_WORLDWIND_STALE_MOVE_NANOS = 1_000_000_000L
 
 /** Lock-free frame durations, summarized as a count, slow count and worst case. */
 internal class PhoneWorldWindFrameStats(
     private val slowNanos: Long = PHONE_WORLDWIND_SLOW_FRAME_NANOS,
+    private val bucketMillis: LongArray = LongArray(0),
 ) {
     private val count = AtomicLong()
     private val slow = AtomicLong()
     private val max = AtomicLong()
 
+    // One count per upper bound, plus a last one for longer times, so a capture shows the spread.
+    private val buckets = AtomicLongArray(bucketMillis.size + 1)
+
     fun record(nanos: Long) {
         count.incrementAndGet()
         if (nanos > slowNanos) slow.incrementAndGet()
         max.accumulateAndGet(nanos, ::maxOf)
+        if (bucketMillis.isNotEmpty()) {
+            val millis = nanos / PHONE_WORLDWIND_NANOS_PER_MILLI
+            val index = bucketMillis.indexOfFirst { millis <= it }.let { if (it < 0) bucketMillis.size else it }
+            buckets.incrementAndGet(index)
+        }
     }
 
     fun summary(name: String): String {
         val maxMillis = max.get() / PHONE_WORLDWIND_NANOS_PER_MILLI
-        return "${name}_frames=${count.get()} ${name}_slow=${slow.get()} ${name}_max_ms=$maxMillis"
+        val within = bucketMillis.indices.joinToString("") { " ${name}_le_${bucketMillis[it]}ms=${buckets[it]}" }
+        val over = bucketMillis.lastOrNull()?.let { " ${name}_over_${it}ms=${buckets[bucketMillis.size]}" }.orEmpty()
+        val spread = within + over
+        return "${name}_frames=${count.get()} ${name}_slow=${slow.get()} ${name}_max_ms=$maxMillis$spread"
     }
+}
+
+internal fun PhoneWorldWindFrameStats.recordUnlessStale(
+    nanos: Long,
+    dropped: AtomicInteger,
+) {
+    if (nanos > PHONE_WORLDWIND_STALE_MOVE_NANOS) dropped.incrementAndGet() else record(nanos)
 }
 
 /** Aggregates are inexpensive; detailed events are recorded only during an explicit phone capture. */
@@ -64,7 +85,16 @@ internal class PhoneWorldWindDiagnostics : Closeable {
     val glFrames = PhoneWorldWindFrameStats()
 
     /** Time from a finger movement until a frame showing it finishes drawing; slow above two 60 Hz frames. */
-    val moveToFrame = PhoneWorldWindFrameStats(slowNanos = 2 * PHONE_WORLDWIND_SLOW_FRAME_NANOS)
+    val moveToFrame =
+        PhoneWorldWindFrameStats(
+            slowNanos = 2 * PHONE_WORLDWIND_SLOW_FRAME_NANOS,
+            bucketMillis = longArrayOf(16, 33, 50, 100, 250),
+        )
+    val moveToFrameDropped = AtomicInteger()
+
+    @Volatile private var reliefStrengthPercent: Int? = null
+
+    @Volatile private var elevationColors: Boolean? = null
     private val firstImage = AtomicBoolean()
     private val firstElevation = AtomicBoolean()
     private var summaryProvider: () -> String = { "" }
@@ -130,6 +160,24 @@ internal class PhoneWorldWindDiagnostics : Closeable {
         onlineDemPreloads.incrementAndGet()
         onlineDemPreloadMillis.addAndGet(ms)
         if (ms >= PHONE_WORLDWIND_SLOW_PRELOAD_MS) event("online_dem_preload", "tiles=$tiles ms=$ms")
+    }
+
+    /**
+     * A gap longer than a second means no frame was drawn for the movement, for example while a panel
+     * covered the map, so it is counted as dropped instead of skewing the frame times.
+     */
+    fun movedToFrame(nanos: Long) = moveToFrame.recordUnlessStale(nanos, moveToFrameDropped)
+
+    fun reliefStrengthChanged(percent: Int) {
+        if (reliefStrengthPercent == percent) return
+        reliefStrengthPercent = percent
+        event("settings_3d", "relief_percent=$percent")
+    }
+
+    fun elevationColorsChanged(enabled: Boolean) {
+        if (elevationColors == enabled) return
+        elevationColors = enabled
+        event("settings_3d", "elevation_colors=$enabled")
     }
 
     fun elevationIncomplete() {
@@ -205,7 +253,8 @@ internal class PhoneWorldWindDiagnostics : Closeable {
                 "tile_failures=${tileFailures.get()} tile_retries_scheduled=${tileRetriesScheduled.get()} " +
                 "tile_retries_fired=${tileRetriesFired.get()} camera_reanchors=${cameraReanchors.get()} " +
                 "${renderFrames.summary("render")} ${glFrames.summary("gl")} " +
-                "${moveToFrame.summary("move_to_frame")} " +
+                "${moveToFrame.summary("move_to_frame")} move_to_frame_dropped=${moveToFrameDropped.get()} " +
+                "relief_percent=$reliefStrengthPercent elevation_colors=$elevationColors " +
                 "heap_used=${runtime.totalMemory() - runtime.freeMemory()} ${summaryProvider()}",
         )
     }

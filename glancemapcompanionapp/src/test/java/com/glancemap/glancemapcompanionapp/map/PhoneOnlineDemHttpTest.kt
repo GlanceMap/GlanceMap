@@ -29,6 +29,14 @@ class PhoneOnlineDemHttpTest {
     val temporaryFolder = TemporaryFolder()
 
     @Test
+    fun cacheOnlyMissIsNotReportedAsAFailedDownload() {
+        assertEquals("cache_miss", phoneOnlineDemReadResult(succeeded = false, cacheOnly = true, status = 504))
+        assertEquals("http_504", phoneOnlineDemReadResult(succeeded = false, cacheOnly = false, status = 504))
+        assertEquals("http_404", phoneOnlineDemReadResult(succeeded = false, cacheOnly = true, status = 404))
+        assertEquals("ok", phoneOnlineDemReadResult(succeeded = true, cacheOnly = true, status = 200))
+    }
+
+    @Test
     fun responsesRejectHttpFailuresAndOversizedPayloads() {
         val request = Request.Builder().url("https://example.invalid/dem.png").build()
         response(request, 404, byteArrayOf(1)).use { assertNull(it.boundedDemBytes()) }

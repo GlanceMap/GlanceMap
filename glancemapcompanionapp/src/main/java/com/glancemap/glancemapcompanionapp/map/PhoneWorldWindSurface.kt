@@ -68,7 +68,7 @@ import javax.microedition.khronos.opengles.GL10
 
 private class PhoneWorldWindWindow(
     context: Context,
-    private val diagnostics: PhoneWorldWindDiagnostics,
+    val diagnostics: PhoneWorldWindDiagnostics,
     private val onCameraChanged: (PhoneMapCameraSnapshot, Double) -> Unit,
     private val onUserPan: () -> Unit,
     private val onUserRotation: (Float) -> Unit,
@@ -109,6 +109,8 @@ private class PhoneWorldWindWindow(
 
     @Volatile private var touching = false
     private var anchoredGround = 0.0
+    private var loggedGroundTarget = Double.NaN
+    private val easedLookAt = LookAt()
 
     /** The first finger movement not yet shown on screen, so a resting finger is never counted as a slow frame. */
     private val pendingMoveNanos = AtomicLong()
@@ -144,11 +146,23 @@ private class PhoneWorldWindWindow(
         val anchored = anchoredGround
         val ground = groundElevation(currentLookAt)
         if (phoneWorldWindGroundMoved(anchored, ground)) {
-            applyCamera(currentLookAt)
-            val altitude = engine.camera.position.altitude
-            diagnostics.cameraReanchored("ground_before=$anchored ground_after=$ground camera_altitude=$altitude")
+            placeCameraAboveGround(phoneWorldWindEasedGround(anchored, ground))
+            // One event per new terrain height, not one per eased frame.
+            if (loggedGroundTarget.isNaN() || phoneWorldWindGroundMoved(loggedGroundTarget, ground)) {
+                loggedGroundTarget = ground
+                diagnostics.cameraReanchored("ground_before=$anchored ground_after=$ground")
+            }
             WorldWind.requestRedraw()
         }
+    }
+
+    /** The same view as [currentLookAt], resolved at an explicit ground height while the camera eases. */
+    private fun placeCameraAboveGround(ground: Double) {
+        easedLookAt.copy(currentLookAt)
+        easedLookAt.altitudeMode = AltitudeMode.ABSOLUTE
+        easedLookAt.position.altitude = ground
+        engine.cameraFromLookAt(easedLookAt)
+        anchoredGround = ground
     }
 
     fun publishCamera(lookAt: LookAt = currentLookAt) {
@@ -183,6 +197,12 @@ private class PhoneWorldWindWindow(
         return handled
     }
 
+    /** A movement made just before the view was hidden is not a frame waiting to be drawn. */
+    override fun onPause() {
+        pendingMoveNanos.set(0L)
+        super.onPause()
+    }
+
     override fun onSurfaceChanged(
         gl: GL10,
         width: Int,
@@ -198,7 +218,7 @@ private class PhoneWorldWindWindow(
         val finished = System.nanoTime()
         diagnostics.glFrames.record(finished - started)
         val moved = pendingMoveNanos.getAndSet(0L)
-        if (moved != 0L) diagnostics.moveToFrame.record(finished - moved)
+        if (moved != 0L) diagnostics.movedToFrame(finished - moved)
         if (!firstFrame) {
             firstFrame = true
             val elapsed = SystemClock.elapsedRealtime() - createdAt
@@ -512,15 +532,18 @@ private fun phoneWorldWind3dSettingsEffects(
     offline: Boolean,
 ) {
     LaunchedEffect(window, settings.terrain3dReliefStrengthPercent, offline) {
-        val relief = window?.reliefLayer ?: return@LaunchedEffect
+        val view = window ?: return@LaunchedEffect
+        val relief = view.reliefLayer ?: return@LaunchedEffect
         val strength = phoneWorldWindReliefStrength(settings.terrain3dReliefStrengthPercent, offline)
         relief.terrainLambert = strength
         relief.isEnabled = strength > 0f
+        view.diagnostics.reliefStrengthChanged(settings.terrain3dReliefStrengthPercent)
         WorldWind.requestRedraw()
     }
     LaunchedEffect(window, settings.terrain3dElevationColorsEnabled) {
         val view = window ?: return@LaunchedEffect
         view.elevationColorsLayer.isEnabled = settings.terrain3dElevationColorsEnabled
+        view.diagnostics.elevationColorsChanged(settings.terrain3dElevationColorsEnabled)
         WorldWind.requestRedraw()
     }
 }

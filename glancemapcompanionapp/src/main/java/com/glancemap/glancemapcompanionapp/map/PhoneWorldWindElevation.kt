@@ -116,7 +116,7 @@ internal class PhoneWorldWindElevation(
         dimensions: Pair<Int, Int>,
     ): Boolean {
         val local = repository ?: return false
-        val tiles = phoneWorldWindGridLocalDemTiles(bounds, dimensions)
+        val tiles = phoneWorldWindGridLocalDemTiles(bounds, dimensions, online != null)
         return withContext(unpackDispatcher) {
             for ((latitude, longitude) in tiles) {
                 if (closed.get()) break
@@ -156,6 +156,9 @@ internal class PhoneWorldWindElevation(
 
 /** Matches the four-tile online limit; a grid spanning more 1° HGT files leaves local elevation out. */
 internal const val PHONE_WORLDWIND_MAX_LOCAL_DEM_TILES = 4
+
+/** About 250 m: eight 1-arc-second HGT samples per grid cell, so a 64-cell grid spans about 16 km. */
+internal const val PHONE_WORLDWIND_LOCAL_DEM_MAX_CELL_DEGREES = 8.0 / 3600.0
 
 /** Match the DEM resolution to the grid while limiting each grid to four online tiles. */
 internal fun phoneWorldWindOnlineDemZoom(
@@ -237,11 +240,30 @@ internal fun phoneWorldWindGridOnlineDemTiles(
 internal fun phoneWorldWindGridLocalDemTiles(
     bounds: PhoneWorldWindBounds,
     dimensions: Pair<Int, Int>,
+    onlineAvailable: Boolean,
 ): List<Pair<Int, Int>> {
     val latitudeTiles = phoneWorldWindGridLatitudes(bounds, dimensions.second).map { floor(it).toInt() }.distinct()
     val longitudeTiles = phoneWorldWindGridLongitudes(bounds, dimensions.first).map { floor(it).toInt() }.distinct()
     val tiles = latitudeTiles.flatMap { latitude -> longitudeTiles.map { longitude -> latitude to longitude } }
-    return tiles.takeIf { it.size <= PHONE_WORLDWIND_MAX_LOCAL_DEM_TILES }.orEmpty()
+    return tiles.takeIf { phoneWorldWindGridUsesLocalDem(bounds, dimensions.first, it.size, onlineAvailable) }.orEmpty()
+}
+
+/**
+ * Local HGT is read only where it can add detail. A grid spanning more than four 1° files would decode or
+ * probe one full file per degree, so it never reads local files. With online elevation available, a grid
+ * whose cells are wider than [PHONE_WORLDWIND_LOCAL_DEM_MAX_CELL_DEGREES] also uses online elevation: a
+ * capture showed 25 files, 16.8 s of unpacking, for a fly-over at that scale. Offline maps have no other
+ * source, so they keep reading local files at any scale up to the four-file limit.
+ */
+internal fun phoneWorldWindGridUsesLocalDem(
+    bounds: PhoneWorldWindBounds,
+    width: Int,
+    localTileCount: Int,
+    onlineAvailable: Boolean,
+): Boolean {
+    val cellDegrees = (bounds.east - bounds.west) / width
+    return localTileCount <= PHONE_WORLDWIND_MAX_LOCAL_DEM_TILES &&
+        (!onlineAvailable || cellDegrees <= PHONE_WORLDWIND_LOCAL_DEM_MAX_CELL_DEGREES)
 }
 
 /**
@@ -266,8 +288,7 @@ internal suspend fun phoneWorldWindElevationGrid(
             groups.getOrPut(tile) { mutableListOf() }.add(y * width + x)
         }
     }
-    // Coarse grids would decode or probe one full HGT file per degree, so they use online elevation or stay empty.
-    val tileLocal = local.takeIf { groups.size <= PHONE_WORLDWIND_MAX_LOCAL_DEM_TILES }
+    val tileLocal = local.takeIf { phoneWorldWindGridUsesLocalDem(bounds, width, groups.size, online != null) }
     val sampler = PhoneWorldWindGridSampler(latitudes, longitudes, heights, tileLocal, online, zoom)
     val complete = groups.all { (tileId, indices) -> sampler.fill(tileId, indices) }
     return heights.takeIf { complete }

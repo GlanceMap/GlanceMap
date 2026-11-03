@@ -8,6 +8,24 @@ import kotlin.math.abs
 
 private const val PHONE_WORLDWIND_GROUND_ANCHOR_TOLERANCE_METERS = 5.0
 
+private const val PHONE_WORLDWIND_GROUND_EASE_FRACTION = 0.25
+private const val PHONE_WORLDWIND_GROUND_SNAP_METERS = 10.0
+
+/**
+ * Moves the camera's ground a quarter of the way to newly loaded terrain each frame, about a quarter of a
+ * second for a 1,000 m change at 60 fps, so the view glides instead of jumping. Snaps once close enough
+ * that the last step lands exactly on the terrain.
+ */
+internal fun phoneWorldWindEasedGround(
+    current: Double,
+    target: Double,
+): Double =
+    if (abs(target - current) <= PHONE_WORLDWIND_GROUND_SNAP_METERS) {
+        target
+    } else {
+        current + (target - current) * PHONE_WORLDWIND_GROUND_EASE_FRACTION
+    }
+
 /** Ground-clamped cameras resolve elevation once, so they are repositioned when terrain arrives or refines. */
 internal fun phoneWorldWindGroundMoved(
     anchoredElevation: Double,

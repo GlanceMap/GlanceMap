@@ -81,9 +81,28 @@ internal object PhoneOnlineDemHttp {
         }
 }
 
+/**
+ * OkHttp answers a cache-only request it cannot serve with a synthetic 504, so that case is logged as a
+ * cache miss rather than a failed download. Each read also logs how long it took.
+ */
+internal fun phoneOnlineDemReadResult(
+    succeeded: Boolean,
+    cacheOnly: Boolean,
+    status: Int,
+): String =
+    when {
+        succeeded -> "ok"
+        cacheOnly && status == HTTP_GATEWAY_TIMEOUT -> "cache_miss"
+        else -> "http_$status"
+    }
+
+private const val HTTP_GATEWAY_TIMEOUT = 504
+
 internal suspend fun Call.readDemBytes(): ByteArray? =
     suspendCancellableCoroutine { continuation ->
         continuation.invokeOnCancellation { cancel() }
+        val started = System.nanoTime()
+        val cacheOnly = request().cacheControl.onlyIfCached
         enqueue(
             object : Callback {
                 override fun onFailure(
@@ -92,7 +111,8 @@ internal suspend fun Call.readDemBytes(): ByteArray? =
                 ) {
                     PhoneDebugCapture.log(
                         "PhoneOnlineDem",
-                        "event=tile_read success=false category=${if (call.isCanceled()) "cancelled" else "network"}",
+                        "event=tile_read success=false category=${if (call.isCanceled()) "cancelled" else "network"} " +
+                            "cache_only=$cacheOnly ms=${(System.nanoTime() - started) / 1_000_000L}",
                     )
                     continuation.resume(null)
                 }
@@ -107,8 +127,10 @@ internal suspend fun Call.readDemBytes(): ByteArray? =
                         }
                     PhoneDebugCapture.log(
                         "PhoneOnlineDem",
-                        "event=tile_read success=${bytes != null} disk_cache=${response.cacheResponse != null} " +
-                            "status=${response.code}",
+                        "event=tile_read success=${bytes != null} " +
+                            "result=${phoneOnlineDemReadResult(bytes != null, cacheOnly, response.code)} " +
+                            "disk_cache=${response.cacheResponse != null} status=${response.code} " +
+                            "ms=${(System.nanoTime() - started) / 1_000_000L}",
                     )
                     continuation.resume(bytes)
                 }

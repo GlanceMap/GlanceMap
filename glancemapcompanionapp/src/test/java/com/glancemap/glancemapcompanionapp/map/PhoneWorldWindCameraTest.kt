@@ -18,6 +18,20 @@ class PhoneWorldWindCameraTest {
         assertFalse(phoneWorldWindGroundMoved(2_400.0, 2_403.0))
     }
 
+    @Test
+    fun cameraEasesTowardLoadedTerrainAndLandsExactlyOnIt() {
+        var ground = 47.0
+        var frames = 0
+        while (ground != 1_047.0) {
+            ground = phoneWorldWindEasedGround(ground, 1_047.0)
+            frames++
+        }
+        assertTrue(frames in 10..20)
+        assertEquals(297.0, phoneWorldWindEasedGround(47.0, 1_047.0), 1e-9)
+        assertEquals(1_040.0, phoneWorldWindEasedGround(1_032.0, 1_040.0), 0.0)
+        assertEquals(-4_000.0, phoneWorldWindEasedGround(-3_995.0, -4_000.0), 0.0)
+    }
+
     private fun camera() =
         LookAt().set(
             46.0.degrees,
