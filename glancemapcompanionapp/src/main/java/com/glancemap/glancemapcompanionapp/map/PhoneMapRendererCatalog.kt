@@ -4,7 +4,7 @@ import com.glancemap.glancemapcompanionapp.BuildConfig
 import com.glancemap.trailcore.map.MapMode
 import com.glancemap.trailcore.map.MapRendererCapabilities
 
-private const val OPEN_STREET_MAP_ATTRIBUTION =
+internal const val OPEN_STREET_MAP_ATTRIBUTION =
     "<a href=\"https://www.openstreetmap.org/copyright\">© OpenStreetMap contributors</a>"
 
 /** The supported internet map datasets, separate from the online/offline renderer choice. */

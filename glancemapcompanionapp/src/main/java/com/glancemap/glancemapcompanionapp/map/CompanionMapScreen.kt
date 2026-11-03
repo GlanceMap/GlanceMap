@@ -59,6 +59,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
@@ -2864,7 +2865,21 @@ internal fun CompanionMapScreen(
     val activeOnlineComparisonSource = onlineComparison?.source
     val activeOnlineComparisonProviderId = onlineComparisonProvider?.id
     val terrainAttributionLabel = stringResource(R.string.map_tools_maps_terrain_attribution)
+    // The 3D view drapes the base map only, so an offline overlay is credited in 2D alone.
+    val visibleOfflineMaps =
+        listOfNotNull(
+            (mapUiState.source as? PhoneMapSource.Offline)?.map,
+            offlineComparison?.map?.takeIf { terrainPreview == null && offlineComparisonActive },
+        )
+    val offlineMapCreditKey = visibleOfflineMaps.map(PhoneOfflineMap::rendererIdentity)
+    val offlineMapAttributions by produceState(emptyList<String>(), offlineMapCreditKey) {
+        value =
+            withContext(Dispatchers.IO) {
+                visibleOfflineMaps.map { map -> phoneOfflineMapAttribution(readPhoneOfflineMapHeaderComment(map)) }
+            }
+    }
     val mapProviderAttributions =
+        offlineMapAttributions +
         listOfNotNull(
             selectedOnlineProvider.takeIf { activeOnlineBaseSource != null },
             onlineComparisonProvider.takeIf { terrainPreview == null && onlineComparisonActive },
