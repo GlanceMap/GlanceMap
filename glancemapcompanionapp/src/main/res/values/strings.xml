@@ -945,7 +945,7 @@
     <string name="live_tracking_diagnostics_hide">Hide (%1$d)</string>
     <string name="live_tracking_diagnostics_empty">No Arkluz requests recorded yet.</string>
     <string name="home_debug_capture_title">Phone diagnostics</string>
-    <string name="home_debug_capture_stop_save_action">Stop and save</string>
+    <string name="home_debug_capture_stop_share_action">Stop &amp; share</string>
     <string name="home_debug_capture_share_latest_action">Share latest capture…</string>
     <string name="home_debug_capture_share_previous_action">Share previous capture…</string>
     <string name="home_debug_capture_start_action">Start capture</string>

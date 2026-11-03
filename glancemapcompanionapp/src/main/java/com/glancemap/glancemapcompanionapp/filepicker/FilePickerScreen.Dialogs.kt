@@ -135,8 +135,13 @@ internal fun DebugCaptureDialog(
         },
         confirmButton = {
             if (debugCaptureState.active) {
-                Button(onClick = viewModel::stopPhoneDebugCapture) {
-                    Text(stringResource(R.string.home_debug_capture_stop_save_action))
+                Button(
+                    onClick = {
+                        onDismiss()
+                        viewModel.stopAndSharePhoneDebugCapture(context)
+                    },
+                ) {
+                    Text(stringResource(R.string.home_debug_capture_stop_share_action))
                 }
             } else {
                 if (hasLatestCapture) {

@@ -1432,8 +1432,10 @@ class FileTransferViewModel : ViewModel() {
             ).show()
     }
 
-    fun stopPhoneDebugCapture() {
+    /** Saves the capture first, so it stays shareable from the dialog if the share sheet is dismissed. */
+    fun stopAndSharePhoneDebugCapture(context: Context) {
         PhoneDebugCapture.stop()
+        shareLatestPhoneDebugCapture(context)
     }
 
     fun shareLatestPhoneDebugCapture(context: Context) {
