@@ -2,8 +2,12 @@ package com.glancemap.glancemapcompanionapp.map
 
 import android.content.Context
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import kotlin.math.PI
 import kotlin.math.floor
@@ -17,7 +21,9 @@ internal const val PHONE_ONLINE_DEM_ATTRIBUTION_URL =
 internal const val PHONE_ONLINE_DEM_TILE_SIZE = 256
 private const val ONLINE_DEM_READING_ZOOM = 14
 private const val ONLINE_DEM_MERCATOR_LIMIT = 85.05112878
-private const val ONLINE_DEM_CACHE_ENTRIES = 16
+private const val ONLINE_DEM_CACHE_ENTRIES = 32
+private const val ONLINE_DEM_PARALLEL_LOADS = 4
+private const val ONLINE_DEM_LOAD_STRIPES = 16
 internal const val PHONE_ONLINE_DEM_FAILURE_RETRY_MS = 30_000L
 internal const val PHONE_MAP_LIVE_ELEVATION_RESAMPLE_DISTANCE_METERS = 3.0
 
@@ -111,7 +117,11 @@ internal class PhoneTerrariumTile(
     }
 }
 
-/** One cancellable load at a time coalesces A/B and live reads, with bounded success/failure caching. */
+/**
+ * Loads of different tiles run in parallel, up to [ONLINE_DEM_PARALLEL_LOADS]; callers wanting the same tile
+ * share one load, so A/B and live reads still coalesce. Success and failure caching stay bounded. Each load
+ * stays cancellable: a cancelled load caches nothing and the next caller loads again.
+ */
 internal class PhoneOnlineElevationRepository(
     private val fetchTile: suspend (PhoneOnlineDemTileId) -> PhoneTerrariumTile?,
     private val clockMillis: () -> Long = { System.nanoTime() / 1_000_000L },
@@ -123,7 +133,11 @@ internal class PhoneOnlineElevationRepository(
         val loadedAtMillis: Long,
     )
 
-    private val mutex = Mutex()
+    private val cacheLock = Any()
+
+    // A tile always maps to the same lock, so its waiters share one load while other tiles load alongside.
+    private val tileLocks = Array(ONLINE_DEM_LOAD_STRIPES) { Mutex() }
+    private val loads = Semaphore(ONLINE_DEM_PARALLEL_LOADS)
     private val tiles =
         object : LinkedHashMap<PhoneOnlineDemTileId, Entry>(ONLINE_DEM_CACHE_ENTRIES, 0.75f, true) {
             override fun removeEldestEntry(
@@ -136,28 +150,39 @@ internal class PhoneOnlineElevationRepository(
         zoom: Int = ONLINE_DEM_READING_ZOOM,
     ): Double? {
         val sample = phoneOnlineDemPoint(point, zoom) ?: return null
-        return mutex.withLock {
-            val cached = tiles[sample.tile]
-            val now = clockMillis()
-            val tile =
-                if (cached != null &&
-                    (cached.tile != null || now - cached.loadedAtMillis in 0 until PHONE_ONLINE_DEM_FAILURE_RETRY_MS)
-                ) {
-                    cached.tile
-                } else {
-                    fetchTile(sample.tile).also { loaded -> tiles[sample.tile] = Entry(loaded, clockMillis()) }
-                }
-            tile?.elevationAt(sample.pixelX, sample.pixelY)
+        return tile(sample.tile)?.elevationAt(sample.pixelX, sample.pixelY)
+    }
+
+    /** Loads every tile in [ids] at once, so a later sampling pass finds them in memory. */
+    suspend fun preload(ids: Collection<PhoneOnlineDemTileId>) =
+        coroutineScope {
+            ids.distinct().forEach { id -> launch { tile(id) } }
+        }
+
+    private suspend fun tile(id: PhoneOnlineDemTileId): PhoneTerrariumTile? {
+        cached(id)?.let { return it.tile }
+        return tileLocks[Math.floorMod(id.hashCode(), ONLINE_DEM_LOAD_STRIPES)].withLock {
+            cached(id)?.tile ?: loads
+                .withPermit { fetchTile(id) }
+                .also { loaded -> synchronized(cacheLock) { tiles[id] = Entry(loaded, clockMillis()) } }
         }
     }
 
+    /** A loaded tile is kept until evicted; a failed load is retried after [PHONE_ONLINE_DEM_FAILURE_RETRY_MS]. */
+    private fun cached(id: PhoneOnlineDemTileId): Entry? =
+        synchronized(cacheLock) {
+            tiles[id]?.takeIf { entry ->
+                entry.tile != null || clockMillis() - entry.loadedAtMillis in 0 until PHONE_ONLINE_DEM_FAILURE_RETRY_MS
+            }
+        }
+
     /** True while the tile covering [point] failed to load, as opposed to loading with no data there. */
-    suspend fun isTileUnavailable(
+    fun isTileUnavailable(
         point: PhoneMapCoordinate,
         zoom: Int = ONLINE_DEM_READING_ZOOM,
     ): Boolean {
         val sample = phoneOnlineDemPoint(point, zoom) ?: return false
-        return mutex.withLock { tiles[sample.tile]?.let { it.tile == null } == true }
+        return synchronized(cacheLock) { tiles[sample.tile]?.let { it.tile == null } == true }
     }
 }
 

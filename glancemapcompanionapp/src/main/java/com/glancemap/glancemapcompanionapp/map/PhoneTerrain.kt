@@ -253,6 +253,16 @@ internal class PhoneElevationRepository(
         }
     }
 
+    /** True when a file exists for the tile, without reading it; a cached tile counts only if it loaded. */
+    internal fun hasTile(
+        latitudeTile: Int,
+        longitudeTile: Int,
+    ): Boolean {
+        val tileId = phoneDemTileId(latitudeTile, longitudeTile)
+        val cached = synchronized(tileCache) { tileCache[tileId] }
+        return cached != null || resolveDemFile(tileId) != null
+    }
+
     internal fun tileExceededMemory(
         latitudeTile: Int,
         longitudeTile: Int,

@@ -156,6 +156,20 @@ class PhoneTerrainTest {
     }
 
     @Test
+    fun hasTileReportsAFileWithoutReadingIt() {
+        val folder = temporaryFolder.newFolder()
+        GZIPOutputStream(folder.resolve("N00E000.hgt.gz").outputStream()).use { it.write(hgtBytes()) }
+        val repository = PhoneElevationRepository(listOf(folder))
+        var accesses = 0
+        repository.onTileAccess = { _, _ -> accesses++ }
+        assertTrue(repository.hasTile(0, 0))
+        assertFalse(repository.hasTile(0, 1))
+        assertEquals(0, accesses)
+        repository.elevationAt(0.5, 1.5)
+        assertFalse(repository.hasTile(0, 1))
+    }
+
+    @Test
     fun corruptOrEmptyCompressedTileIsNotUnpacked() {
         val folder = temporaryFolder.newFolder()
         val cache = temporaryFolder.newFolder()

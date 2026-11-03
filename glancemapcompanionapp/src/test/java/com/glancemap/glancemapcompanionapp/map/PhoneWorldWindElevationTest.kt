@@ -102,6 +102,26 @@ class PhoneWorldWindElevationTest {
         assertTrue(phoneWorldWindGridLocalDemTiles(PhoneWorldWindBounds(0.1, 0.1, 2.9, 2.9), 8 to 8).isEmpty())
     }
 
+    @Test
+    fun onlineTilesToPreloadCoverEveryCellCentreTheGridSamples() {
+        for (bounds in listOf(
+            PhoneWorldWindBounds(47.0, 11.0, 47.5, 11.5),
+            PhoneWorldWindBounds(-0.2, -0.2, 0.2, 0.2),
+            PhoneWorldWindBounds(45.0, 10.0, 46.0, 11.0),
+        )) {
+            val zoom = phoneWorldWindOnlineDemZoom(bounds.south, bounds.west, bounds.north, bounds.east, 64)
+            val preloaded = phoneWorldWindGridOnlineDemTiles(bounds, zoom).toSet()
+            assertTrue(preloaded.size in 1..4)
+            for (y in 0 until 64) {
+                for (x in 0 until 64) {
+                    val latitude = phoneWorldWindCellCenter(bounds.north, bounds.south, y, 64)
+                    val longitude = phoneWorldWindCellCenter(bounds.west, bounds.east, x, 64)
+                    assertTrue(phoneOnlineDemPoint(PhoneMapCoordinate(latitude, longitude), zoom)!!.tile in preloaded)
+                }
+            }
+        }
+    }
+
     private val gridBounds = PhoneWorldWindBounds(0.1, 0.1, 0.9, 0.9)
 
     @Test

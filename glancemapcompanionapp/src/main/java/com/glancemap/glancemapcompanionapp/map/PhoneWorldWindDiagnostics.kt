@@ -9,6 +9,7 @@ import java.util.concurrent.atomic.AtomicLong
 
 private const val PHONE_WORLDWIND_SLOW_FRAME_NANOS = 16_666_667L
 private const val PHONE_WORLDWIND_NANOS_PER_MILLI = 1_000_000L
+private const val PHONE_WORLDWIND_SLOW_PRELOAD_MS = 200L
 
 /** Lock-free frame durations, summarized as a count, slow count and worst case. */
 internal class PhoneWorldWindFrameStats(
@@ -52,6 +53,8 @@ internal class PhoneWorldWindDiagnostics : Closeable {
     val elevationIncomplete = AtomicInteger()
     val demUnpacks = AtomicInteger()
     val demUnpackMillis = AtomicLong()
+    val onlineDemPreloads = AtomicInteger()
+    val onlineDemPreloadMillis = AtomicLong()
     val demFailures = AtomicInteger()
     val tileFailures = AtomicInteger()
     val tileRetriesScheduled = AtomicInteger()
@@ -117,6 +120,16 @@ internal class PhoneWorldWindDiagnostics : Closeable {
         demUnpacks.incrementAndGet()
         demUnpackMillis.addAndGet(ms)
         event("dem_unpack", "tile=$tileId ms=$ms")
+    }
+
+    /** Only preloads slow enough to have downloaded are logged; cached ones would flood the capture. */
+    fun onlineDemPreloaded(
+        tiles: Int,
+        ms: Long,
+    ) {
+        onlineDemPreloads.incrementAndGet()
+        onlineDemPreloadMillis.addAndGet(ms)
+        if (ms >= PHONE_WORLDWIND_SLOW_PRELOAD_MS) event("online_dem_preload", "tiles=$tiles ms=$ms")
     }
 
     fun elevationIncomplete() {
@@ -187,6 +200,8 @@ internal class PhoneWorldWindDiagnostics : Closeable {
                 "elevation_requests=${elevationRequests.get()} elevation_ms=${elevationMillis.get()} " +
                 "elevation_incomplete=${elevationIncomplete.get()} dem_failures=${demFailures.get()} " +
                 "dem_unpacks=${demUnpacks.get()} dem_unpack_ms=${demUnpackMillis.get()} " +
+                "online_dem_preloads=${onlineDemPreloads.get()} " +
+                "online_dem_preload_ms=${onlineDemPreloadMillis.get()} " +
                 "tile_failures=${tileFailures.get()} tile_retries_scheduled=${tileRetriesScheduled.get()} " +
                 "tile_retries_fired=${tileRetriesFired.get()} camera_reanchors=${cameraReanchors.get()} " +
                 "${renderFrames.summary("render")} ${glFrames.summary("gl")} " +

@@ -1,9 +1,11 @@
 package com.glancemap.glancemapcompanionapp.map
 
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -12,6 +14,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import java.io.DataOutputStream
+import java.util.concurrent.atomic.AtomicInteger
 
 class PhoneOnlineElevationTest {
     @get:Rule
@@ -77,12 +80,68 @@ class PhoneOnlineElevationTest {
             assertEquals(10.0, first.await()!!, 0.0)
             assertEquals(10.0, second.await()!!, 0.0)
             assertEquals(1, loads)
-            (1..16).forEach { longitude -> repository.elevationAt(PhoneMapCoordinate(0.0, longitude.toDouble())) }
-            assertEquals(17, loads)
-            repository.elevationAt(PhoneMapCoordinate(0.0, 16.0))
-            assertEquals(17, loads)
+            (1..32).forEach { longitude -> repository.elevationAt(PhoneMapCoordinate(0.0, longitude.toDouble())) }
+            assertEquals(33, loads)
+            repository.elevationAt(PhoneMapCoordinate(0.0, 32.0))
+            assertEquals(33, loads)
             repository.elevationAt(PhoneMapCoordinate(0.0, 0.0))
-            assertEquals(18, loads)
+            assertEquals(34, loads)
+        }
+
+    @Test
+    fun differentTilesLoadTogetherUpToFourAtOnce() =
+        runBlocking(Dispatchers.Default) {
+            val running = AtomicInteger()
+            val peak = AtomicInteger()
+            val fourRunning = CompletableDeferred<Unit>()
+            val release = CompletableDeferred<Unit>()
+            val repository =
+                PhoneOnlineElevationRepository(fetchTile = {
+                    val now = running.incrementAndGet()
+                    peak.accumulateAndGet(now, ::maxOf)
+                    if (now == 4) fourRunning.complete(Unit)
+                    release.await()
+                    running.decrementAndGet()
+                    constantTile(5)
+                })
+            val tiles = (0 until 6).map { PhoneOnlineDemTileId(14, 8192 + it, 8192) }
+            val preload = async { repository.preload(tiles + tiles.first()) }
+            withTimeout(5_000) { fourRunning.await() }
+            release.complete(Unit)
+            preload.await()
+            assertEquals(4, peak.get())
+            tiles.forEach { tile ->
+                val center = PhoneMapCoordinate(0.0, (tile.x - 8192 + 0.5) * 360.0 / (1 shl 14))
+                assertEquals(5.0, repository.elevationAt(center)!!, 0.0)
+            }
+            assertEquals(0, running.get())
+        }
+
+    @Test
+    fun waitersForOneTileShareItsLoadWhileAnotherTileLoads() =
+        runBlocking(Dispatchers.Default) {
+            val calls = mutableMapOf<PhoneOnlineDemTileId, Int>()
+            val slowStarted = CompletableDeferred<Unit>()
+            val releaseSlow = CompletableDeferred<Unit>()
+            val slow = PhoneOnlineDemTileId(14, 8192, 8192)
+            val repository =
+                PhoneOnlineElevationRepository(fetchTile = { tile ->
+                    synchronized(calls) { calls[tile] = (calls[tile] ?: 0) + 1 }
+                    if (tile == slow) {
+                        slowStarted.complete(Unit)
+                        releaseSlow.await()
+                    }
+                    constantTile(7)
+                })
+            val first = async { repository.elevationAt(PhoneMapCoordinate(0.0, 0.0)) }
+            withTimeout(5_000) { slowStarted.await() }
+            val second = async { repository.elevationAt(PhoneMapCoordinate(0.0, 0.001)) }
+            // A different tile is not held up by the pending one.
+            assertEquals(7.0, withTimeout(5_000) { repository.elevationAt(PhoneMapCoordinate(0.0, 10.0)) }!!, 0.0)
+            releaseSlow.complete(Unit)
+            assertEquals(7.0, first.await()!!, 0.0)
+            assertEquals(7.0, second.await()!!, 0.0)
+            assertEquals(1, calls[slow])
         }
 
     @Test

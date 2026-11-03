@@ -65,18 +65,20 @@ internal class PhoneWorldWindElevation(
                                             tile.maxLatitude.inDegrees,
                                             tile.maxLongitude.inDegrees,
                                         )
-                                    prepareLocalTiles(bounds, tileMatrix.tileWidth to tileMatrix.tileHeight)
+                                    val zoom =
+                                        phoneWorldWindOnlineDemZoom(
+                                            bounds.south,
+                                            bounds.west,
+                                            bounds.north,
+                                            bounds.east,
+                                            tileMatrix.tileWidth,
+                                        )
+                                    val localCoversGrid =
+                                        prepareLocalTiles(bounds, tileMatrix.tileWidth to tileMatrix.tileHeight)
+                                    if (!localCoversGrid) preloadOnlineTiles(bounds, zoom)
                                     withContext(demDispatcher) {
                                         if (closed.get()) return@withContext null
                                         val started = android.os.SystemClock.elapsedRealtime()
-                                        val zoom =
-                                            phoneWorldWindOnlineDemZoom(
-                                                bounds.south,
-                                                bounds.west,
-                                                bounds.north,
-                                                bounds.east,
-                                                tileMatrix.tileWidth,
-                                            )
                                         val heights =
                                             phoneWorldWindElevationGrid(
                                                 bounds,
@@ -112,10 +114,10 @@ internal class PhoneWorldWindElevation(
     private suspend fun prepareLocalTiles(
         bounds: PhoneWorldWindBounds,
         dimensions: Pair<Int, Int>,
-    ) {
-        val local = repository ?: return
+    ): Boolean {
+        val local = repository ?: return false
         val tiles = phoneWorldWindGridLocalDemTiles(bounds, dimensions)
-        withContext(unpackDispatcher) {
+        return withContext(unpackDispatcher) {
             for ((latitude, longitude) in tiles) {
                 if (closed.get()) break
                 val started = android.os.SystemClock.elapsedRealtime()
@@ -124,7 +126,25 @@ internal class PhoneWorldWindElevation(
                     diagnostics?.demUnpacked(phoneDemTileId(latitude, longitude), elapsed)
                 }
             }
+            tiles.isNotEmpty() && tiles.all { (latitude, longitude) -> local.hasTile(latitude, longitude) }
         }
+    }
+
+    /**
+     * Online tiles download a second or more each. Loading a grid's tiles here, in parallel and before it
+     * joins the single elevation lane, keeps one download from holding up every grid queued behind it.
+     * Grids fully covered by local files download nothing.
+     */
+    private suspend fun preloadOnlineTiles(
+        bounds: PhoneWorldWindBounds,
+        zoom: Int,
+    ) {
+        val source = online ?: return
+        if (closed.get()) return
+        val started = android.os.SystemClock.elapsedRealtime()
+        val tiles = phoneWorldWindGridOnlineDemTiles(bounds, zoom)
+        source.preload(tiles)
+        diagnostics?.onlineDemPreloaded(tiles.size, android.os.SystemClock.elapsedRealtime() - started)
     }
 
     override fun close() {
@@ -199,6 +219,19 @@ private fun phoneWorldWindGridLongitudes(
     DoubleArray(width) { x ->
         phoneWorldWindCellCenter(bounds.west, bounds.east, x, width).coerceIn(-179.999999, 179.999999)
     }
+
+/** The online elevation tiles a grid can sample; [phoneWorldWindOnlineDemZoom] keeps them to four or fewer. */
+internal fun phoneWorldWindGridOnlineDemTiles(
+    bounds: PhoneWorldWindBounds,
+    zoom: Int,
+): List<PhoneOnlineDemTileId> {
+    val northWest = PhoneMapCoordinate(bounds.north, bounds.west.coerceAtLeast(-179.999999))
+    val southEast = PhoneMapCoordinate(bounds.south, bounds.east.coerceAtMost(179.999999))
+    val first = phoneOnlineDemPoint(northWest, zoom)?.tile
+    val last = phoneOnlineDemPoint(southEast, zoom)?.tile
+    if (first == null || last == null) return emptyList()
+    return (first.y..last.y).flatMap { y -> (first.x..last.x).map { x -> PhoneOnlineDemTileId(first.zoom, x, y) } }
+}
 
 /** The 1° HGT tiles a grid samples locally, or none when it is too coarse to read local files. */
 internal fun phoneWorldWindGridLocalDemTiles(
