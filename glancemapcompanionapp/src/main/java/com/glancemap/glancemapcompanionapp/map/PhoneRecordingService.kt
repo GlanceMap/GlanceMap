@@ -804,6 +804,13 @@ internal class PhoneRecordingService :
         autoPauseCadenceJob = null
         val finalizedState = flushTrackTail(current.copy(session = saveState))
         val immutablePoints = finalizedState.points.toList()
+        val savedAtMillis = System.currentTimeMillis()
+        val title =
+            phoneRecordingDefaultTitle(
+                profileLabel = profileLabel(this, profile),
+                startedAtMillis = finalizedState.session.startedAtMillis ?: savedAtMillis,
+                endedAtMillis = savedAtMillis,
+            )
         publish(finalizedState.copy(session = saveState, message = PhoneRecordingMessage.SAVING))
         configureLocationUpdates()
         updateNotification()
@@ -814,7 +821,7 @@ internal class PhoneRecordingService :
                     val summary = buildRecordedTraceSummary(finalizedState, immutablePoints)
                     summary to
                         encodeRecordedTraceAsGpx(
-                            title = getString(R.string.phone_rec_activity_name),
+                            title = title,
                             points = immutablePoints,
                             summary = summary,
                             captureMetadata = captureMetadata,
@@ -830,7 +837,7 @@ internal class PhoneRecordingService :
         try {
             withContext(Dispatchers.IO) {
                 libraryRepository.saveRecordedGpx(
-                    displayName = getString(R.string.phone_rec_activity_name),
+                    displayName = title,
                     gpxBytes = bytes,
                     recordingId = recordingId,
                 )

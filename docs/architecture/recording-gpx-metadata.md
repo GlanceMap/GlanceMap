@@ -65,6 +65,12 @@ persisted `v1` values.
 `PHONE_GPS` for companion recordings, which always measure distance from the
 phone's fused location.
 
+Watch recordings are titled with the start date, start time and end time
+(`yyyy-MM-dd HH:mm HH:mm`, local time) unless the user enters a title. Companion
+recordings use the same shared format prefixed with the activity type, for
+example `Hike 2026-11-04 09:12 11:40`; this title is both the GPX `<name>` and
+the library display name.
+
 The phone REC menu displays a live view of the recap metrics. Track summaries are
 calculated from recorded points off the UI thread using the same elevation,
 speed and calorie helpers as the saved recap. The service publishes its existing
