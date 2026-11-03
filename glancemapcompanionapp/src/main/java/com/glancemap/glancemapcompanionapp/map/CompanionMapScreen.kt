@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -6204,6 +6205,10 @@ private fun mapControls(
                     compassHeadingDegrees = compassHeadingDegrees,
                     mapMode = mapMode,
                 )
+            }
+            if (mapSettings.zoomButtonsMode != PhoneMapZoomButtonsMode.HIDE_BOTH) {
+                // Lowers the zoom pair by one button and gap.
+                Spacer(Modifier.height(40.dp))
             }
             if (
                 mapSettings.zoomButtonsMode != PhoneMapZoomButtonsMode.HIDE_BOTH &&
