@@ -96,7 +96,8 @@ class PhoneHikeModelsTest {
             )
         val model = PhoneHikeRouteModel(hikeRoute(points))
         assertNull(model.position(1, .5))
-        assertEquals(2, model.mapSegments.size)
+        // The map shows the gap as a marked connector, like other GPX tracks; it is never walkable track.
+        assertEquals(listOf(false, true, false), model.mapSegments.map { it.isGap })
         assertTrue(model.totalDistanceMeters < 200.0)
         assertNotNull(model.atDistance(model.distances[2]))
         assertTrue(model.graphPoints.drop(1).any { it.startsNewSegment })
