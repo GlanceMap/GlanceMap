@@ -25,17 +25,19 @@ The phone policy lives in `PhoneMapStartCentering.kt`; `CompanionMapScreen` owns
 
 ## GPS-off mode
 
-- The camera centers once per context (offline base map plus visible GPX ids) on the GPX center.
-- A new GPX set or a different offline base map forces a new centering.
+- The camera centers once per context (the visible GPX ids) on the GPX center.
+- A new GPX set forces a new centering. Changing the base map (offline, online or in 3D) does not:
+  the camera keeps its position, zoom, rotation and 3D tilt.
 - While GPS is off the viewport center is remembered for the current context and restored when
   GPS is turned off again in that context.
 
 ## Phone differences
 
 - Restoring a GPS-off viewport restores its center only; zoom is left unchanged.
-- The watch filters GPX tracks to the selected map and falls back to the map center. The phone
-  does neither: the Mapsforge renderer already opens an offline map at its start point or center
-  when the camera is outside that map.
+- The watch re-centers when the selected map changes, filters GPX tracks to that map and falls
+  back to the map center. The phone does none of these: a map switch keeps the camera, and the
+  Mapsforge renderer opens an offline map at its start point or center only when the camera is
+  outside that map.
 - Auto-recenter returns to follow mode after its delay even without a fix, as on the watch.
 
 Real-device validation is required for cold start with and without GPS, with GPX tracks, after

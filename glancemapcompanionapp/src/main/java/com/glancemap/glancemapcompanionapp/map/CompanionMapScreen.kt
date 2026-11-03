@@ -1769,18 +1769,8 @@ internal fun CompanionMapScreen(
         delay(PHONE_MAP_STARTUP_FALLBACK_GRACE_MS)
         startupFallbackReady = true
     }
-    val startCenterOfflineMapIdentity = (mapUiState.source as? PhoneMapSource.Offline)?.map?.selectionIdentity
-    var startCenterObservedOfflineMap by rememberSaveable { mutableStateOf(startCenterOfflineMapIdentity) }
-    LaunchedEffect(startCenterOfflineMapIdentity) {
-        if (startCenterOfflineMapIdentity != startCenterObservedOfflineMap) {
-            startCenterObservedOfflineMap = startCenterOfflineMapIdentity
-            startCenterMemory = startCenterMemory.onOfflineMapChanged(startCenterOfflineMapIdentity)
-        }
-    }
     val startCenterContextKey =
-        remember(startCenterOfflineMapIdentity, savedGpxGeometry) {
-            phoneMapStartCenterContextKey(startCenterOfflineMapIdentity, savedGpxGeometry.map(PhoneMapGpxOverlay::id))
-        }
+        remember(savedGpxGeometry) { phoneMapStartCenterContextKey(savedGpxGeometry.map(PhoneMapGpxOverlay::id)) }
     val startCenterGpxCenter = remember(savedGpxGeometry) { phoneMapGpxStartCenter(savedGpxGeometry) }
     val onlineStartupCentering = startupFallbackReady && startupFallbackWaiting
     val startCenteringEnabled = mapUiState.mapMode.isOffline || onlineStartupCentering

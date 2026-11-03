@@ -8,7 +8,8 @@ import androidx.compose.runtime.saveable.listSaver
  * - A fix older than the marker freshness window is ignored until this map session accepted one.
  * - Online without a fix, the camera waits [PHONE_MAP_STARTUP_FALLBACK_GRACE_MS] before centering on
  *   the active GPX tracks; it never changes follow mode and a fix or user camera action cancels it.
- * - GPS-off mode centers once per map/GPX context and restores the last GPS-off viewport of that context.
+ * - GPS-off mode centers once per GPX context and restores the last GPS-off viewport of that context.
+ *   Unlike the watch, changing the base map keeps the current camera.
  */
 internal const val PHONE_MAP_STARTUP_FALLBACK_GRACE_MS = 15_000L
 
@@ -42,18 +43,9 @@ internal fun phoneMapGpxStartCenter(overlays: List<PhoneMapGpxOverlay>): PhoneMa
             )
         }?.takeIf(PhoneMapCoordinate::isValidSearchPoint)
 
-internal fun phoneMapStartCenterContextKey(
-    offlineMapIdentity: String?,
-    gpxIds: List<String>,
-): String {
-    val mapKey = offlineMapIdentity?.trim().orEmpty()
-    val gpxKey = gpxIds.sorted().joinToString(separator = "|")
-    return when {
-        mapKey.isEmpty() -> "gpx=$gpxKey"
-        gpxKey.isEmpty() -> "map=$mapKey"
-        else -> "map=$mapKey;gpx=$gpxKey"
-    }
-}
+/** The base map is not part of the context: switching maps keeps the camera where it is. */
+internal fun phoneMapStartCenterContextKey(gpxIds: List<String>): String =
+    "gpx=" + gpxIds.sorted().joinToString(separator = "|")
 
 internal sealed interface PhoneMapStartCenterAction {
     data object None : PhoneMapStartCenterAction
@@ -75,10 +67,6 @@ internal data class PhoneMapStartCenterMemory(
     val savedViewportCenter: PhoneMapCoordinate? = null,
 ) {
     fun reset(): PhoneMapStartCenterMemory = copy(contextKey = null, applied = false)
-
-    /** A different offline map always re-centers, like the watch selected-map change. */
-    fun onOfflineMapChanged(offlineMapIdentity: String?): PhoneMapStartCenterMemory =
-        reset().copy(forcedContextKey = offlineMapIdentity?.let { phoneMapStartCenterContextKey(it, emptyList()) })
 
     fun saveViewport(
         contextKey: String,
@@ -104,8 +92,8 @@ internal data class PhoneMapStartCenterMemory(
                 markHandled(contextKey) to PhoneMapStartCenterAction.Center(savedCenter)
             entered.applied -> entered to PhoneMapStartCenterAction.None
             deferWhenNoCenter && gpxCenter == null -> entered to PhoneMapStartCenterAction.Deferred
-            // The watch falls back to the selected map center; the phone renderer already opens an
-            // offline map at its start point or center when the camera is outside that map.
+            // The watch falls back to the selected map center; the phone keeps the camera, and the
+            // renderer opens an offline map at its start point when the camera is outside that map.
             else ->
                 entered.finish(contextKey, forceStartupCenter) to
                     (gpxCenter?.let(PhoneMapStartCenterAction::Center) ?: PhoneMapStartCenterAction.None)

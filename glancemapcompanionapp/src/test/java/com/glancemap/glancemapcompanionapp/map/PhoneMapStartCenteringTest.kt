@@ -31,10 +31,9 @@ class PhoneMapStartCenteringTest {
     }
 
     @Test
-    fun contextKeyMatchesWatchFormatAndIgnoresGpxOrder() {
-        assertEquals("gpx=a|b", phoneMapStartCenterContextKey(null, listOf("b", "a")))
-        assertEquals("map=/maps/alps.map", phoneMapStartCenterContextKey("/maps/alps.map", emptyList()))
-        assertEquals("map=/maps/alps.map;gpx=a", phoneMapStartCenterContextKey("/maps/alps.map", listOf("a")))
+    fun contextKeyIgnoresGpxOrder() {
+        assertEquals("gpx=a|b", phoneMapStartCenterContextKey(listOf("b", "a")))
+        assertEquals("gpx=", phoneMapStartCenterContextKey(emptyList()))
     }
 
     @Test
@@ -87,19 +86,19 @@ class PhoneMapStartCenteringTest {
     }
 
     @Test
-    fun offlineMapChangeForcesRecenterEvenWithSavedViewport() {
-        val memory =
+    fun changingBaseMapKeepsTheCurrentViewportInsteadOfTheGpxCenter() {
+        val current = PhoneMapCoordinate(45.9, 6.9)
+        val contextKey = phoneMapStartCenterContextKey(listOf("a"))
+        val centered =
             PhoneMapStartCenterMemory()
-                .resolve("map=/maps/alps.map", hasGpx = false, gpxCenter = null)
+                .resolve(contextKey, hasGpx = true, gpxCenter = GPX_CENTER)
                 .first
-                .saveViewport("map=/maps/alps.map", PhoneMapCoordinate(45.9, 6.9))
-                .onOfflineMapChanged("/maps/jura.map")
+                .saveViewport(contextKey, current)
 
-        val (next, action) = memory.resolve("map=/maps/jura.map", hasGpx = false, gpxCenter = null)
+        // The base map is not part of the key, so a map switch resolves the same GPX context.
+        val (_, action) = centered.resolve(contextKey, hasGpx = true, gpxCenter = GPX_CENTER)
 
-        assertEquals(PhoneMapStartCenterAction.None, action)
-        assertTrue(next.applied)
-        assertEquals(null, next.forcedContextKey)
+        assertEquals(PhoneMapStartCenterAction.Center(current), action)
     }
 
     @Test
