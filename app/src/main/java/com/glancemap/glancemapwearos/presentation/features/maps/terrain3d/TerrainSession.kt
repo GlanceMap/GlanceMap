@@ -24,6 +24,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import org.mapsforge.core.model.LatLong
+import java.util.UUID
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.math.abs
 import kotlin.math.hypot
@@ -61,6 +62,12 @@ internal class TerrainSession {
     val isLoading: Boolean
         get() = !failed && (initializing || refreshing)
     var startedAt = 0L
+    var telemetrySessionId = "unavailable"
+    var telemetryContext = "unavailable"
+    var telemetryPans = 0L
+    var telemetryZoomUpdates = 0L
+    var telemetryOrbitUpdates = 0L
+    var telemetryRecenters = 0L
     var viewingAngle = DEFAULT_TERRAIN_3D_VIEWING_ANGLE
         private set
     var interactiveViewingAngle = viewingAngle.toFloat()
@@ -165,6 +172,7 @@ internal class TerrainSession {
 
     fun recenter(target: LatLong) {
         val base = renderedCenter ?: return
+        telemetryRecenters++
         val area = TerrainArea(base.latitude, base.longitude, widthMeters.toDouble())
         val (east, north) = area.metersForCoordinate(target.latitude, target.longitude)
         center = target
@@ -227,8 +235,36 @@ internal fun rememberTerrainSession(
             if (!session.firstFrame) session.fail(IllegalStateException("OpenGL first-frame timeout"))
         }
     }
+    terrainTelemetryEffect(session, enabled, interactive)
     terrainRefreshEffect(context, session, holder, mapPath, interactive)
     return session
+}
+
+@Composable
+private fun terrainTelemetryEffect(
+    session: TerrainSession,
+    enabled: Boolean,
+    interactive: Boolean,
+) {
+    LaunchedEffect(enabled, session.view, interactive) {
+        if (!enabled || session.view == null || !interactive) return@LaunchedEffect
+        var previousDraws = session.view?.drawCount ?: 0L
+        while (true) {
+            delay(60_000)
+            val draws = session.view?.drawCount ?: previousDraws
+            val runtime = Runtime.getRuntime()
+            DebugTelemetry.log(
+                TERRAIN_LOG_TAG,
+                "event=interval renderer=custom session_id=${session.telemetrySessionId} " +
+                    "draws=${draws - previousDraws} redraws=unavailable ${session.telemetryContext} " +
+                    "pan=${session.telemetryPans} zoom_updates=${session.telemetryZoomUpdates} " +
+                    "orbit_updates=${session.telemetryOrbitUpdates} recenter=${session.telemetryRecenters} " +
+                    "heap_used=${runtime.totalMemory() - runtime.freeMemory()} " +
+                    "heap_max=${runtime.maxMemory()} internal_gpu_bytes=unavailable",
+            )
+            previousDraws = draws
+        }
+    }
 }
 
 @Composable
@@ -281,7 +317,14 @@ private suspend fun runTerrainSession(
     mapPath: String,
     context: Context,
 ) {
+    val telemetrySession = UUID.randomUUID().toString()
+    session.telemetrySessionId = telemetrySession
+    session.telemetryPans = 0
+    session.telemetryZoomUpdates = 0
+    session.telemetryOrbitUpdates = 0
+    session.telemetryRecenters = 0
     session.startedAt = SystemClock.elapsedRealtime()
+    DebugTelemetry.log(TERRAIN_LOG_TAG, "event=session_start renderer=custom session_id=$telemetrySession")
     session.firstFrame = false
     session.initializing = true
     var view: TerrainGlView? = null
@@ -294,6 +337,9 @@ private suspend fun runTerrainSession(
         val source = waitForTerrainSource(holder, mapPath)
         val center = holder.mapView.model.mapViewPosition.center
         val gpx = snapshotFlow { session.gpx }.filterNotNull().first()
+        session.telemetryContext = "map=${source.mapFile.name} theme=${source.bundledThemeId} " +
+            "dem_selected=${source.demSource.id} dem_actual=unavailable axis=unavailable " +
+            "angle=${session.viewingAngle} hill=${source.hillShadingEnabled} gpx=${gpx.tracks.isNotEmpty()}"
         session.widthMeters =
             terrainPreparedWidth(INITIAL_TERRAIN_CAMERA_DISTANCE, session.interactiveViewingAngle).coerceAtMost(12000f)
         session.requestedWidthMeters = session.widthMeters
@@ -314,11 +360,20 @@ private suspend fun runTerrainSession(
                 hillShadingEnabled = source.hillShadingEnabled,
                 callbacks =
                     TerrainCallbacks(
-                        onPanStarted = { session.dragging = true },
+                        onPanStarted = {
+                            session.telemetryPans++
+                            session.dragging = true
+                        },
                         onPanFinished = session::finishPan,
                         onPanMoved = { base, east, north -> session.updatePan(base, east, north) },
-                        onTiltChanged = session::setInteractiveViewingAngle,
-                        onZoomChanged = session::requestZoomExtent,
+                        onTiltChanged = { angle ->
+                            session.telemetryOrbitUpdates++
+                            session.setInteractiveViewingAngle(angle)
+                        },
+                        onZoomChanged = { distance ->
+                            session.telemetryZoomUpdates++
+                            session.requestZoomExtent(distance)
+                        },
                         onFailure = { error -> if (session.view === view) session.fail(error) },
                         onFirstFrame = {
                             if (session.view === view && !session.failed) {
@@ -326,7 +381,11 @@ private suspend fun runTerrainSession(
                                 session.initializing = false
                                 val elapsed = SystemClock.elapsedRealtime() - session.startedAt
                                 Log.i(TERRAIN_LOG_TAG, "initialization_complete switch_2d_to_3d_ms=$elapsed")
-                                DebugTelemetry.log(TERRAIN_LOG_TAG, "event=first_frame elapsed_ms=$elapsed")
+                                DebugTelemetry.log(
+                                    TERRAIN_LOG_TAG,
+                                    "event=first_frame renderer=custom " +
+                                        "session_id=$telemetrySession elapsed_ms=$elapsed",
+                                )
                             }
                         },
                     ),
@@ -358,6 +417,7 @@ private suspend fun runTerrainSession(
         bitmap?.recycle()
         if (currentView !== view) currentView?.release()
         view?.release()
+        DebugTelemetry.log(TERRAIN_LOG_TAG, "event=session_end renderer=custom session_id=$telemetrySession")
     }
 }
 

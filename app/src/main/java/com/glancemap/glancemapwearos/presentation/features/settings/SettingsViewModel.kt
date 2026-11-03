@@ -807,6 +807,15 @@ class SettingsViewModel(
             settingsRepository.setTerrain3dEnabled(enabled)
         }
 
+    val terrain3dRenderer: StateFlow<String> =
+        settingsRepository.terrain3dRenderer
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "custom")
+
+    fun setTerrain3dRenderer(renderer: String) =
+        viewModelScope.launch {
+            settingsRepository.setTerrain3dRenderer(renderer)
+        }
+
     val terrain3dViewingAngle: StateFlow<Int> =
         settingsRepository.terrain3dViewingAngle
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), DEFAULT_TERRAIN_3D_VIEWING_ANGLE)

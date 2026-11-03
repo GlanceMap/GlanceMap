@@ -52,6 +52,9 @@ data class DiagnosticsSettingsSnapshot(
     val keepAppOpen: Boolean,
     val gpsInAmbientMode: Boolean,
     val gpsDebugTelemetry: Boolean,
+    val terrainRendererPreference: String = "custom",
+    val terrainEnabled: Boolean = false,
+    val terrainViewingAngle: Int = 60,
     val diagnosticsCaptureMode: String = SettingsRepository.DEFAULT_DIAGNOSTICS_CAPTURE_MODE,
     val gpsPassiveLocationExperiment: Boolean,
     val backButtonExitsNavigation: Boolean,
@@ -931,6 +934,9 @@ object DiagnosticsExporter {
             writer.appendLine("gpsPositionFilterEnabled=true")
             writer.appendLine()
             writer.appendLine("Battery Benchmark Context")
+            writer.appendLine("terrainRendererPreference=${settings.terrainRendererPreference}")
+            writer.appendLine("terrainEnabled=${settings.terrainEnabled}")
+            writer.appendLine("terrainViewingAngle=${settings.terrainViewingAngle}")
             val batteryBenchmarkMode =
                 settings.diagnosticsCaptureMode == SettingsRepository.DIAGNOSTICS_CAPTURE_MODE_BATTERY
             writer.appendLine(

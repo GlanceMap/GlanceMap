@@ -231,3 +231,14 @@ not around coroutine suspension. `reload_complete` also reports uptime for the w
 
 Real-watch cold/warm timings, correctness after import/selection changes, and battery impact still
 require device validation; unit tests do not establish those results.
+
+For the experimental 3D renderer comparison, keep map, theme, selected and
+actual DEM, ground footprint, angle, hill shading, GPX, brightness, connectivity
+and capture mode matched. Alternate GlanceMap and WorldWind order and collect at
+least three paired 15-minute settled idle captures, a repeated pan/zoom/orbit/
+recenter sequence, and a 10–15-minute exploration capture. Record redraw and
+draw counts, heap, battery and temperature where available. Renderer preference
+is included in Battery Benchmark Context; session interval telemetry identifies
+the active renderer. GPU memory and WorldWind internal work that is not exposed
+are unavailable, not zero. A short or noisy battery run does not establish
+battery equivalence.

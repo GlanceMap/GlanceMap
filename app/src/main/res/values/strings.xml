@@ -2010,6 +2010,9 @@
     <string name="settings_back_closes_app">"Back closes app"</string>
     <string name="settings_close_directly_from_navigate">"Close directly from Navigate"</string>
     <string name="map_terrain_3d_experimental">3D terrain (experimental)</string>
+    <string name="map_3d_renderer">3D renderer</string>
+    <string name="map_3d_renderer_glancemap">GlanceMap</string>
+    <string name="map_3d_renderer_worldwind">WorldWind (experimental)</string>
     <string name="map_3d_viewing_angle">3D viewing angle</string>
     <string name="map_3d_orbit_mode">3D rotation mode</string>
     <string name="map_3d_viewing_angle_value">%1$d°</string>

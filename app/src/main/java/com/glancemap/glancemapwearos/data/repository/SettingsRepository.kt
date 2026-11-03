@@ -621,6 +621,10 @@ interface SettingsRepository {
 
     suspend fun setTerrain3dEnabled(enabled: Boolean)
 
+    val terrain3dRenderer: Flow<String>
+
+    suspend fun setTerrain3dRenderer(renderer: String)
+
     val terrain3dViewingAngle: Flow<Int>
 
     suspend fun setTerrain3dViewingAngle(angle: Int)

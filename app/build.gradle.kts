@@ -130,6 +130,7 @@ android {
     }
 
     compileOptions {
+        isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
@@ -173,6 +174,11 @@ kotlin {
 }
 
 dependencies {
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
+    implementation("earth.worldwind:worldwind:2.1.1") {
+        // Mapsforge provides the same AndroidSVG classes.
+        exclude(group = "com.caverock", module = "androidsvg-aar")
+    }
     implementation(platform(libs.compose.bom))
 
     // Compose / Wear

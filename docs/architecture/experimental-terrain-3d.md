@@ -73,3 +73,34 @@ screen is not interactive and disposed when the screen or mode is left.
 Real-watch evaluation is still required for EGL failure handling, view lifecycle,
 texture alignment, visible relief, interaction, memory, frame timing, and battery.
 Logcat tag `Terrain3D` records preparation, switches, failures and teardown.
+
+## WorldWind comparison renderer
+
+When experimental 3D is enabled, the renderer preference selects GlanceMap
+(default) or WorldWind. Both use the same eligibility rules; recording, guidance
+and route tools continue to force 2D. The outgoing session is stopped before the
+other starts. A WorldWind startup failure returns to 2D without changing the
+saved preference.
+
+WorldWind 2.1.1 uses offline 256-pixel Mapsforge tiles from the selected map and
+theme on a single worker, with duplicate in-flight requests coalesced. The
+existing selected-first local DEM repository supplies tiled elevations; no
+WorldWind online provider or persistent rendered imagery cache is configured.
+The initial elevation coverage is limited to approximately three arc-seconds,
+including where Detailed terrain is present, to avoid claiming uniform 1-second
+resolution across fallback boundaries. Coarse elevation grids spanning more than
+four HGT files are omitted. The WorldWind resource-cache capacity is one eighth
+of maximum heap, capped at 16 MiB and floored at 1 MiB; it is a cache capacity,
+not a measured GPU allocation. The existing decoded HGT cache remains separate.
+
+WorldWind uses the existing angle, compass orientation, zoom, orbit, location and
+GPX inputs. Basic GPX follows terrain and preserves segments; advanced elevation
+colouring is not reproduced. Hill shading enables normal-based relief without
+shadow maps. Recenter and return to 2D use the 3D ground center. Session and
+interval diagnostics identify the renderer; WorldWind reports observed redraw
+and draw callbacks and tile work, with unavailable internal metrics labelled as
+such. A GL callback is not proof of a fully rendered terrain frame.
+
+Physical-watch validation is required before changing the default, especially
+for GL teardown, DEM coverage and detailed-tile memory pressure, display
+alignment, input, idle redraws, battery and thermal behaviour.

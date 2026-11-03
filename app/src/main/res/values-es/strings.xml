@@ -2041,6 +2041,9 @@
     <string name="settings_back_closes_app">"Atrás cierra la app"</string>
     <string name="settings_close_directly_from_navigate">"Cerrar directamente desde Navegar"</string>
     <string name="map_terrain_3d_experimental">Terreno 3D (experimental)</string>
+    <string name="map_3d_renderer">Motor 3D</string>
+    <string name="map_3d_renderer_glancemap">GlanceMap</string>
+    <string name="map_3d_renderer_worldwind">WorldWind (experimental)</string>
     <string name="map_3d_viewing_angle">Ángulo de vista 3D</string>
     <string name="map_3d_orbit_mode">Modo de rotación 3D</string>
     <string name="map_3d_viewing_angle_value">%1$d°</string>

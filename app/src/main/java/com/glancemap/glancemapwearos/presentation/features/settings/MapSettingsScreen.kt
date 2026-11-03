@@ -40,6 +40,7 @@ fun MapSettingsScreen(
     val autoRecenterEnabled by viewModel.autoRecenterEnabled.collectAsState()
     val autoRecenterDelay by viewModel.autoRecenterDelay.collectAsState(initial = 5)
     val terrain3dEnabled by viewModel.terrain3dEnabled.collectAsState()
+    val terrain3dRenderer by viewModel.terrain3dRenderer.collectAsState()
     val terrain3dViewingAngle by viewModel.terrain3dViewingAngle.collectAsState()
     val liveElevation by viewModel.liveElevation.collectAsState()
     val liveDistance by viewModel.liveDistance.collectAsState()
@@ -182,6 +183,18 @@ fun MapSettingsScreen(
             )
         }
         if (terrain3dEnabled) {
+            item {
+                SettingsOptionPickerRow(
+                    label = stringResource(R.string.map_3d_renderer),
+                    selectedValue = terrain3dRenderer,
+                    options =
+                        listOf(
+                            "custom" to stringResource(R.string.map_3d_renderer_glancemap),
+                            "worldwind" to stringResource(R.string.map_3d_renderer_worldwind),
+                        ),
+                    onSelect = viewModel::setTerrain3dRenderer,
+                )
+            }
             item {
                 SettingsOptionPickerRow(
                     label = stringResource(R.string.map_3d_viewing_angle),

@@ -12,3 +12,21 @@ internal fun selectTerrainRenderer(
     } else {
         TerrainRendererSelection.MAPSFORGE
     }
+
+internal fun useWorldWind(
+    eligible: Boolean,
+    renderer: String,
+): Boolean = eligible && renderer == "worldwind"
+
+internal fun customTerrainMayStart(
+    eligible: Boolean,
+    renderer: String,
+    worldWindRunning: Boolean,
+): Boolean = eligible && !useWorldWind(eligible, renderer) && !worldWindRunning
+
+internal fun worldWindMayStart(
+    eligible: Boolean,
+    renderer: String,
+    customViewPresent: Boolean,
+    customLoading: Boolean,
+): Boolean = useWorldWind(eligible, renderer) && !customViewPresent && !customLoading

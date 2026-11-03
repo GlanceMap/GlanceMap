@@ -56,6 +56,7 @@ internal class TerrainGlView(
             { error -> post { callbacks.onFailure(error) } },
             { post { callbacks.onFirstFrame() } },
         )
+    val drawCount: Long get() = terrainRenderer.drawCount.get()
     private var active = true
 
     @Volatile private var released = false
@@ -292,6 +293,7 @@ private class TerrainGlRenderer(
     private val onFailure: (Throwable) -> Unit,
     private val onFirstFrame: () -> Unit,
 ) : GLSurfaceView.Renderer {
+    val drawCount = AtomicLong()
     private val panLock = Any()
     private var areaCenter = initialCenter
     private var areaWidth = initialWidth
@@ -524,6 +526,7 @@ private class TerrainGlRenderer(
 
     override fun onDrawFrame(gl: GL10?) {
         if (program == 0 || failed) return
+        drawCount.incrementAndGet()
         val diagnostics = DebugTelemetry.isFullDiagnosticsCaptureEnabled()
         val drawStart = if (diagnostics) SystemClock.elapsedRealtimeNanos() else 0L
         GLES20.glClearColor(0.08f, 0.09f, 0.1f, 1f)

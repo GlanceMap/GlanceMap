@@ -2099,6 +2099,9 @@
     <string name="settings_back_closes_app">"Wstecz zamyka aplikację"</string>
     <string name="settings_close_directly_from_navigate">"Zamknij bezpośrednio z Nawigacji"</string>
     <string name="map_terrain_3d_experimental">Teren 3D (eksperymentalny)</string>
+    <string name="map_3d_renderer">Silnik 3D</string>
+    <string name="map_3d_renderer_glancemap">GlanceMap</string>
+    <string name="map_3d_renderer_worldwind">WorldWind (eksperymentalny)</string>
     <string name="map_3d_viewing_angle">Kąt widzenia 3D</string>
     <string name="map_3d_orbit_mode">Tryb obrotu 3D</string>
     <string name="map_3d_viewing_angle_value">%1$d°</string>
