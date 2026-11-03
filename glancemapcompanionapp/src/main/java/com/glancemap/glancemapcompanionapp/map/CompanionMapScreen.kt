@@ -3407,15 +3407,23 @@ internal fun CompanionMapScreen(
                         showModeControl = true,
                         toolbarVisible = mapToolbarVisible,
                     )
-                    Column(
+                    // The credit sits against the top edge, above the menu, search and compass row.
+                    phoneMapAttribution(
+                        mapProviderAttributions,
                         modifier =
                             Modifier
                                 .align(Alignment.TopCenter)
                                 .statusBarsPadding()
+                                .padding(start = 8.dp, end = 8.dp, top = 2.dp),
+                    )
+                    Column(
+                        modifier =
+                            Modifier
+                                .align(Alignment.TopStart)
+                                .statusBarsPadding()
                                 .padding(start = 16.dp, end = 16.dp, top = 16.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        phoneMapAttribution(mapProviderAttributions)
                         phoneMapSearchControl(
                             presentation =
                                 PhoneMapSearchControlState(
@@ -3425,7 +3433,7 @@ internal fun CompanionMapScreen(
                                     isMetric = generalSettings.isMetric,
                                 ),
                             actions = mapSearchActions,
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = 56.dp),
+                            modifier = Modifier.fillMaxWidth().padding(start = 48.dp, end = 56.dp),
                         )
                         if (isVisible && searchOpen) PhoneMapSearchPanel(state = searchState, actions = mapSearchActions)
                     }
@@ -4521,15 +4529,23 @@ internal fun CompanionMapScreen(
                     toolbarVisible = mapToolbarVisible,
                 )
 
-                Column(
+                // The credit sits against the top edge, above the menu, search and compass row.
+                phoneMapAttribution(
+                    mapProviderAttributions,
                     modifier =
                         Modifier
                             .align(Alignment.TopCenter)
                             .statusBarsPadding()
+                            .padding(start = 8.dp, end = 8.dp, top = 2.dp),
+                )
+                Column(
+                    modifier =
+                        Modifier
+                            .align(Alignment.TopStart)
+                            .statusBarsPadding()
                             .padding(start = 16.dp, end = 16.dp, top = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    phoneMapAttribution(mapProviderAttributions)
                     phoneMapSearchControl(
                         presentation =
                             PhoneMapSearchControlState(
@@ -4539,7 +4555,7 @@ internal fun CompanionMapScreen(
                                 isMetric = generalSettings.isMetric,
                             ),
                         actions = mapSearchActions,
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 56.dp),
+                        modifier = Modifier.fillMaxWidth().padding(start = 48.dp, end = 56.dp),
                     )
                     if (isVisible && searchOpen) {
                         PhoneMapSearchPanel(state = searchState, actions = mapSearchActions)

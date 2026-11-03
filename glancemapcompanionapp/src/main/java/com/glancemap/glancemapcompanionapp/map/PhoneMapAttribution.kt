@@ -11,6 +11,7 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLinkStyles
 import androidx.compose.ui.text.fromHtml
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.sp
 
@@ -26,6 +27,7 @@ internal fun phoneMapAttribution(
         text = AnnotatedString.fromHtml(attributions.distinct().joinToString(" · "), linkStyles = links),
         modifier = modifier.testTag("map-provider-attribution"),
         color = Color.Black,
+        textAlign = TextAlign.Center,
         // A faint light halo keeps black text legible over dark terrain without drawing a panel.
         style =
             MaterialTheme.typography.labelSmall.copy(

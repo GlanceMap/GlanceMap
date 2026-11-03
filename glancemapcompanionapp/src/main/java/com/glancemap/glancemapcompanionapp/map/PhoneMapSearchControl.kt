@@ -18,6 +18,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -35,7 +36,10 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -83,17 +87,43 @@ internal fun phoneMapSearchControl(
     }
     BoxWithConstraints(modifier = modifier) {
         val availableWidth = maxWidth
-        phoneMapSearchInput(
-            state = state,
-            actions = actions,
-            onSearch = search,
-            inputModifier =
-                Modifier.focusRequester(focusRequester).onFocusChanged {
-                    inputFocused = it.isFocused
-                    if (it.isFocused) actions.onFocus()
+        if (expanded) {
+            phoneMapSearchInput(
+                state = state,
+                actions = actions,
+                onSearch = search,
+                inputModifier =
+                    Modifier.focusRequester(focusRequester).onFocusChanged {
+                        inputFocused = it.isFocused
+                        if (it.isFocused) actions.onFocus()
+                    },
+                scaleContent = {
+                    phoneMapSearchScale(
+                        presentation.camera,
+                        presentation.isMetric,
+                        availableWidth,
+                        MaterialTheme.colorScheme.onSecondaryContainer,
+                    )
                 },
-            scaleContent = { phoneMapSearchScale(presentation.camera, presentation.isMetric, availableWidth) },
-        )
+            )
+        } else {
+            phoneMapCollapsedSearch(presentation, actions.onFocus, availableWidth)
+        }
+    }
+}
+
+/** Collapsed, the search is a loupe shaped like the menu button, with the scale beside it. */
+@Composable
+private fun phoneMapCollapsedSearch(
+    presentation: PhoneMapSearchControlState,
+    onOpen: () -> Unit,
+    availableWidth: Dp,
+) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        FilledTonalIconButton(onClick = onOpen, modifier = Modifier.testTag("map-search-open")) {
+            Icon(Icons.Filled.Search, stringResource(R.string.map_search_action))
+        }
+        phoneMapSearchScale(presentation.camera, presentation.isMetric, availableWidth, Color.Black, haloed = true)
     }
 }
 
@@ -110,7 +140,7 @@ private fun phoneMapSearchInput(
     Surface(
         shape = RoundedCornerShape(24.dp),
         color = MaterialTheme.colorScheme.secondaryContainer,
-        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+        modifier = Modifier.fillMaxWidth().heightIn(min = PHONE_MAP_SEARCH_BAR_HEIGHT),
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 8.dp),
@@ -126,7 +156,7 @@ private fun phoneMapSearchInput(
                 modifier =
                     inputModifier
                         .weight(1f)
-                        .heightIn(min = 48.dp)
+                        .heightIn(min = PHONE_MAP_SEARCH_BAR_HEIGHT)
                         .testTag("map-search-input")
                         .semantics { contentDescription = hint },
                 singleLine = true,
@@ -158,6 +188,8 @@ private fun phoneMapSearchScale(
     camera: PhoneMapCameraSnapshot,
     isMetric: Boolean,
     availableWidth: Dp,
+    color: Color,
+    haloed: Boolean = false,
 ) {
     val scaleBudget = (availableWidth * 0.34f).coerceAtMost(80.dp)
     // Keep the scale tied to physical pixels even while the adjacent input is being edited.
@@ -171,7 +203,7 @@ private fun phoneMapSearchScale(
         }
     indicator?.let {
         Box(modifier = Modifier.width(scaleBudget), contentAlignment = Alignment.CenterEnd) {
-            phoneMapSearchScaleBar(it, scaleViewport * it.widthRatio)
+            phoneMapSearchScaleBar(it, scaleViewport * it.widthRatio, color, haloed)
         }
     }
 }
@@ -180,26 +212,40 @@ private fun phoneMapSearchScale(
 private fun phoneMapSearchScaleBar(
     indicator: PhoneMapScaleIndicator,
     width: Dp,
+    color: Color,
+    haloed: Boolean,
 ) {
-    val color = MaterialTheme.colorScheme.onSecondaryContainer
+    // Without the search background, a light halo keeps the black scale legible over dark terrain.
+    val halo = Color.White.takeIf { haloed }
     Column(horizontalAlignment = Alignment.End) {
         Text(
             indicator.label,
-            style = MaterialTheme.typography.labelSmall,
+            color = color,
+            style =
+                MaterialTheme.typography.labelSmall.let { style ->
+                    if (halo != null) style.copy(shadow = Shadow(color = halo, blurRadius = 4f)) else style
+                },
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
         Canvas(modifier = Modifier.width(width).height(8.dp).testTag("map-search-scale-bar")) {
-            val centerY = size.height / 2f
             val stroke = 1.5.dp.toPx()
-            drawLine(color, Offset(0f, centerY), Offset(size.width, centerY), strokeWidth = stroke)
-            drawLine(color, Offset(stroke / 2f, 0f), Offset(stroke / 2f, size.height), strokeWidth = stroke)
-            drawLine(
-                color,
-                Offset(size.width - stroke / 2f, 0f),
-                Offset(size.width - stroke / 2f, size.height),
-                strokeWidth = stroke,
-            )
+            halo?.let { drawPhoneMapScaleBar(it, stroke * 3f) }
+            drawPhoneMapScaleBar(color, stroke)
         }
     }
 }
+
+private fun DrawScope.drawPhoneMapScaleBar(
+    color: Color,
+    stroke: Float,
+) {
+    val centerY = size.height / 2f
+    val edge = 1.5.dp.toPx() / 2f
+    drawLine(color, Offset(0f, centerY), Offset(size.width, centerY), strokeWidth = stroke)
+    drawLine(color, Offset(edge, 0f), Offset(edge, size.height), strokeWidth = stroke)
+    drawLine(color, Offset(size.width - edge, 0f), Offset(size.width - edge, size.height), strokeWidth = stroke)
+}
+
+/** Matches the menu button, so the search sits on the same line as the menu and compass. */
+private val PHONE_MAP_SEARCH_BAR_HEIGHT = 40.dp

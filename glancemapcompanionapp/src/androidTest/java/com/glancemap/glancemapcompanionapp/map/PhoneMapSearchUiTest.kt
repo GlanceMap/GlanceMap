@@ -51,9 +51,9 @@ class PhoneMapSearchUiTest {
         val expanded = mutableStateOf(false)
         var submissions = 0
         setNarrowSearchContent(state, expanded) { submissions += 1 }
+        composeRule.onNodeWithTag("map-search-open").performClick()
         composeRule
             .onNodeWithTag("map-search-input")
-            .performClick()
             .assertIsFocused()
             .performTextInput("Grenoble")
         composeRule.onAllNodes(hasSetTextAction()).assertCountEquals(1)
@@ -105,9 +105,10 @@ class PhoneMapSearchUiTest {
             .onNodeWithText(
                 composeRule.activity.getString(R.string.map_search_offline_scope),
             ).assertDoesNotExist()
+        composeRule.onNodeWithTag("map-search-input").assertDoesNotExist()
+        composeRule.onNodeWithTag("map-search-open").performClick()
         composeRule
             .onNodeWithTag("map-search-input")
-            .performClick()
             .assertIsFocused()
             .performTextInput("Museum")
         composeRule.onAllNodes(hasSetTextAction()).assertCountEquals(1)
@@ -134,16 +135,14 @@ class PhoneMapSearchUiTest {
         }
         composeRule.onNodeWithText("source.poi").performClick()
         composeRule.runOnIdle { assertEquals(result, selected) }
-        composeRule.onNodeWithTag("map-search-input").assertIsNotFocused()
+        // Selecting a result collapses the search back to the loupe.
+        composeRule.onNodeWithTag("map-search-input").assertDoesNotExist()
         composeRule.onNodeWithContentDescription(closeLabel).assertDoesNotExist()
-        composeRule.onNodeWithTag("map-search-input").performClick()
+        composeRule.onNodeWithTag("map-search-open").performClick()
         composeRule.onNodeWithContentDescription(closeLabel).performClick()
-        composeRule.onNodeWithTag("map-search-input").assertIsNotFocused()
+        composeRule.onNodeWithTag("map-search-input").assertDoesNotExist()
         composeRule.runOnIdle { assertEquals("Museum", state.value.query) }
-        composeRule
-            .onNodeWithContentDescription(
-                composeRule.activity.getString(R.string.map_search_action),
-            ).performClick()
+        composeRule.onNodeWithTag("map-search-open").performClick()
         composeRule.onNodeWithTag("map-search-input").assertIsFocused()
         composeRule.runOnIdle { assertEquals(1, submissions) }
     }
