@@ -2,17 +2,27 @@ package com.glancemap.glancemapcompanionapp.map
 
 import org.mapsforge.map.reader.MapFile
 
+private const val OPEN_ANDRO_MAPS_ATTRIBUTION = "<a href=\"https://www.openandromaps.org\">© OpenAndroMaps</a>"
+private const val FREIZEITKARTE_ATTRIBUTION =
+    "<a href=\"https://www.freizeitkarte-osm.de\">© Freizeitkarte (CC BY 3.0)</a>"
+
 /**
- * The credit an offline map's maker wrote in its Mapsforge header, for example
- * "(c) Map: FZK project (CC-BY-3.0); Map data: OpenStreetMap contributors". Maps without one get the
- * OpenStreetMap credit, since Mapsforge maps are built from OpenStreetMap data.
+ * The credit for an offline map, from the text its maker wrote in the Mapsforge header. Known makers
+ * get a short linked credit, since their headers are long mixed-language lines; any other text is
+ * shown as written. Maps without one get the OpenStreetMap credit, as Mapsforge maps are built from
+ * OpenStreetMap data.
  */
-internal fun phoneOfflineMapAttribution(headerComment: String?): String =
-    headerComment
-        ?.trim()
-        ?.takeIf(String::isNotEmpty)
-        ?.let(::escapePhoneMapAttributionText)
-        ?: OPEN_STREET_MAP_ATTRIBUTION
+internal fun phoneOfflineMapAttribution(headerComment: String?): String {
+    val comment = headerComment?.trim().orEmpty()
+    return when {
+        comment.contains("openandromaps", ignoreCase = true) ->
+            "$OPEN_ANDRO_MAPS_ATTRIBUTION, $OPEN_STREET_MAP_ATTRIBUTION"
+        comment.contains("FZK project", ignoreCase = true) || comment.contains("freizeitkarte", ignoreCase = true) ->
+            "$FREIZEITKARTE_ATTRIBUTION, $OPEN_STREET_MAP_ATTRIBUTION"
+        comment.isNotEmpty() -> escapePhoneMapAttributionText(comment)
+        else -> OPEN_STREET_MAP_ATTRIBUTION
+    }
+}
 
 /** Header comments are plain text, but the credit line renders HTML links. */
 internal fun escapePhoneMapAttributionText(text: String): String =
