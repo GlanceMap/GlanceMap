@@ -21,6 +21,7 @@
     <string name="map_tool_settings_title">"Impostazioni"</string>
     <string name="map_tool_poi_settings_title">"Impostazioni POI"</string>
     <string name="map_tool_gpx_settings_title">"Impostazioni GPX"</string>
+    <string name="map_tool_shortcut_poi">"+ POI"</string>
     <string name="map_tool_shortcut_rec">"REC"</string>
     <string name="map_tool_shortcut_gpx">"GPX"</string>
     <string name="phone_rec_start">"Avvia"</string>

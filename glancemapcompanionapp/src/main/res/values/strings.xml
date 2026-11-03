@@ -168,6 +168,7 @@
     <string name="map_tool_launcher_label">Tools</string>
     <string name="map_tool_launcher_content_description">Open or close map tools</string>
     <string name="map_tool_shortcut_add_poi">Add POI</string>
+    <string name="map_tool_shortcut_poi">+ POI</string>
     <string name="map_tool_shortcut_rec">REC</string>
     <string name="map_tool_shortcut_gpx">GPX</string>
     <string name="phone_rec_start">Start</string>

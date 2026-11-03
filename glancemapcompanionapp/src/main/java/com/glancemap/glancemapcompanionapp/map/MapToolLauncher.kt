@@ -58,7 +58,7 @@ internal fun mapToolLauncher(
                 horizontalAlignment = Alignment.End,
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                mapShortcut(R.string.map_tool_shortcut_add_poi, Icons.Filled.Place) { openScreen(actions.onAddPoi) }
+                mapShortcut(R.string.map_tool_shortcut_poi, Icons.Filled.Place) { openScreen(actions.onAddPoi) }
                 mapShortcut(R.string.map_tool_shortcut_rec, Icons.Filled.FiberManualRecord) {
                     openScreen(startRecording)
                 }
@@ -157,19 +157,20 @@ private fun mapShortcut(
     Surface(
         modifier = Modifier.fillMaxWidth().testTag("map-shortcut-$label"),
         onClick = onClick,
-        shape = RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(10.dp),
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
         shadowElevation = 3.dp,
     ) {
         Row(
-            modifier = Modifier.heightIn(min = 48.dp).padding(horizontal = 12.dp, vertical = 8.dp),
+            // Compact chip look; the clickable Surface still keeps the 48dp minimum touch target.
+            modifier = Modifier.heightIn(min = 36.dp).padding(horizontal = 10.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            Icon(icon, contentDescription = null, modifier = Modifier.size(20.dp))
+            Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp))
             Text(
                 stringResource(label),
-                style = MaterialTheme.typography.labelLarge,
+                style = MaterialTheme.typography.labelMedium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )

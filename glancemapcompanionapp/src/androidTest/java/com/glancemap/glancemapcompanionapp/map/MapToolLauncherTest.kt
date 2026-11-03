@@ -53,7 +53,7 @@ class MapToolLauncherTest {
         composeRule.runOnIdle { assertEquals(MapToolPanelMode.CLOSED, ui.value.toolPanel.mode) }
         click(R.string.map_tool_launcher_label)
         composeRule.onNodeWithText(label(R.string.map_tool_settings_title)).assertDoesNotExist()
-        click(R.string.map_tool_shortcut_add_poi)
+        click(R.string.map_tool_shortcut_poi)
         assertEquals(listOf("add-poi"), opened)
         click(R.string.map_tool_launcher_label)
         click(R.string.map_tool_shortcut_rec)
