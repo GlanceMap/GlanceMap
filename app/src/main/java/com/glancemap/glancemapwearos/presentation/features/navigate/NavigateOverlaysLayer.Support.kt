@@ -12,6 +12,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -56,6 +57,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -64,14 +66,29 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.wear.compose.foundation.AnchorType
+import androidx.wear.compose.foundation.ArcPaddingValues
+import androidx.wear.compose.foundation.CurvedDirection
 import androidx.wear.compose.foundation.CurvedLayout
+import androidx.wear.compose.foundation.CurvedModifier
+import androidx.wear.compose.foundation.CurvedScope
+import androidx.wear.compose.foundation.CurvedTextStyle
+import androidx.wear.compose.foundation.angularSize
+import androidx.wear.compose.foundation.angularSizeDp
+import androidx.wear.compose.foundation.background
+import androidx.wear.compose.foundation.basicCurvedText
 import androidx.wear.compose.foundation.curvedComposable
+import androidx.wear.compose.foundation.curvedRow
+import androidx.wear.compose.foundation.padding
+import androidx.wear.compose.foundation.weight
 import androidx.wear.compose.material3.Icon
 import androidx.wear.compose.material3.IconButton
 import androidx.wear.compose.material3.IconButtonDefaults
@@ -86,6 +103,8 @@ import kotlinx.coroutines.flow.collect
 import org.mapsforge.core.model.LatLong
 import org.mapsforge.map.android.view.MapView
 import java.util.Locale
+import kotlin.math.PI
+import kotlin.math.asin
 import kotlin.math.cos
 import kotlin.math.sin
 
@@ -201,65 +220,16 @@ internal fun BoxScope.SlopeOverlayStatusIndicator(
 @Composable
 internal fun BoxScope.PanningLiveMetricsOverlay(
     navMode: NavMode,
-    screenSize: WearScreenSize,
     liveElevationEnabled: Boolean,
     liveElevationLabel: String?,
     liveDistanceEnabled: Boolean,
     liveDistanceLabel: String?,
-    zoomLabelTopPadding: Dp,
     liveElevationIconSize: Dp,
-    navButtonBottomPadding: Dp,
-    navButtonSize: Dp,
+    edgePadding: Dp,
+    sideButtonSize: Dp,
+    clockWidth: Dp,
 ) {
-    val liveMetricFontSize =
-        when (screenSize) {
-            WearScreenSize.SMALL -> 12.sp
-            WearScreenSize.MEDIUM,
-            WearScreenSize.LARGE,
-            -> 13.sp
-        }
-    val liveMetricLineHeight =
-        when (screenSize) {
-            WearScreenSize.SMALL -> 14.sp
-            WearScreenSize.MEDIUM,
-            WearScreenSize.LARGE,
-            -> 15.sp
-        }
-    val liveMetricIconSize =
-        when (screenSize) {
-            WearScreenSize.SMALL -> 12.dp
-            WearScreenSize.MEDIUM,
-            WearScreenSize.LARGE,
-            -> 13.dp
-        }
-
     cappedFontScale(maxFontScale = 1.15f) {
-        if (navMode == NavMode.PANNING && liveElevationEnabled) {
-            Row(
-                modifier =
-                    Modifier
-                        .align(Alignment.TopCenter)
-                        .padding(top = zoomLabelTopPadding + 28.dp)
-                        .background(Color.Black.copy(alpha = 0.78f), RoundedCornerShape(7.dp))
-                        .padding(horizontal = 8.dp, vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Icon(
-                    painter = painterResource(id = R.drawable.ic_live_elevation_altitude),
-                    contentDescription = stringResource(R.string.navigate_live_elevation),
-                    modifier = Modifier.size(liveMetricIconSize),
-                    tint = Color(0xFF34D399),
-                )
-                Text(
-                    text = stringResource(R.string.navigation_spaced_elevation, liveElevationLabel ?: "--"),
-                    color = Color.White,
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = liveMetricFontSize,
-                    lineHeight = liveMetricLineHeight,
-                )
-            }
-        }
-
         if (navMode == NavMode.PANNING && (liveElevationEnabled || liveDistanceEnabled)) {
             Box(
                 modifier =
@@ -285,36 +255,171 @@ internal fun BoxScope.PanningLiveMetricsOverlay(
             }
         }
 
-        if (navMode == NavMode.PANNING && liveDistanceEnabled && !liveDistanceLabel.isNullOrBlank()) {
-            Row(
-                modifier =
-                    Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(bottom = navButtonBottomPadding + navButtonSize + navButtonBottomPadding + 3.dp)
-                        .background(Color.Black.copy(alpha = 0.90f), RoundedCornerShape(7.dp))
-                        .padding(horizontal = 8.dp, vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(3.dp),
-            ) {
-                Icon(
-                    painter = painterResource(id = R.drawable.ic_live_distance_step_out),
-                    contentDescription = stringResource(R.string.navigate_live_distance),
-                    modifier =
-                        Modifier
-                            .size(liveMetricIconSize)
-                            .rotate(90f),
-                    tint = Color.White.copy(alpha = 0.92f),
-                )
-                Text(
-                    text = liveDistanceLabel,
-                    color = Color.White,
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = liveMetricFontSize,
-                    lineHeight = liveMetricLineHeight,
+        BoxWithConstraints(Modifier.fillMaxSize()) {
+            val radius = minOf(maxWidth.value, maxHeight.value) / 2f
+            val arc = liveMetricUpperArc(radius, edgePadding.value, sideButtonSize.value, clockWidth.value)
+            if (navMode == NavMode.PANNING && arc.sweep > 0f) {
+                LiveMetricsUpperArc(
+                    elevationText =
+                        if (liveElevationEnabled) {
+                            stringResource(R.string.navigation_spaced_elevation, liveElevationLabel ?: "--")
+                        } else {
+                            null
+                        },
+                    distanceText = liveDistanceLabel.takeIf { liveDistanceEnabled && !it.isNullOrBlank() },
+                    edgePadding = edgePadding,
+                    arc = arc,
+                    radius = radius,
                 )
             }
         }
     }
+}
+
+@Composable
+@Suppress("FunctionName")
+private fun LiveMetricsUpperArc(
+    elevationText: String?,
+    distanceText: String?,
+    edgePadding: Dp,
+    arc: LiveMetricArc,
+    radius: Float,
+) {
+    if (elevationText == null && distanceText == null) return
+    val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
+    val bothVisible = elevationText != null && distanceText != null
+    val firstText = if (rtl) elevationText else distanceText
+    val secondText = if (rtl) distanceText else elevationText
+    val scale = liveMetricScale(elevationText, distanceText, edgePadding, arc, radius)
+    if (scale <= 0f) return
+    CurvedLayout(
+        modifier = Modifier.fillMaxSize(),
+        anchor = arc.start,
+        anchorType = if (rtl) AnchorType.End else AnchorType.Start,
+        angularDirection = CurvedDirection.Angular.Normal,
+    ) {
+        curvedRow(modifier = CurvedModifier.angularSize(arc.sweep)) {
+            curvedComposable(modifier = CurvedModifier.weight(1f)) { }
+            liveMetricClockSideInset(bothVisible, rtl, scale)
+            if (firstText != null) {
+                liveMetricChip(firstText, edgePadding, elevation = rtl, scale = scale)
+            }
+            if (bothVisible) {
+                // Rounded chip ends extend beyond their measured arc.
+                curvedComposable(modifier = CurvedModifier.angularSizeDp(14.dp * scale)) { }
+                curvedComposable(modifier = CurvedModifier.weight(1f)) { }
+            }
+            if (secondText != null) {
+                liveMetricChip(secondText, edgePadding, elevation = !rtl, scale = scale)
+            }
+            liveMetricClockSideInset(bothVisible, !rtl, scale)
+            curvedComposable(modifier = CurvedModifier.weight(1f)) { }
+        }
+    }
+}
+
+private fun CurvedScope.liveMetricClockSideInset(
+    bothVisible: Boolean,
+    clockSide: Boolean,
+    scale: Float,
+) {
+    if (bothVisible && clockSide) {
+        curvedComposable(modifier = CurvedModifier.angularSizeDp(4.dp * scale)) { }
+    }
+}
+
+@Composable
+private fun liveMetricScale(
+    elevationText: String?,
+    distanceText: String?,
+    edgePadding: Dp,
+    arc: LiveMetricArc,
+    radius: Float,
+): Float {
+    if (elevationText == null || distanceText == null) return 1f
+    val textMeasurer = rememberTextMeasurer()
+    val density = LocalDensity.current
+    val textStyle = TextStyle(fontSize = 11.sp, fontWeight = FontWeight.Medium)
+    val elevationSize = textMeasurer.measure(elevationText, style = textStyle).size
+    val distanceSize = textMeasurer.measure(distanceText, style = textStyle).size
+    val textWidth = (elevationSize.width + distanceSize.width) / density.density
+    val textHeight = maxOf(elevationSize.height, distanceSize.height) / density.density
+    val chipThickness = maxOf(textHeight, 11f) + 2f
+    // Reserve the rounded outer ends and the gap between the two chips once.
+    val contentWidth = liveMetricCompactContentWidth(textWidth, chipThickness)
+    val innerRadius = (radius - edgePadding.value - chipThickness).coerceAtLeast(0f)
+    val available = innerRadius * arc.sweep * PI.toFloat() / 180f
+    return liveMetricFitScale(available, contentWidth)
+}
+
+private fun CurvedScope.liveMetricChip(
+    text: String,
+    edgePadding: Dp,
+    elevation: Boolean,
+    scale: Float,
+) {
+    curvedRow(
+        modifier =
+            CurvedModifier
+                .padding(ArcPaddingValues(outer = edgePadding))
+                .background(Color.Black.copy(alpha = 0.94f), cap = StrokeCap.Round)
+                // Let the content extend into the rounded ends instead of leaving them empty.
+                .padding(radial = 1.dp * scale, angular = -LIVE_METRIC_END_TRIM_DP.dp * scale),
+    ) {
+        curvedComposable {
+            Icon(
+                painter =
+                    painterResource(
+                        if (elevation) {
+                            R.drawable.ic_live_elevation_altitude
+                        } else {
+                            R.drawable.ic_live_distance_step_out
+                        },
+                    ),
+                contentDescription =
+                    stringResource(
+                        if (elevation) R.string.navigate_live_elevation else R.string.navigate_live_distance,
+                    ),
+                modifier = Modifier.size(11.dp * scale).rotate(if (elevation) 0f else 90f),
+                tint = if (elevation) Color(0xFF34D399) else Color.White.copy(alpha = 0.92f),
+            )
+        }
+        basicCurvedText(
+            text = text,
+            style = CurvedTextStyle(color = Color.White, fontSize = 11.sp * scale, fontWeight = FontWeight.Medium),
+        )
+    }
+}
+
+internal data class LiveMetricArc(
+    val start: Float,
+    val sweep: Float,
+)
+
+private const val LIVE_METRIC_END_TRIM_DP = 3f
+
+internal fun liveMetricCompactContentWidth(
+    textWidth: Float,
+    chipThickness: Float,
+): Float = textWidth + 22f - 4f * LIVE_METRIC_END_TRIM_DP + chipThickness + 18f
+
+internal fun liveMetricFitScale(
+    available: Float,
+    contentWidth: Float,
+): Float = if (contentWidth > 0f) (available / contentWidth).coerceIn(0f, 1f) else 1f
+
+internal fun liveMetricUpperArc(
+    radius: Float,
+    edgePadding: Float,
+    buttonSize: Float,
+    clockWidth: Float,
+): LiveMetricArc {
+    val centerRadius = radius - edgePadding - buttonSize / 2f
+    if (centerRadius <= buttonSize / 2f || radius <= edgePadding) return LiveMetricArc(180f, 0f)
+    val buttonHalfAngle = asin((buttonSize / 2f / centerRadius).coerceIn(0f, 1f)) * 180f / PI.toFloat()
+    val clockHalfAngle = asin((clockWidth / 2f / (radius - edgePadding)).coerceIn(0f, 1f)) * 180f / PI.toFloat()
+    val start = 180f + buttonHalfAngle
+    return LiveMetricArc(start, (270f - clockHalfAngle - start).coerceAtLeast(0f))
 }
 
 @Composable

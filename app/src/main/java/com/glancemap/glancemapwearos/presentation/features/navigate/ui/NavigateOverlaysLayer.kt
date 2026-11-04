@@ -93,6 +93,7 @@ internal fun BoxScope.NavigateOverlaysLayer(
     liveDistanceLabel: String?,
     zoomLabelTopPadding: Dp,
     liveElevationIconSize: Dp,
+    clockChipWidth: Dp,
     northIndicatorMode: String,
     mapRotationDeg: Float,
     navigationMarkerAnchorMode: String,
@@ -225,6 +226,20 @@ internal fun BoxScope.NavigateOverlaysLayer(
             0.dp
         }
     val suppressLiveMetricsForPoi = poiTapMessage != null || !mapChrome.shows(MapFocusControl.LIVE_METRICS)
+    val guidanceRemainingDisplay =
+        GuidanceMapRemainingDisplayState(
+            enabled = turnByTurnMapProgressEnabled,
+            guidanceActive = turnByTurnGuidanceState.active,
+            paused = turnByTurnGuidancePaused,
+            offRoute = turnByTurnGuidanceState.offRoute,
+            guideBackToRouteActive = guideBackToRouteActive,
+            suppressed =
+                mapFocusMode ||
+                    poiTapMessage != null ||
+                    turnByTurnFullScreenExpanded ||
+                    recordingDashboardFullScreenExpanded ||
+                    combinedGuidanceRecordingFullScreenExpanded,
+        )
     val suppressCompactGuidancePopup =
         shouldSuppressCompactGuidancePopup(
             navMode = navMode,
@@ -349,15 +364,14 @@ internal fun BoxScope.NavigateOverlaysLayer(
 
     PanningLiveMetricsOverlay(
         navMode = navMode,
-        screenSize = screenSize,
         liveElevationEnabled = liveElevationEnabled && !suppressLiveMetricsForPoi,
         liveElevationLabel = liveElevationLabel,
         liveDistanceEnabled = liveDistanceEnabled && !suppressLiveMetricsForPoi,
         liveDistanceLabel = liveDistanceLabel,
-        zoomLabelTopPadding = zoomLabelTopPadding,
         liveElevationIconSize = liveElevationIconSize,
-        navButtonBottomPadding = navButtonBottomPadding,
-        navButtonSize = navButtonSize,
+        edgePadding = sideButtonEdgePadding,
+        sideButtonSize = sideButtonSize,
+        clockWidth = clockChipWidth,
     )
 
     if (mapChrome.shows(MapFocusControl.NORTH_INDICATOR) && !suppressMapControlsForGuidance) {
@@ -549,20 +563,7 @@ internal fun BoxScope.NavigateOverlaysLayer(
 
     GuidanceMapRemainingOverlay(
         state = turnByTurnGuidanceState,
-        displayState =
-            GuidanceMapRemainingDisplayState(
-                enabled = turnByTurnMapProgressEnabled,
-                guidanceActive = turnByTurnGuidanceState.active,
-                paused = turnByTurnGuidancePaused,
-                offRoute = turnByTurnGuidanceState.offRoute,
-                guideBackToRouteActive = guideBackToRouteActive,
-                suppressed =
-                    mapFocusMode ||
-                        poiTapMessage != null ||
-                        turnByTurnFullScreenExpanded ||
-                        recordingDashboardFullScreenExpanded ||
-                        combinedGuidanceRecordingFullScreenExpanded,
-            ),
+        displayState = guidanceRemainingDisplay,
         isMetric = isMetric,
         edgePadding = sideButtonEdgePadding,
     )
