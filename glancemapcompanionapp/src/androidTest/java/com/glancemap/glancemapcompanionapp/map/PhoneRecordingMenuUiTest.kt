@@ -11,6 +11,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
@@ -129,6 +130,13 @@ class PhoneRecordingMenuUiTest {
         assertTrue(metrics.chunked(4).zipWithNext().all { (top, bottom) -> top.first().bottom <= bottom.first().top })
         compose.onNodeWithContentDescription(label(R.string.phone_rec_stop)).performClick()
         compose.onNodeWithText(label(R.string.phone_rec_stop_title)).assertIsDisplayed()
+        val title =
+            compose
+                .onNodeWithTag("recording-stop-title")
+                .fetchSemanticsNode()
+                .config[SemanticsProperties.Text]
+                .joinToString()
+        assertTrue(title.startsWith("${label(R.string.phone_rec_profile_hike)} "))
         compose.onNodeWithTag("activity-statistics").assertExists()
         compose.onNodeWithText(label(R.string.phone_rec_save)).assertIsEnabled()
         compose.onNodeWithText(label(R.string.phone_rec_discard)).performClick()

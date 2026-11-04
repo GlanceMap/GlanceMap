@@ -409,7 +409,10 @@ internal class PhoneRecordingService :
             }
             ACTION_PAUSE -> pauseRecording()
             ACTION_RESUME -> resumeRecording()
-            ACTION_SAVE -> serviceScope.launch { saveRecording() }
+            ACTION_SAVE -> {
+                val title = intent.getStringExtra(EXTRA_RECORDING_TITLE)
+                serviceScope.launch { saveRecording(title) }
+            }
             ACTION_DISCARD -> discardRecording()
             ACTION_GUIDANCE_PAUSE -> serviceScope.launch { locationLock.withLock { pauseGuidanceLocked() } }
             ACTION_GUIDANCE_RESUME ->
@@ -782,15 +785,15 @@ internal class PhoneRecordingService :
         logEvent("session_discarded generation=$oldGeneration")
     }
 
-    private suspend fun saveRecording() {
+    private suspend fun saveRecording(requestedTitle: String? = null) {
         saveLock.withLock {
-            locationLock.withLock { saveRecordingLocked() }
+            locationLock.withLock { saveRecordingLocked(requestedTitle) }
         }
     }
 
     // Keep finalization, library save and draft cleanup in one guarded operation.
     @Suppress("ReturnCount", "LongMethod")
-    private suspend fun saveRecordingLocked() {
+    private suspend fun saveRecordingLocked(requestedTitle: String?) {
         if (!sessionLifecycle.state.isActive ||
             PhoneRecordingSessionStore.state.value.points.size < MIN_SAVE_POINTS
         ) {
@@ -805,12 +808,14 @@ internal class PhoneRecordingService :
         val finalizedState = flushTrackTail(current.copy(session = saveState))
         val immutablePoints = finalizedState.points.toList()
         val savedAtMillis = System.currentTimeMillis()
+        // The stop recap passes the title it displayed; the notification Save action uses the default.
         val title =
-            phoneRecordingDefaultTitle(
-                profileLabel = profileLabel(this, profile),
-                startedAtMillis = finalizedState.session.startedAtMillis ?: savedAtMillis,
-                endedAtMillis = savedAtMillis,
-            )
+            requestedTitle?.trim()?.takeIf { it.isNotEmpty() }
+                ?: phoneRecordingDefaultTitle(
+                    profileLabel = profileLabel(this, profile),
+                    startedAtMillis = finalizedState.session.startedAtMillis ?: savedAtMillis,
+                    endedAtMillis = savedAtMillis,
+                )
         publish(finalizedState.copy(session = saveState, message = PhoneRecordingMessage.SAVING))
         configureLocationUpdates()
         updateNotification()
@@ -2795,6 +2800,7 @@ internal class PhoneRecordingService :
         const val ACTION_PAUSE = "com.glancemap.glancemapcompanionapp.map.rec.PAUSE"
         const val ACTION_RESUME = "com.glancemap.glancemapcompanionapp.map.rec.RESUME"
         const val ACTION_SAVE = "com.glancemap.glancemapcompanionapp.map.rec.SAVE"
+        const val EXTRA_RECORDING_TITLE = "com.glancemap.glancemapcompanionapp.map.rec.extra.TITLE"
         const val ACTION_DISCARD = "com.glancemap.glancemapcompanionapp.map.rec.DISCARD"
         const val ACTION_RESTORE = "com.glancemap.glancemapcompanionapp.map.rec.RESTORE"
         const val ACTION_GUIDANCE_START = "com.glancemap.glancemapcompanionapp.map.guidance.START"
@@ -2805,6 +2811,17 @@ internal class PhoneRecordingService :
         const val ACTION_GUIDANCE_ACCEPT_START_HERE = "com.glancemap.glancemapcompanionapp.map.guidance.START_HERE"
         const val ACTION_GUIDANCE_ACCEPT_REVERSE = "com.glancemap.glancemapcompanionapp.map.guidance.REVERSE"
         const val ACTION_GUIDANCE_DISMISS_DECISION = "com.glancemap.glancemapcompanionapp.map.guidance.DISMISS_DECISION"
+
+        fun requestSave(
+            context: Context,
+            title: String,
+        ) {
+            context.startService(
+                Intent(context, PhoneRecordingService::class.java)
+                    .setAction(ACTION_SAVE)
+                    .putExtra(EXTRA_RECORDING_TITLE, title),
+            )
+        }
 
         fun request(
             context: Context,

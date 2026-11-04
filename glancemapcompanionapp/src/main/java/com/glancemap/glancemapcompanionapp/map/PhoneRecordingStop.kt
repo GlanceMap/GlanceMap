@@ -82,9 +82,9 @@ internal fun phoneRecordingStopAction(recording: PhoneRecordingUiState): () -> U
         } else {
             phoneRecordingStopRecapDialog(
                 recording = recording,
-                onSave = {
+                onSave = { title ->
                     close()
-                    PhoneRecordingService.request(context, PhoneRecordingService.ACTION_SAVE)
+                    PhoneRecordingService.requestSave(context, title)
                 },
                 onDiscard = { confirmDiscard = true },
                 onCancel = {
@@ -107,7 +107,7 @@ internal fun phoneRecordingStopAction(recording: PhoneRecordingUiState): () -> U
 @Composable
 private fun phoneRecordingStopRecapDialog(
     recording: PhoneRecordingUiState,
-    onSave: () -> Unit,
+    onSave: (String) -> Unit,
     onDiscard: () -> Unit,
     onCancel: () -> Unit,
 ) {
@@ -124,6 +124,15 @@ private fun phoneRecordingStopRecapDialog(
                 phoneRecordingLiveStatistics(recording, track, stoppedAtMillis, stepCount)
             }
     }
+    // Same default title the saved GPX and Library use, so the recap matches what gets saved.
+    val title =
+        remember(recording.session.generation, recording.activityProfile) {
+            phoneRecordingDefaultTitle(
+                profileLabel = profileLabel(context, recording.activityProfile),
+                startedAtMillis = recording.session.startedAtMillis ?: stoppedAtMillis,
+                endedAtMillis = stoppedAtMillis,
+            )
+        }
     val canSave = recording.points.size >= MIN_SAVE_POINTS
     val shortRecording =
         phoneRecordingIsShort(
@@ -143,7 +152,11 @@ private fun phoneRecordingStopRecapDialog(
         },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(stringResource(R.string.phone_rec_activity_name), style = MaterialTheme.typography.titleMedium)
+                Text(
+                    title,
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.testTag("recording-stop-title"),
+                )
                 if (!canSave) Text(stringResource(R.string.phone_rec_no_track_stop_message))
                 statistics?.let { phoneActivityStatisticsGrid(it, settings.isMetric) }
             }
@@ -154,7 +167,7 @@ private fun phoneRecordingStopRecapDialog(
             TextButton(onClick = onDiscard) { Text(stringResource(R.string.phone_rec_discard)) }
         },
         confirmButton = {
-            TextButton(enabled = canSave, onClick = onSave) { Text(stringResource(R.string.phone_rec_save)) }
+            TextButton(enabled = canSave, onClick = { onSave(title) }) { Text(stringResource(R.string.phone_rec_save)) }
         },
     )
 }
