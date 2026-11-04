@@ -78,14 +78,20 @@ internal data class PhoneMapGpxSource(
     }
 }
 
+/**
+ * Tracks keep their in-session choice, then the choice saved in an earlier session; [initiallyEnabledId]
+ * turns one more track on.
+ */
 internal fun mergePhoneMapGpxItems(
     previous: List<PhoneMapGpxItem>,
     loaded: List<PhoneMapGpxItem>,
     initiallyEnabledId: String?,
+    savedEnabledIds: Set<String>? = null,
 ): List<PhoneMapGpxItem> {
     val enabledById = previous.associate { item -> item.id to item.enabled }
     return loaded.map { item ->
-        item.copy(enabled = enabledById[item.id] ?: (item.id == initiallyEnabledId))
+        val saved = savedEnabledIds?.contains(item.id) == true
+        item.copy(enabled = enabledById[item.id] ?: (saved || item.id == initiallyEnabledId))
     }
 }
 

@@ -870,7 +870,7 @@ internal fun CompanionMapScreen(
             ?.route
             ?.trackId
             ?.removePrefix("gpx/")
-    val hikeTrackEnabled = gpxUiState.items.firstOrNull { it.id == hikeTrackId }?.enabled != false
+    val hikeTrackEnabled = gpxUiState.isTrackEnabled(hikeTrackId)
     val routeToolsState by routeToolsViewModel.uiState.collectAsStateWithLifecycle()
     val compassState by compassSensorSource.state.collectAsStateWithLifecycle()
     val mapSourceLocation by mapLocationSource.location.collectAsStateWithLifecycle()
@@ -954,8 +954,9 @@ internal fun CompanionMapScreen(
     LaunchedEffect(onlinePlaceSearchEnabled, poiSources) {
         searchViewModel.controller.setContext(onlinePlaceSearchEnabled, poiSources.enabledFileNames())
     }
-    LaunchedEffect(hikeUi.revealOnMap) {
-        if (hikeUi.revealOnMap) {
+    // Waits for the GPX list, so the reveal can turn the hike track on instead of toggling nothing.
+    LaunchedEffect(hikeUi.revealOnMap, gpxUiState.hasLoaded) {
+        if (hikeUi.revealOnMap && gpxUiState.hasLoaded) {
             mapUiState = mapUiState.copy(contentVisibility = mapUiState.contentVisibility.copy(gpxTracks = true))
             if (!hikeTrackEnabled) hikeTrackId?.let(gpxViewModel::toggle)
             hikeController?.consumeMapReveal()

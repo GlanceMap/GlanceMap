@@ -18,7 +18,17 @@ import kotlinx.coroutines.withContext
 internal data class PhoneMapGpxUiState(
     val items: List<PhoneMapGpxItem> = emptyList(),
     val isLoading: Boolean = false,
-)
+    val hasLoaded: Boolean = false,
+    val savedEnabledIds: Set<String>? = null,
+) {
+    /**
+     * Before the first load a track follows its saved choice, so a track turned off in an earlier session
+     * never flashes on. Afterwards a track missing from the list stays visible.
+     */
+    fun isTrackEnabled(id: String?): Boolean =
+        items.firstOrNull { it.id == id }?.enabled
+            ?: if (hasLoaded) true else savedEnabledIds?.contains(id) == true
+}
 
 internal enum class PhoneMapGpxLoadDiagnosticEvent(
     val value: String,
@@ -76,7 +86,9 @@ internal class PhoneMapGpxViewModel(
 ) : AndroidViewModel(application) {
     private val repository = RouteLibraryRepository(application)
     private val folderSource = PhoneGpxFolderSource(application)
-    private val _uiState = MutableStateFlow(PhoneMapGpxUiState())
+    private val enabledPreferences = PhoneMapGpxEnabledPreferences(application)
+    private var enabledState = enabledPreferences.load()
+    private val _uiState = MutableStateFlow(PhoneMapGpxUiState(savedEnabledIds = enabledState.enabledIds))
     val uiState: StateFlow<PhoneMapGpxUiState> = _uiState.asStateFlow()
     private var routeSources: List<PhoneMapGpxSource> = emptyList()
     private var folderSources: List<PhoneGpxFolderFile> = emptyList()
@@ -97,7 +109,7 @@ internal class PhoneMapGpxViewModel(
         val generation = ++loadGeneration
         loadJob?.cancel()
         if (nextRouteSources.isEmpty() && nextFolderSources.isEmpty()) {
-            _uiState.value = PhoneMapGpxUiState()
+            _uiState.value = PhoneMapGpxUiState(hasLoaded = true, savedEnabledIds = enabledState.enabledIds)
             PhoneDebugCapture.log(
                 TAG,
                 phoneMapGpxLoadDiagnosticLine(
@@ -168,10 +180,19 @@ internal class PhoneMapGpxViewModel(
             )
             return
         }
-        _uiState.value =
-            PhoneMapGpxUiState(
-                items = mergePhoneMapGpxItems(_uiState.value.items, loaded.items, initiallyEnabledId),
+        val items =
+            mergePhoneMapGpxItems(
+                previous = _uiState.value.items,
+                loaded = loaded.items,
+                initiallyEnabledId = enabledState.newSelection(initiallyEnabledId),
+                savedEnabledIds = enabledState.enabledIds,
             )
+        enabledState =
+            enabledState
+                .withItems(items, appliedSelectionId = initiallyEnabledId)
+                .also(enabledPreferences::save)
+        _uiState.value =
+            PhoneMapGpxUiState(items = items, hasLoaded = true, savedEnabledIds = enabledState.enabledIds)
         recordLoad(generation, durationMillis, loaded.counts, PhoneMapGpxLoadDiagnosticEvent.COMPLETED)
     }
 
@@ -220,7 +241,8 @@ internal class PhoneMapGpxViewModel(
         generation: Long,
         routeSources: List<PhoneMapGpxSource>,
         folderSources: List<PhoneGpxFolderFile>,
-    ): Boolean = generation == loadGeneration && this.routeSources == routeSources && this.folderSources == folderSources
+    ): Boolean =
+        generation == loadGeneration && this.routeSources == routeSources && this.folderSources == folderSources
 
     private fun recordLoad(
         generation: Long,
@@ -247,7 +269,11 @@ internal class PhoneMapGpxViewModel(
     }
 
     fun toggle(id: String) {
-        _uiState.value = _uiState.value.copy(items = _uiState.value.items.toggleEnabled(id))
+        val items = _uiState.value.items.toggleEnabled(id)
+        if (_uiState.value.hasLoaded) {
+            enabledState = enabledState.withItems(items).also(enabledPreferences::save)
+        }
+        _uiState.value = _uiState.value.copy(items = items, savedEnabledIds = enabledState.enabledIds)
     }
 
     private suspend fun routeLibraryGpxItem(source: PhoneMapGpxSource): PhoneMapGpxItem? =
