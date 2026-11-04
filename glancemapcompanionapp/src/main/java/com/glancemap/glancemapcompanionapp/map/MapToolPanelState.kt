@@ -343,6 +343,14 @@ internal data class PhoneMapUiState(
             nextCameraCommandId = nextCameraCommandId + 1L,
         )
 
+    /** Keeps the visible map in place while a tool panel resizes it; follow mode is not changed. */
+    fun requestPanelViewportCenter(target: PhoneMapCoordinate): PhoneMapUiState =
+        copy(
+            cameraCommand =
+                PhoneMapCameraCommand(id = nextCameraCommandId, target = target, keepZoom = true, instant = true),
+            nextCameraCommandId = nextCameraCommandId + 1L,
+        )
+
     fun consumeCommand(id: Long): PhoneMapUiState = if (cameraCommand?.id == id) copy(cameraCommand = null) else this
 
     fun toggleMapOrientation(): PhoneMapUiState = copy(mapMode = mapMode.toggleOrientation())

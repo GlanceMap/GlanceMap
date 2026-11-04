@@ -105,6 +105,8 @@ internal data class PhoneMapCameraCommand(
     val target: PhoneMapCoordinate? = null,
     /** Startup centering moves only the camera target, like the watch `MapView.setCenter`. */
     val keepZoom: Boolean = false,
+    /** Applied without animation, so a panel resize never shows the map sliding. */
+    val instant: Boolean = false,
 ) {
     init {
         require(id > 0L)

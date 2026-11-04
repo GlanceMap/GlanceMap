@@ -800,6 +800,8 @@ internal fun CompanionMapScreen(
     val coroutineScope = rememberCoroutineScope()
     val hikeUi = hikeController?.state?.collectAsStateWithLifecycle()?.value ?: remember { PhoneHikeUiState() }
     var hikeMapViewport by remember { mutableStateOf(IntSize.Zero) }
+    // The map size and tool panel layout the camera was last kept for.
+    var keptMapViewport by remember { mutableStateOf<Pair<IntSize, PhoneMapPanelLayoutKey?>>(IntSize.Zero to null) }
     val offlineMapStore = remember(context) { PhoneOfflineMapStore(context.applicationContext) }
     val bundleStore = remember(context) { PhoneOfflineBundleStore(context.applicationContext) }
     val elevationStore = remember(context) { PhoneElevationStore(context.applicationContext) }
@@ -2942,6 +2944,23 @@ internal fun CompanionMapScreen(
             onlineComparisonActive = onlineComparisonActive,
             offlineComparisonActive = offlineComparisonActive,
         )
+    val panelLayoutKey = mapUiState.toolPanel.layoutKey()
+    // Opening, resizing or closing a tool panel keeps a free map where it is instead of sliding it.
+    LaunchedEffect(hikeMapViewport) {
+        val (oldSize, oldPanelLayout) = keptMapViewport
+        keptMapViewport = hikeMapViewport to panelLayoutKey
+        val panelResized = oldPanelLayout != null && oldPanelLayout != panelLayoutKey
+        if (!panelResized || mapUiState.mapMode.follow != PhoneMapFollowMode.FREE || terrainPreview != null) {
+            return@LaunchedEffect
+        }
+        phoneMapCenterKeepingVisibleMap(
+            mapCamera,
+            oldSize.width,
+            oldSize.height,
+            hikeMapViewport.width,
+            hikeMapViewport.height,
+        )?.let { center -> mapUiState = mapUiState.requestPanelViewportCenter(center) }
+    }
     PhoneHikeMapEffects(
         controller = hikeController,
         ui = hikeUi,
@@ -5662,15 +5681,15 @@ private fun synchronizeOnlineMapControls(
                 .requestedZoom(activeMap.cameraPosition.zoom, mapSettings, viewportWidthPx, tileSizePx)
                 .coerceIn(activeMap.minZoomLevel, activeMap.maxZoomLevel)
         currentOnCameraInput()
-        activeMap.animateCamera(
+        val update =
             CameraUpdateFactory.newCameraPosition(
                 CameraPosition
                     .Builder(activeMap.cameraPosition)
                     .target(target)
                     .zoom(requestedZoom)
                     .build(),
-            ),
-        )
+            )
+        if (pendingCommand.instant) activeMap.moveCamera(update) else activeMap.animateCamera(update)
         currentOnCameraCommandHandled(pendingCommand.id)
     }
 }
