@@ -44,6 +44,16 @@ class PhoneWorldWindCameraTest {
     }
 
     @Test
+    fun tiltGestureWhileZoomedOutMovesTheChosenTiltInsteadOfResettingIt() {
+        // Zoomed out, the shown tilt is 0°; a small accidental drag must not make 0° the chosen tilt.
+        assertEquals(57.0, phoneWorldWindTiltAfterGesture(55.0, 0.0, 2.0), 0.0)
+        assertEquals(45.0, phoneWorldWindTiltAfterGesture(55.0, 0.0, -10.0), 0.0)
+        assertEquals(60.0, phoneWorldWindTiltAfterGesture(55.0, 20.0, 40.0), 0.0)
+        assertEquals(0.0, phoneWorldWindTiltAfterGesture(10.0, 30.0, 0.0), 0.0)
+        assertEquals(40.0, phoneWorldWindTiltAfterGesture(30.0, 30.0, 40.0), 0.0)
+    }
+
+    @Test
     fun globeFitRangeShowsTheWholeGlobeAcrossTheNarrowerSide() {
         val radius = 6_378_137.0
         val portrait = phoneWorldWindGlobeFitRange(45.0, 720, 1280, radius)

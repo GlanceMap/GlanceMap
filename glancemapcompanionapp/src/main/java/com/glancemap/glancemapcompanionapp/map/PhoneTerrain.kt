@@ -990,8 +990,11 @@ private const val PHONE_DEM_UNPACKED_DIRECTORY = "phone-dem-unpacked"
 private const val PHONE_DEM_UNPACK_SUFFIX = ".tmp"
 private const val PHONE_DEM_STALE_UNPACK_MS = 60L * 60 * 1000
 
-/** About ten 1-arc-second tiles, or a hundred 3-arc-second tiles. */
-internal const val PHONE_DEM_UNPACKED_BUDGET_BYTES = 256L * 1024 * 1024
+/**
+ * About twenty 1-arc-second tiles, or two hundred 3-arc-second tiles. A Bavaria-sized offline map uses about
+ * fifteen detailed tiles; at 256 MB a Galaxy S8 capture showed a tile unpacked twice within 45 seconds.
+ */
+internal const val PHONE_DEM_UNPACKED_BUDGET_BYTES = 512L * 1024 * 1024
 private const val PHONE_DEM_VOID_SAMPLE: Short = Short.MIN_VALUE
 private const val PHONE_HILLSHADE_MAX_INPUT_AXIS = 1800
 private const val PHONE_RELIEF_MIN_ZOOM = 13

@@ -32,6 +32,17 @@ internal fun phoneWorldWindTiltForRange(
 }
 
 /**
+ * A tilt gesture moves the chosen tilt by how far it moved the shown tilt. Zoomed out, the shown tilt is
+ * flattened, so starting from it would let a small two-finger drag, easy to trigger while pinching,
+ * replace the chosen tilt with nearly 0°.
+ */
+internal fun phoneWorldWindTiltAfterGesture(
+    chosenAtStart: Double,
+    shownAtStart: Double,
+    shownNow: Double,
+): Double = phoneWorldWindClampedTilt(chosenAtStart + (shownNow - shownAtStart))
+
+/**
  * Looking straight down, the farthest the view can be while the whole globe still fits the narrower
  * screen side, with a small margin. [verticalFieldOfViewDegrees] is WorldWind's camera field of view.
  */

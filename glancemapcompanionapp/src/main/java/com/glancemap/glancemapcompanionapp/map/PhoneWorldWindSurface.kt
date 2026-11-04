@@ -84,7 +84,14 @@ private class PhoneWorldWindWindow(
             object : BasicWorldWindowController(this) {
                 override fun applyChanges() {
                     // Only a tilt gesture changes the chosen tilt; zooming out lowers the shown tilt alone.
-                    if (tilting) preferredTilt = phoneWorldWindClampedTilt(lookAt.tilt.inDegrees)
+                    if (tilting) {
+                        preferredTilt =
+                            phoneWorldWindTiltAfterGesture(
+                                tiltGestureStart,
+                                beginLookAt.tilt.inDegrees,
+                                lookAt.tilt.inDegrees,
+                            )
+                    }
                     placeView(lookAt)
                     requestRedraw()
                     currentLookAt.copy(lookAt)
@@ -92,6 +99,7 @@ private class PhoneWorldWindWindow(
                 }
 
                 override fun handleTilt(recognizer: GestureRecognizer) {
+                    if (recognizer.state == GestureState.BEGAN) tiltGestureStart = preferredTilt
                     tilting = true
                     try {
                         super.handleTilt(recognizer)
@@ -120,6 +128,7 @@ private class PhoneWorldWindWindow(
 
     @Volatile private var touching = false
     private var tilting = false
+    private var tiltGestureStart = PHONE_WORLDWIND_DEFAULT_TILT_DEGREES
 
     /** The tilt the user chose; the shown tilt can be lower while zoomed far out. */
     var preferredTilt = PHONE_WORLDWIND_DEFAULT_TILT_DEGREES
