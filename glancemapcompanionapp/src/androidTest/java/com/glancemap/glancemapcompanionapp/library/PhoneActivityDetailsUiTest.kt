@@ -11,6 +11,7 @@ import com.glancemap.glancemapcompanionapp.R
 import com.glancemap.glancemapcompanionapp.map.phoneActivityMetrics
 import com.glancemap.glancemapcompanionapp.routes.RecordedActivityStatistics
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -24,7 +25,8 @@ class PhoneActivityDetailsUiTest {
         val context = compose.activity
         val stats = RecordedActivityStatistics(activityProfile = "BIKE", distanceMeters = 1_609.344, averageSpeedMps = 2.0, fastestSpeedMps = 0.0, averagePowerWatts = 0)
         val metrics = phoneActivityMetrics(context, stats, false)
-        assertEquals(19, metrics.size)
+        assertEquals(18, metrics.size)
+        assertTrue(metrics.none { it.label == R.string.activity_steps })
         assertEquals(R.string.activity_total_calories, metrics[1].label)
         assertEquals(context.getString(R.string.phone_rec_distance_miles, 1.0), metrics.first().value)
         assertEquals("—", metrics.single { it.label == R.string.activity_average_hr }.value)

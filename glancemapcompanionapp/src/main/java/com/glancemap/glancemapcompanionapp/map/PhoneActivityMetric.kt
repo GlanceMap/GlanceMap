@@ -58,7 +58,10 @@ internal fun phoneActivityMetrics(
             R.string.activity_average_power,
             R.string.activity_max_power,
         )
-    return metrics.sortedBy { bikeOrder.indexOf(it.label).takeIf { index -> index >= 0 } ?: bikeOrder.size }
+    // Like the watch bike recap, steps are not shown: pedalling makes the phone step counter meaningless.
+    return metrics
+        .filterNot { it.label == R.string.activity_steps }
+        .sortedBy { bikeOrder.indexOf(it.label).takeIf { index -> index >= 0 } ?: bikeOrder.size }
 }
 
 private class ActivityMetricFormatter(
