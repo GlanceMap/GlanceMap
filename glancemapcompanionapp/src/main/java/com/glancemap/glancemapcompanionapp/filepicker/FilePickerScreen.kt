@@ -66,6 +66,7 @@ import com.glancemap.glancemapcompanionapp.hike.PhoneHikeViewModel
 import com.glancemap.glancemapcompanionapp.hike.PhoneHikeWorkspace
 import com.glancemap.glancemapcompanionapp.library.PhoneLibraryActions
 import com.glancemap.glancemapcompanionapp.library.PhoneLibraryFilter
+import com.glancemap.glancemapcompanionapp.library.PhoneLibraryHeaderActions
 import com.glancemap.glancemapcompanionapp.library.PhoneLibraryItem
 import com.glancemap.glancemapcompanionapp.library.phoneLibraryGpxPicker
 import com.glancemap.glancemapcompanionapp.library.phoneLibraryHeader
@@ -236,6 +237,7 @@ internal fun FilePickerScreen(
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     var libraryMapTool by rememberSaveable { mutableStateOf<MapTool?>(null) }
     var libraryFilter by rememberSaveable { mutableStateOf(PhoneLibraryFilter.GPX) }
+    var librarySearchOpen by rememberSaveable { mutableStateOf(false) }
     val librarySaveableState = rememberSaveableStateHolder()
     val mapSaveableState = rememberSaveableStateHolder()
     var mapLegendViews by rememberSaveable(stateSaver = phoneMapLegendViewsSaver) {
@@ -904,7 +906,20 @@ internal fun FilePickerScreen(
                                 activeHomeArea == CompanionHomeArea.SETTINGS &&
                                     contentSettingsTool != MapTool.SETTINGS,
                             libraryHeaderContent = {
-                                phoneLibraryHeader(libraryFilter) { libraryFilter = it }
+                                phoneLibraryHeader(
+                                    libraryFilter,
+                                    actions =
+                                        PhoneLibraryHeaderActions(
+                                            searchOpen = librarySearchOpen,
+                                            onToggleSearch = { librarySearchOpen = !librarySearchOpen },
+                                            onSettings = { tool ->
+                                                contentSettingsTool = tool
+                                                settingsReturnArea = CompanionHomeArea.LIBRARY
+                                                settingsReturnToGeneral = false
+                                                activeHomeArea = CompanionHomeArea.SETTINGS
+                                            },
+                                        ),
+                                ) { libraryFilter = it }
                             },
                             libraryContent = { mapState, mapActions ->
                                 librarySaveableState.SaveableStateProvider("phone-library") {
@@ -916,6 +931,7 @@ internal fun FilePickerScreen(
                                         mapState = mapState,
                                         mapActions = mapActions,
                                         filter = libraryFilter,
+                                        searchOpen = librarySearchOpen,
                                         actions =
                                             PhoneLibraryActions(
                                                 onPreviewGpx = { item ->

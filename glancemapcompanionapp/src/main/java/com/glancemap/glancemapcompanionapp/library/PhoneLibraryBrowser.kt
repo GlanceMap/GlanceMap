@@ -2,6 +2,7 @@ package com.glancemap.glancemapcompanionapp.library
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Icon
@@ -97,55 +98,26 @@ internal fun libraryBrowserList(
         contentPadding = PaddingValues(top = 8.dp, bottom = 80.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        if (state.filter == PhoneLibraryFilter.BUNDLES) {
-            item(key = "offline-sections") { libraryOfflineSections(browse, navigation.onBrowse) }
-        }
-        item(key = "controls") {
-            if (state.filter == PhoneLibraryFilter.BUNDLES) {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    TextButton(onClick = { actions.onFilterChanged(PhoneLibraryFilter.MAPS) }) {
-                        Text(stringResource(R.string.map_tool_maps_title))
-                    }
-                    Spacer(Modifier.weight(1f))
-                    IconButton(onClick = actions.onRefresh, enabled = !state.isLoading && !state.isImporting) {
-                        Icon(Icons.Filled.Refresh, stringResource(R.string.library_refresh))
-                    }
-                }
-                librarySearch(browse.query) { navigation.onBrowse(browse.copy(query = it)) }
-                libraryOfflineControls(browse, state.isImporting, actions, mapState.maps, mapActions.maps)
-            } else {
-                libraryCategoryControls(
-                    state.filter,
-                    state.isLoading || state.isImporting,
-                    actions,
-                    browse.query,
-                    { navigation.onBrowse(browse.copy(query = it)) },
-                    navigation.onCheckpoints,
-                )
-            }
-        }
-        if (state.filter == PhoneLibraryFilter.GPX) {
-            item(key = "grouping") { libraryGpxGrouping(browse, navigation.onBrowse) }
-        }
+        libraryBrowserHeaderEntries(state, mapState, mapActions, actions, browser)
         if (state.filter == PhoneLibraryFilter.MAPS) {
             libraryMapSourceEntries(mapState.maps, mapActions.maps, browse.query)
         }
-        item(key = "count") {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.weight(1f)) {
-                    if (browse.folderId == null) {
-                        libraryCount(state)
-                    } else {
-                        libraryFolderNavigation(state.organization, browse, state.filter, actions.organization) {
-                            navigation.onBrowse(state.organization.parentBrowse(browse))
+        if (state.filter.hasFolders || state.message != null) {
+            item(key = "folders") {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.weight(1f)) {
+                        if (browse.folderId != null) {
+                            libraryFolderNavigation(state.organization, browse, state.filter, actions.organization) {
+                                navigation.onBrowse(state.organization.parentBrowse(browse))
+                            }
                         }
                     }
+                    if (browse.folderId == null && state.filter.hasFolders) {
+                        libraryFolderNavigation(state.organization, browse, state.filter, actions.organization) {}
+                    }
                 }
-                if (browse.folderId == null && state.filter.hasFolders) {
-                    libraryFolderNavigation(state.organization, browse, state.filter, actions.organization) {}
-                }
+                libraryMessage(state)
             }
-            if (browse.folderId != null) libraryCount(state)
         }
         libraryFolderEntries(state, mapState, mapActions, actions, browser)
         libraryEntries(state, mapState, mapActions, actions, navigation.onDetails)
@@ -154,5 +126,46 @@ internal fun libraryBrowserList(
                 libraryOfflineDataRow { actions.onFilterChanged(PhoneLibraryFilter.BUNDLES) }
             }
         }
+    }
+}
+
+private fun LazyListScope.libraryBrowserHeaderEntries(
+    state: PhoneLibraryListState,
+    mapState: MapToolsPanelState,
+    mapActions: MapToolsPanelActions,
+    actions: PhoneLibraryActions,
+    browser: PhoneLibraryBrowserPresentation,
+) {
+    val browse = browser.browse
+    val navigation = browser.navigation
+    if (state.filter == PhoneLibraryFilter.BUNDLES) {
+        item(key = "offline-sections") { libraryOfflineSections(browse, navigation.onBrowse) }
+    }
+    if (state.filter == PhoneLibraryFilter.BUNDLES) {
+        item(key = "back-to-maps") {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                TextButton(onClick = { actions.onFilterChanged(PhoneLibraryFilter.MAPS) }) {
+                    Text(stringResource(R.string.map_tool_maps_title))
+                }
+                Spacer(Modifier.weight(1f))
+                IconButton(onClick = actions.onRefresh, enabled = !state.isLoading && !state.isImporting) {
+                    Icon(Icons.Filled.Refresh, stringResource(R.string.library_refresh))
+                }
+            }
+        }
+    }
+    if (state.searchOpen || browse.query.isNotEmpty()) {
+        item(key = "search") { librarySearch(browse.query) { navigation.onBrowse(browse.copy(query = it)) } }
+    }
+    if (state.filter == PhoneLibraryFilter.BUNDLES) {
+        item(key = "offline-controls") {
+            libraryOfflineControls(browse, state.isImporting, actions, mapState.maps, mapActions.maps)
+        }
+    }
+    if (state.filter == PhoneLibraryFilter.GPX) {
+        item(key = "grouping") { libraryGpxGrouping(browse, navigation.onBrowse) }
+    }
+    if (state.filter == PhoneLibraryFilter.POIS) {
+        item(key = "grouping") { libraryPoiGrouping(checkpoints = false) { navigation.onCheckpoints() } }
     }
 }

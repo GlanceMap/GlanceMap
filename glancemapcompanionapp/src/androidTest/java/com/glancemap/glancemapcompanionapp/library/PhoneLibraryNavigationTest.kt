@@ -38,7 +38,10 @@ class PhoneLibraryNavigationTest {
             MaterialTheme {
                 val actions = actions({ settings += it }, { additions += it })
                 Column {
-                    libraryCategoryControls(filter.value, false, actions, "", {}, {})
+                    phoneLibraryHeader(
+                        filter.value,
+                        actions = PhoneLibraryHeaderActions(onSettings = { settings += it }),
+                    ) {}
                     libraryCategoryAddAction(filter.value, false, actions)
                 }
             }
@@ -115,20 +118,22 @@ class PhoneLibraryNavigationTest {
     }
 
     @Test
-    fun narrowSplitPanelKeepsSearchSettingsAndUtilityActionsClickable() {
-        var query = ""
+    fun narrowHeaderKeepsSearchAndSettingsBesideScrollingTabs() {
+        var searchToggles = 0
         composeRule.setContent {
             MaterialTheme {
                 Box(Modifier.width(200.dp)) {
-                    libraryCategoryControls(PhoneLibraryFilter.GPX, false, actions({}, {}), "", { query = it }, {})
+                    phoneLibraryHeader(
+                        PhoneLibraryFilter.GPX,
+                        actions = PhoneLibraryHeaderActions(onToggleSearch = { searchToggles++ }),
+                    ) {}
                 }
             }
         }
-        composeRule.onNodeWithTag("library-search").performTextInput("A")
-        assertEquals("A", query)
+        composeRule.onNodeWithTag("library-search-toggle").assertIsDisplayed().performClick()
+        assertEquals(1, searchToggles)
         composeRule.onNodeWithTag("library-settings").assertIsDisplayed()
-        composeRule.onNodeWithTag("library-controls-menu").performClick()
-        composeRule.onNodeWithText(label(R.string.library_refresh)).assertIsDisplayed()
+        composeRule.onNodeWithTag("library-controls-menu").assertDoesNotExist()
     }
 
     private fun label(id: Int): String = composeRule.activity.getString(id)

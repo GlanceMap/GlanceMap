@@ -16,7 +16,9 @@
     <string name="library_online_maps_hint">Needs a connection</string>
     <string name="library_offline_maps_hint">Works without signal</string>
     <string name="library_start_route">Start</string>
-    <string name="library_route_summary">%1$.1f km · ↑ %2$d m</string>
+    <string name="library_route_summary">%1$.1f km · ↑ %2$d m ↓ %3$d m</string>
+    <string name="library_kind_summary">%1$s · %2$s</string>
+    <string name="library_route_estimated_time">~%1$s</string>
     <string name="library_offline_areas">Offline areas</string>
     <string name="library_offline_elevation">Elevation (DEM)</string>
     <string name="library_offline_routing">Routing</string>
@@ -117,7 +119,6 @@
     <string name="library_on_phone">"On phone"</string>
     <string name="library_empty_title">"No matching items"</string>
     <string name="library_empty_description">"Try another filter or add files using + or map tools."</string>
-    <string name="library_gpx_summary">"%1$s · %2$.1f km · ↑ %3$d m"</string>
     <string name="library_received_summary">"Received GPX · %1$s"</string>
     <string name="library_received_description">"This GPX is already stored on the phone. Add it to your library as a route, then organize it into a folder if needed."</string>
     <string name="library_poi_count">"POI collection · %1$d places"</string>

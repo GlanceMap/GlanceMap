@@ -5,63 +5,13 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.glancemap.glancemapcompanionapp.R
 import com.glancemap.glancemapcompanionapp.map.MapLibraryAction
-import com.glancemap.glancemapcompanionapp.map.MapToolContentMode
-import com.glancemap.glancemapcompanionapp.map.titleResource
-
-@Composable
-internal fun libraryCategoryControls(
-    filter: PhoneLibraryFilter,
-    importing: Boolean,
-    actions: PhoneLibraryActions,
-    query: String,
-    onQuery: (String) -> Unit,
-    onCheckpoints: () -> Unit,
-) {
-    var menuOpen by remember { mutableStateOf(false) }
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.weight(1f)) { librarySearch(query, onQuery) }
-        filter.tool?.let { tool ->
-            IconButton(onClick = { actions.onOpenSettings(tool) }, modifier = Modifier.testTag("library-settings")) {
-                Icon(Icons.Filled.Settings, stringResource(tool.titleResource(MapToolContentMode.FEATURE_SETTINGS)))
-            }
-        }
-        Box {
-            IconButton(onClick = { menuOpen = true }, modifier = Modifier.testTag("library-controls-menu")) {
-                Icon(Icons.Filled.MoreVert, stringResource(R.string.library_more_options))
-            }
-            DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                DropdownMenuItem(
-                    text = { Text(stringResource(R.string.library_refresh)) },
-                    enabled = !importing,
-                    onClick = {
-                        menuOpen = false
-                        actions.onRefresh()
-                    },
-                )
-                if (filter == PhoneLibraryFilter.POIS) {
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.hike_checkpoints)) },
-                        onClick = {
-                            menuOpen = false
-                            onCheckpoints()
-                        },
-                    )
-                }
-            }
-        }
-    }
-}
 
 @Composable
 internal fun libraryCategoryAddAction(

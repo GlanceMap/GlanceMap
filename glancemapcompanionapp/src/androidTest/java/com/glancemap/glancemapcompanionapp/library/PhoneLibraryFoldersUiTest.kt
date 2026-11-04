@@ -158,7 +158,12 @@ class PhoneLibraryFoldersUiTest {
         composeRule.setContent {
             MaterialTheme {
                 libraryPanelContent(
-                    PhoneLibraryListState(items, PhoneLibraryFilter.GPX, organization = organization.value),
+                    PhoneLibraryListState(
+                        items,
+                        PhoneLibraryFilter.GPX,
+                        organization = organization.value,
+                        searchOpen = true,
+                    ),
                     mapState.value,
                     libraryTestMapActions(mapState),
                     libraryTestActions().copy(

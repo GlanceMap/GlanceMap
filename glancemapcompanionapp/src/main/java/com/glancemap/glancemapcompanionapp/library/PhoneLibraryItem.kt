@@ -127,6 +127,13 @@ internal data class PhoneLibraryListState(
     val isImporting: Boolean = false,
     val message: String? = null,
     val organization: PhoneLibraryOrganization = PhoneLibraryOrganization(),
+    val searchOpen: Boolean = false,
+)
+
+internal data class PhoneLibraryHeaderActions(
+    val searchOpen: Boolean = false,
+    val onToggleSearch: () -> Unit = {},
+    val onSettings: (MapTool) -> Unit = {},
 )
 
 internal data class PhoneLibraryActions(

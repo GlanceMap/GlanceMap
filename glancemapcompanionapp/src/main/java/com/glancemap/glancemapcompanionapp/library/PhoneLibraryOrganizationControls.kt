@@ -111,6 +111,22 @@ internal fun libraryGpxGrouping(
 }
 
 @Composable
+internal fun libraryPoiGrouping(
+    checkpoints: Boolean,
+    modifier: Modifier = Modifier,
+    onToggle: () -> Unit,
+) {
+    Row(modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        FilterChip(
+            selected = checkpoints,
+            modifier = Modifier.testTag("library-poi-checkpoints"),
+            onClick = onToggle,
+            label = { Text(stringResource(R.string.hike_checkpoints)) },
+        )
+    }
+}
+
+@Composable
 internal fun libraryActivitySetting(
     item: PhoneLibraryItem,
     organization: PhoneLibraryOrganization,

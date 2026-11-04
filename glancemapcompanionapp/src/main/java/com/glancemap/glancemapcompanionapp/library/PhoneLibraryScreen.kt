@@ -19,6 +19,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.glancemap.glancemapcompanionapp.R
 import com.glancemap.glancemapcompanionapp.map.MapToolsPanelActions
 import com.glancemap.glancemapcompanionapp.map.MapToolsPanelState
+import com.glancemap.glancemapcompanionapp.map.formatPhoneMapDuration
 import com.glancemap.glancemapcompanionapp.routes.RouteLibraryRoute
 import com.glancemap.glancemapcompanionapp.routes.RouteLibraryUiState
 import com.glancemap.glancemapcompanionapp.routes.isFromWatch
@@ -31,6 +32,7 @@ internal fun phoneLibraryScreen(
     mapActions: MapToolsPanelActions,
     actions: PhoneLibraryActions,
     filter: PhoneLibraryFilter,
+    searchOpen: Boolean = false,
     checkpointsContent: @Composable () -> Unit = {},
 ) {
     val model: PhoneLibraryViewModel = viewModel()
@@ -63,6 +65,7 @@ internal fun phoneLibraryScreen(
                 isImporting = routes.isImporting || local.isImporting,
                 message = routes.message ?: local.message,
                 organization = local.organization,
+                searchOpen = searchOpen,
             ),
         mapState = mapState,
         mapActions = mapActions,
@@ -127,6 +130,9 @@ internal fun libraryPanelContent(
             browse = browse.copy(folderId = null)
         }
     }
+    LaunchedEffect(state.searchOpen) {
+        if (!state.searchOpen) browse = browse.copy(query = "")
+    }
     BackHandler(enabled = state.filter == PhoneLibraryFilter.BUNDLES && browse.folderId == null) {
         actions.onFilterChanged(PhoneLibraryFilter.MAPS)
     }
@@ -134,7 +140,7 @@ internal fun libraryPanelContent(
     BackHandler(enabled = checkpointsOpen && state.filter == PhoneLibraryFilter.POIS) { checkpointsOpen = false }
     Column(Modifier.fillMaxSize().padding(horizontal = 12.dp)) {
         if (checkpointsOpen && state.filter == PhoneLibraryFilter.POIS) {
-            TextButton(onClick = { checkpointsOpen = false }) { Text(stringResource(R.string.hike_back_pois)) }
+            libraryPoiGrouping(checkpoints = true, Modifier.padding(vertical = 8.dp)) { checkpointsOpen = false }
             Box(Modifier.weight(1f)) { checkpointsContent() }
         } else {
             libraryBrowserWithAdd(
@@ -232,11 +238,8 @@ internal fun LazyListScope.libraryEntries(
 }
 
 @Composable
-internal fun libraryCount(state: PhoneLibraryListState) {
-    Column {
-        Text(stringResource(R.string.library_local_count, state.items.size), style = MaterialTheme.typography.bodySmall)
-        state.message?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-    }
+internal fun libraryMessage(state: PhoneLibraryListState) {
+    state.message?.let { Text(it, color = MaterialTheme.colorScheme.error) }
 }
 
 @Composable
@@ -297,14 +300,29 @@ internal fun libraryItemSummary(item: PhoneLibraryItem): String =
 
 @Composable
 private fun libraryRouteSummary(route: RouteLibraryRoute): String {
-    val distance = route.summary.distanceMeters / 1000.0
-    val gain = route.summary.elevationGainMeters.roundToInt()
+    val stats = route.summary
+    val distance =
+        stringResource(
+            R.string.library_route_summary,
+            stats.distanceMeters / 1000.0,
+            stats.elevationGainMeters.roundToInt(),
+            stats.elevationLossMeters.roundToInt(),
+        )
+    // A recording's estimate is not how long it took, so only planned routes show one.
     val summary =
-        if (route.isRecording) {
-            val kind = stringResource(R.string.library_item_recording)
-            stringResource(R.string.library_gpx_summary, kind, distance, gain)
-        } else {
-            stringResource(R.string.library_route_summary, distance, gain)
+        when {
+            route.isRecording ->
+                stringResource(R.string.library_kind_summary, stringResource(R.string.library_item_recording), distance)
+            stats.estimatedDurationSeconds > 0.0 ->
+                stringResource(
+                    R.string.library_kind_summary,
+                    distance,
+                    stringResource(
+                        R.string.library_route_estimated_time,
+                        formatPhoneMapDuration(stats.estimatedDurationSeconds),
+                    ),
+                )
+            else -> distance
         }
     return if (route.isFromWatch) stringResource(R.string.library_from_watch_summary, summary) else summary
 }

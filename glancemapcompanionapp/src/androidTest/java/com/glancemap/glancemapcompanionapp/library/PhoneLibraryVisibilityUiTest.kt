@@ -179,7 +179,10 @@ class PhoneLibraryVisibilityUiTest {
                 } else {
                     saved.SaveableStateProvider("library") {
                         Column {
-                            phoneLibraryHeader(filter.value) { filter.value = it }
+                            phoneLibraryHeader(
+                                filter.value,
+                                actions = PhoneLibraryHeaderActions(searchOpen = true, onSettings = { settings.value = true }),
+                            ) { filter.value = it }
                             libraryPanelContent(
                                 PhoneLibraryListState(
                                     items =
@@ -190,6 +193,7 @@ class PhoneLibraryVisibilityUiTest {
                                             ),
                                         ),
                                     filter = filter.value,
+                                    searchOpen = true,
                                 ),
                                 mapState.value,
                                 libraryTestMapActions(mapState),
