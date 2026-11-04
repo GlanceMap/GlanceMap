@@ -1,5 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="watch_whats_new_title">Neu in %1$s</string>
+    <string-array name="watch_whats_new_notes">
+        <item>Verbesserte Zuverlässigkeit der Aktivitätsaufzeichnung, Trittfrequenzverarbeitung und Wiederherstellung der Herzfrequenz.</item>
+        <item>Verbesserte Downloads und Entpackung von Offline-Kartenpaketen, auch bei ausgeschaltetem Bildschirm.</item>
+        <item>Die Kartenansicht bleibt beim Wechsel zwischen Menüs und Dashboards erhalten.</item>
+        <item>Verbesserte GPX-Höhenanzeige und zuverlässigere Übertragung.</item>
+    </string-array>
     <string name="glancemap_state_on">"Ein"</string>
     <string name="glancemap_state_off">"Aus"</string>
     <string name="action_increase">"Erhöhen"</string>

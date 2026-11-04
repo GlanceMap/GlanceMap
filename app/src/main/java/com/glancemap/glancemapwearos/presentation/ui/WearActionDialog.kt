@@ -68,11 +68,13 @@ fun WearActionDialog(
     confirmRole: WearActionButtonRole = WearActionButtonRole.Primary,
     messageTopPadding: Dp = 0.dp,
     messageBottomPadding: Dp = 0.dp,
+    pinPrimaryButton: Boolean = false,
 ) {
     WearActionDialog(
         visible = visible,
         title = title,
         onDismissRequest = onDismissRequest,
+        pinPrimaryButton = pinPrimaryButton,
         buttons =
             buildList {
                 add(
@@ -111,6 +113,7 @@ fun WearActionDialog(
     onDismissRequest: () -> Unit,
     buttons: List<WearActionDialogButton>,
     backgroundColor: Color = Color.Black,
+    pinPrimaryButton: Boolean = false,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     if (!visible) return
@@ -123,6 +126,7 @@ fun WearActionDialog(
             title = title,
             buttons = buttons,
             backgroundColor = backgroundColor,
+            pinPrimaryButton = pinPrimaryButton,
             content = content,
         )
     }
@@ -148,11 +152,13 @@ private fun WearActionSurface(
     title: String,
     buttons: List<WearActionDialogButton>,
     backgroundColor: Color,
+    pinPrimaryButton: Boolean = false,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val scrollState = rememberScrollState()
     val focusRequester = androidx.compose.runtime.remember { FocusRequester() }
     val metrics = rememberWearActionLayoutMetrics()
+    val pinnedButton = buttons.firstOrNull().takeIf { pinPrimaryButton }
 
     LaunchedEffect(Unit) {
         focusRequester.requestFocus()
@@ -168,22 +174,54 @@ private fun WearActionSurface(
                 .focusable()
                 .background(backgroundColor),
     ) {
-        Column(
-            modifier =
-                Modifier
-                    .fillMaxSize()
-                    .verticalScroll(scrollState)
-                    .padding(horizontal = metrics.horizontalPadding)
-                    .padding(top = metrics.topPadding, bottom = metrics.bottomPadding),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(8.dp, Alignment.Top),
-        ) {
-            WearActionContent(title = title, buttons = buttons, metrics = metrics, content = content)
+        Column(modifier = Modifier.fillMaxSize()) {
+            Box(modifier = Modifier.weight(1f)) {
+                Column(
+                    modifier =
+                        Modifier
+                            .fillMaxSize()
+                            .verticalScroll(scrollState)
+                            .padding(horizontal = metrics.horizontalPadding)
+                            .padding(
+                                top = metrics.topPadding,
+                                bottom = if (pinnedButton != null) 8.dp else metrics.bottomPadding,
+                            ),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp, Alignment.Top),
+                ) {
+                    WearActionContent(
+                        title = title,
+                        buttons = if (pinnedButton != null) buttons.drop(1) else buttons,
+                        metrics = metrics,
+                        content = content,
+                    )
+                }
+                ScrollIndicator(state = scrollState, modifier = Modifier.align(Alignment.CenterEnd))
+            }
+            if (pinnedButton != null) {
+                WearPinnedActionButton(pinnedButton, metrics)
+            }
         }
-        ScrollIndicator(
-            state = scrollState,
-            modifier = Modifier.align(Alignment.CenterEnd),
-        )
+    }
+}
+
+@Composable
+private fun WearPinnedActionButton(
+    button: WearActionDialogButton,
+    metrics: WearActionLayoutMetrics,
+) {
+    Box(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = metrics.horizontalPadding)
+                .padding(bottom = metrics.bottomPadding / 2),
+        contentAlignment = Alignment.Center,
+    ) {
+        cappedFontScale(maxFontScale = metrics.actionFontScaleCap) {
+            // Keep the fixed button inside the curved bottom edge on round watches.
+            WearActionButton(button = button, widthFraction = metrics.controlWidthFraction.coerceAtMost(0.72f))
+        }
     }
 }
 

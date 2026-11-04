@@ -7,9 +7,12 @@ import org.junit.Test
 
 class WatchAppRatingPromptTest {
     @Test
-    fun promptOnlyShowsBeforeItHasBeenShown() {
-        assertTrue(shouldShowWatchAppRatingPrompt(promptShown = false))
-        assertFalse(shouldShowWatchAppRatingPrompt(promptShown = true))
+    fun promptShowsOnceForEachNewerVersionWhenNotesAreAvailable() {
+        assertTrue(shouldShowWatchAppRatingPrompt(0, 1041, hasReleaseNotes = true))
+        assertTrue(shouldShowWatchAppRatingPrompt(1040, 1041, hasReleaseNotes = true))
+        assertFalse(shouldShowWatchAppRatingPrompt(1041, 1041, hasReleaseNotes = true))
+        assertFalse(shouldShowWatchAppRatingPrompt(1042, 1041, hasReleaseNotes = true))
+        assertFalse(shouldShowWatchAppRatingPrompt(1040, 1041, hasReleaseNotes = false))
     }
 
     @Test

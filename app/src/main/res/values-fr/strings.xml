@@ -1,5 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:tools="http://schemas.android.com/tools">
+    <string name="watch_whats_new_title">Nouveautés de %1$s</string>
+    <string-array name="watch_whats_new_notes">
+        <item>Fiabilité améliorée de l’enregistrement des activités, de la cadence et de la récupération de la fréquence cardiaque.</item>
+        <item>Téléchargement et extraction améliorés des packs de cartes hors ligne, même lorsque l’écran est éteint.</item>
+        <item>La vue de la carte est conservée lors du passage entre les menus et les tableaux de bord.</item>
+        <item>Affichage de l’altitude GPX amélioré et transferts plus fiables.</item>
+    </string-array>
     <string name="glancemap_state_on">"Activé"</string>
     <string name="glancemap_state_off">"Désactivé"</string>
     <string name="action_increase">"Augmenter"</string>

@@ -1,5 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:tools="http://schemas.android.com/tools">
+    <string name="watch_whats_new_title">Nowości w wersji %1$s</string>
+    <string-array name="watch_whats_new_notes">
+        <item>Poprawiono niezawodność rejestrowania aktywności, obsługę kadencji i przywracanie pomiaru tętna.</item>
+        <item>Usprawniono pobieranie i rozpakowywanie pakietów map offline, także przy wyłączonym ekranie.</item>
+        <item>Widok mapy jest zachowywany podczas przechodzenia między menu i panelami.</item>
+        <item>Poprawiono wyświetlanie wysokości GPX i niezawodność przesyłania.</item>
+    </string-array>
     <string name="glancemap_state_on">"Wł."</string>
     <string name="glancemap_state_off">"Wył."</string>
     <string name="action_increase">"Zwiększ"</string>
