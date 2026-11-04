@@ -155,7 +155,7 @@ internal fun BoxScope.SlopeOverlayStatusIndicator(
             .padding(end = sideButtonEdgePadding + sideButtonSize + slopeIndicatorToolGap)
 
     AnimatedVisibility(
-        visible = visible && enabled && processing,
+        visible = visible && enabled && (processing || terrain3d),
         enter = fadeIn(tween(120)),
         exit = fadeOut(tween(180)),
         modifier = slopeIndicatorModifier,
@@ -167,7 +167,7 @@ internal fun BoxScope.SlopeOverlayStatusIndicator(
             label = "slope_render_progress_sweep",
         )
         val startAngle =
-            if (terrain3d) {
+            if (terrain3d && processing) {
                 val transition = rememberInfiniteTransition(label = "terrain_loading")
                 val angle by transition.animateFloat(
                     initialValue = -90f,
@@ -204,13 +204,16 @@ internal fun BoxScope.SlopeOverlayStatusIndicator(
                 drawArc(
                     color = Color(0xFFFFB300),
                     startAngle = startAngle,
-                    sweepAngle = if (terrain3d) 100f else sweepDeg,
+                    sweepAngle = if (terrain3d && processing) 100f else sweepDeg,
                     useCenter = false,
                     style = Stroke(width = ringStroke, cap = StrokeCap.Round),
                 )
             }
             if (terrain3d) {
-                val description = stringResource(R.string.navigate_3d_terrain_loading)
+                val description =
+                    stringResource(
+                        if (processing) R.string.navigate_3d_terrain_loading else R.string.map_terrain_3d_experimental,
+                    )
                 Text(
                     text = "3D",
                     modifier = Modifier.semantics { contentDescription = description },

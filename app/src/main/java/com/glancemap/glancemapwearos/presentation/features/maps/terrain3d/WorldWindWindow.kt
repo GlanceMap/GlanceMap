@@ -2,7 +2,13 @@ package com.glancemap.glancemapwearos.presentation.features.maps.terrain3d
 
 import android.content.Context
 import android.os.SystemClock
+import android.view.GestureDetector
+import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableDoubleStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import com.glancemap.glancemapwearos.core.maps.sanitizeTerrain3dViewingAngle
 import earth.worldwind.BasicWorldWindowController
 import earth.worldwind.WorldWindow
@@ -26,6 +32,16 @@ internal fun worldWindCacheBudget(heapMax: Long): Long = (heapMax / 8).coerceAtM
 
 internal fun worldWindInitialRange(): Double = INITIAL_TERRAIN_CAMERA_DISTANCE.toDouble()
 
+internal fun worldWindZoomByStep(
+    range: Double,
+    step: Int,
+): Double =
+    when {
+        step > 0 -> (range / 1.4).coerceIn(250.0, 50_000.0)
+        step < 0 -> (range * 1.4).coerceIn(250.0, 50_000.0)
+        else -> range
+    }
+
 internal fun worldWindViewingAngle(angle: Int): Double = sanitizeTerrain3dViewingAngle(angle).toDouble()
 
 /** A watch-owned view; provider and lifecycle ownership remain with the session. */
@@ -48,7 +64,36 @@ internal class WatchWorldWindWindow(
     val orbitCount = AtomicLong()
     val recenterCount = AtomicLong()
     private val lastInteractionMs = AtomicLong(SystemClock.elapsedRealtime())
+    var longPressOrbit by mutableStateOf(false)
+        private set
+    var cameraRange by mutableDoubleStateOf(worldWindInitialRange())
+        private set
+    private var externalBearing: Float? = null
+    private val longPressDetector =
+        GestureDetector(
+            context,
+            object : GestureDetector.SimpleOnGestureListener() {
+                override fun onDown(event: MotionEvent): Boolean = true
+
+                override fun onLongPress(event: MotionEvent) {
+                    if (orbitMode) return
+                    longPressOrbit = true
+                    lastX = event.x
+                    lastY = event.y
+                    orbitCount.incrementAndGet()
+                    performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                    val cancel = MotionEvent.obtain(event)
+                    cancel.action = MotionEvent.ACTION_CANCEL
+                    superTouch(cancel)
+                    cancel.recycle()
+                }
+            },
+        )
     var orbitMode = false
+        set(value) {
+            if (field && !value) externalBearing = null
+            field = value
+        }
     var pinchEnabled = true
     private var configuredViewingAngle: Int? = null
     private var overlayLayer: RenderableLayer? = null
@@ -65,6 +110,7 @@ internal class WatchWorldWindWindow(
                 override fun applyChanges() {
                     super.applyChanges()
                     this@WatchWorldWindWindow.lookAt.copy(lookAt)
+                    cameraRange = lookAt.range
                     onCenterChanged(LatLong(lookAt.position.latitude.inDegrees, lookAt.position.longitude.inDegrees))
                 }
 
@@ -126,7 +172,9 @@ internal class WatchWorldWindWindow(
     }
 
     fun setBearing(degrees: Float) {
-        if (!degrees.isFinite() || lookAt.heading.inDegrees == degrees.toDouble()) return
+        if (!degrees.isFinite() || externalBearing == degrees) return
+        externalBearing = degrees
+        if (lookAt.heading.inDegrees == degrees.toDouble()) return
         lookAt.heading = degrees.toDouble().degrees
         applyLookAt()
     }
@@ -147,10 +195,11 @@ internal class WatchWorldWindWindow(
 
     fun zoomByStep(step: Int): Boolean {
         lastInteractionMs.set(SystemClock.elapsedRealtime())
-        val next = terrainZoomByStep(lookAt.range.toFloat(), step).toDouble()
+        val next = worldWindZoomByStep(lookAt.range, step)
         if (next == lookAt.range) return false
         zoomCount.incrementAndGet()
         lookAt.range = next
+        cameraRange = next
         applyLookAt()
         return true
     }
@@ -187,9 +236,12 @@ internal class WatchWorldWindWindow(
         super.onDrawFrame(unused)
     }
 
+    private fun superTouch(event: MotionEvent): Boolean = super.onTouchEvent(event)
+
     override fun onTouchEvent(event: MotionEvent): Boolean {
         lastInteractionMs.set(SystemClock.elapsedRealtime())
-        if (!orbitMode) return super.onTouchEvent(event)
+        if (!orbitMode && !longPressOrbit) longPressDetector.onTouchEvent(event)
+        if (!orbitMode && !longPressOrbit) return super.onTouchEvent(event)
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 orbitCount.incrementAndGet()
@@ -205,6 +257,9 @@ internal class WatchWorldWindWindow(
                 lastY = event.y
                 applyLookAt()
             }
+        }
+        if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) {
+            longPressOrbit = false
         }
         return true
     }

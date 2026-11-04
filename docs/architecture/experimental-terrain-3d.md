@@ -93,13 +93,18 @@ four HGT files are omitted. The WorldWind resource-cache capacity is one eighth
 of maximum heap, capped at 16 MiB and floored at 1 MiB; it is a cache capacity,
 not a measured GPU allocation. The existing decoded HGT cache remains separate.
 
-WorldWind uses the existing angle, compass orientation, zoom, orbit, location and
-GPX inputs. Basic GPX follows terrain and preserves segments; advanced elevation
+WorldWind uses the existing angle, compass orientation, location and GPX inputs.
+Drag pans; long-press and drag temporarily rotates horizontally and tilts vertically.
+The 3D indicator remains visible while the renderer is active, and its zoom label
+shows the relative camera range rather than a ground-distance scale. WorldWind
+button and crown zoom allow a 250–50,000 m camera range; these experimental limits
+require watch validation. The existing explicit orbit mode remains available. Basic GPX follows terrain and preserves segments; advanced elevation
 colouring is not reproduced. Hill shading enables normal-based relief without
 shadow maps. Recenter and return to 2D use the 3D ground center. Session and
 interval diagnostics identify the renderer; WorldWind reports observed redraw
-and draw callbacks and tile work, with unavailable internal metrics labelled as
-such. A GL callback is not proof of a fully rendered terrain frame.
+and draw callbacks and tile work, including totals at session end for short runs;
+unavailable internal metrics are labelled as such. Each DEM grid reuses loaded
+tiles during sampling to reduce repeated per-sample lookup allocations. A GL callback is not proof of a fully rendered terrain frame.
 
 Physical-watch validation is required before changing the default, especially
 for GL teardown, DEM coverage and detailed-tile memory pressure, display

@@ -4,6 +4,7 @@ import android.content.Context
 import android.os.SystemClock
 import com.glancemap.glancemapwearos.core.maps.Dem3CoverageUtils
 import com.glancemap.glancemapwearos.presentation.features.maps.DemElevationSample
+import com.glancemap.glancemapwearos.presentation.features.maps.DemTileData
 import com.glancemap.glancemapwearos.presentation.features.maps.ReliefDemRepository
 import com.glancemap.glancemapwearos.presentation.features.maps.TerrainSource
 import earth.worldwind.geom.Angle.Companion.degrees
@@ -70,6 +71,7 @@ internal class WorldWindElevation(
                 ): ElevationSource =
                     ElevationSource.fromElevationDataFactory(
                         object : ElevationSource.ElevationDataFactory {
+                            @Suppress("LongMethod")
                             override suspend fun fetchElevationData(): Buffer? =
                                 withContext(dispatcher) {
                                     val job = currentCoroutineContext()
@@ -98,11 +100,35 @@ internal class WorldWindElevation(
                                         val started = SystemClock.elapsedRealtime()
                                         var voids = 0
                                         val result = ShortArray(width * height)
+                                        val columns = IntArray(width) { x -> floor(longitudes[x]).toInt() }
+                                        val loadedTiles = mutableMapOf<Pair<Int, Int>, DemTileData?>()
                                         for (y in 0 until height) {
                                             job.ensureActive()
+                                            val tileLat = floor(latitudes[y]).toInt()
+                                            var tileLon = Int.MIN_VALUE
+                                            var tile: DemTileData? = null
                                             for (x in 0 until width) {
+                                                if (columns[x] != tileLon) {
+                                                    tileLon = columns[x]
+                                                    val key = tileLat to tileLon
+                                                    if (!loadedTiles.containsKey(key)) {
+                                                        loadedTiles[key] =
+                                                            repository.loadDemTileFor(latitudes[y], longitudes[x])
+                                                    }
+                                                    tile = loadedTiles[key]
+                                                }
                                                 val sample =
-                                                    worldWindHeight(repository.elevationAt(latitudes[y], longitudes[x]))
+                                                    worldWindHeight(
+                                                        tile?.let {
+                                                            repository.elevationAtUsingTile(
+                                                                it,
+                                                                tileLat,
+                                                                tileLon,
+                                                                latitudes[y],
+                                                                longitudes[x],
+                                                            )
+                                                        },
+                                                    )
                                                 if (sample == Short.MIN_VALUE) voids++
                                                 result[y * width + x] = sample
                                             }

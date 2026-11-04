@@ -239,6 +239,7 @@ least three paired 15-minute settled idle captures, a repeated pan/zoom/orbit/
 recenter sequence, and a 10–15-minute exploration capture. Record redraw and
 draw counts, heap, battery and temperature where available. Renderer preference
 is included in Battery Benchmark Context; session interval telemetry identifies
-the active renderer. GPU memory and WorldWind internal work that is not exposed
+the active renderer; WorldWind session-end totals also cover sessions shorter than
+one minute. GPU memory and WorldWind internal work that is not exposed
 are unavailable, not zero. A short or noisy battery run does not establish
 battery equivalence.

@@ -13,6 +13,14 @@ class WorldWindCameraTest {
     }
 
     @Test
+    fun `worldwind can zoom closer than the custom terrain minimum`() {
+        assertTrue(worldWindZoomByStep(1000.0, 1) < 1000.0)
+        assertTrue(worldWindZoomByStep(14000.0, -1) > 14000.0)
+        assertEquals(250.0, worldWindZoomByStep(250.0, 1), 0.01)
+        assertEquals(50000.0, worldWindZoomByStep(50000.0, -1), 0.01)
+    }
+
+    @Test
     fun `initial field of view maps the existing camera range`() {
         assertEquals(2000.0, worldWindInitialRange(), 0.01)
         assertEquals(60.0, worldWindViewingAngle(60), 0.01)

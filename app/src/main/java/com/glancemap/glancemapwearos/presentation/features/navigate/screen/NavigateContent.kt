@@ -49,6 +49,7 @@ import androidx.compose.ui.input.rotary.onPreRotaryScrollEvent
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.IntSize
@@ -1409,7 +1410,9 @@ internal fun NavigateContent(
                     onToggleOrientation = onToggleOrientation,
                     navigationMarkerAnchorMode = navigationMarkerAnchorMode,
                     isScreenInteractive = terrainInteractive,
-                    terrainOrbitMode = terrainCameraAdjust,
+                    terrainOrbitMode =
+                        terrainCameraAdjust ||
+                            (worldWindSelected && worldWindSession.view?.longPressOrbit == true),
                     onTerrainOrbitChange = { terrainCameraAdjust = it },
                     onTerrainRecenter = { location ->
                         if (worldWindSelected) {
@@ -1421,9 +1424,29 @@ internal fun NavigateContent(
                 )
             }
 
+            if (terrainVisible && worldWindSelected && mapChrome.shows(MapFocusControl.SCALE)) {
+                worldWindSession.view?.let { view ->
+                    Text(
+                        text = String.format(LocalLocale.current.platformLocale, "%.1f×", 2000.0 / view.cameraRange),
+                        modifier =
+                            Modifier
+                                .align(Alignment.TopCenter)
+                                .padding(top = zoomLabelTopPadding)
+                                .background(Color.Black.copy(alpha = 0.78f), RoundedCornerShape(5.dp))
+                                .padding(horizontal = 5.dp, vertical = 1.dp),
+                        color = Color.White,
+                        fontSize = 10.sp,
+                    )
+                }
+            }
             val slopeIndicatorVisible = slopeOverlayToggleEnabled && slopeOverlayEnabled && slopeOverlayProcessing
             SlopeOverlayStatusIndicator(
-                visible = terrainEligible,
+                visible =
+                    terrainVisible ||
+                        (
+                            terrainEligible &&
+                                (if (worldWindSelected) worldWindSession.initializing else terrainSession.isLoading)
+                        ),
                 processing =
                     (if (worldWindSelected) worldWindSession.initializing else terrainSession.isLoading) &&
                         terrainInteractive,

@@ -135,7 +135,9 @@ private suspend fun runWatchWorldWindSession(
         session.center = center
         session.view = currentWindow
         val elapsed = SystemClock.elapsedRealtime() - started
-        Log.i(TERRAIN_LOG_TAG, "event=view_created renderer=worldwind session_id=$sessionId elapsed_ms=$elapsed")
+        val viewMessage = "event=view_created renderer=worldwind session_id=$sessionId elapsed_ms=$elapsed"
+        Log.i(TERRAIN_LOG_TAG, viewMessage)
+        DebugTelemetry.log(TERRAIN_LOG_TAG, viewMessage)
         val imageryProvider = checkNotNull(imagery)
         val elevationProvider = checkNotNull(elevation)
         waitForWorldWindReady(imageryProvider, currentWindow)
@@ -201,10 +203,14 @@ private suspend fun runWatchWorldWindSession(
     } catch (error: Exception) {
         session.failed = true
         val reason = error.javaClass.simpleName
-        Log.e(TERRAIN_LOG_TAG, "event=fallback_to_2d renderer=worldwind session_id=$sessionId reason=$reason", error)
+        val failure = "event=fallback_to_2d renderer=worldwind session_id=$sessionId reason=$reason"
+        Log.e(TERRAIN_LOG_TAG, failure, error)
+        DebugTelemetry.log(TERRAIN_LOG_TAG, failure)
     } catch (error: OutOfMemoryError) {
         session.failed = true
-        Log.e(TERRAIN_LOG_TAG, "WorldWind ran out of memory; returning to 2D", error)
+        val failure = "event=fallback_to_2d renderer=worldwind session_id=$sessionId reason=OutOfMemoryError"
+        Log.e(TERRAIN_LOG_TAG, failure, error)
+        DebugTelemetry.log(TERRAIN_LOG_TAG, failure)
     } finally {
         session.initializing = false
         session.view = null
@@ -220,11 +226,37 @@ private suspend fun runWatchWorldWindSession(
         } finally {
             session.running = false
         }
-        val draws = window?.draws?.get() ?: "unavailable"
-        val endMessage = "event=session_end renderer=worldwind session_id=$sessionId draws=$draws"
+        val endMessage = worldWindEndMessage(sessionId, started, demContext, window, imagery, elevation)
         Log.i(TERRAIN_LOG_TAG, endMessage)
         DebugTelemetry.log(TERRAIN_LOG_TAG, endMessage)
     }
+}
+
+@Suppress("CyclomaticComplexMethod", "LongParameterList")
+private fun worldWindEndMessage(
+    sessionId: String,
+    started: Long,
+    demContext: String,
+    window: WatchWorldWindWindow?,
+    imagery: WorldWindMapsforge?,
+    elevation: WorldWindElevation?,
+): String {
+    val draws = window?.draws?.get() ?: "unavailable"
+    val runtime = Runtime.getRuntime()
+    return "event=session_end renderer=worldwind session_id=$sessionId " +
+        "elapsed_ms=${SystemClock.elapsedRealtime() - started} $demContext draws=$draws " +
+        "idle_draws=${window?.idleDraws?.get() ?: 0} redraws=${window?.redrawRequests?.get() ?: 0} " +
+        "pan=${window?.panCount?.get() ?: 0} zoom=${window?.zoomCount?.get() ?: 0} " +
+        "orbit=${window?.orbitCount?.get() ?: 0} recenter=${window?.recenterCount?.get() ?: 0} " +
+        "requests=${imagery?.tileRequests?.get() ?: 0} renders=${imagery?.tileRenders?.get() ?: 0} " +
+        "images=${imagery?.tileImagesAvailable?.get() ?: 0} failed=${imagery?.tileFailures?.get() ?: 0} " +
+        "coalesced=${imagery?.tileCoalesced?.get() ?: 0} cancelled=${imagery?.tileCancelled?.get() ?: 0} " +
+        "render_ms=${imagery?.tileRenderMs?.get() ?: 0} dem_grids=${elevation?.gridCount?.get() ?: 0} " +
+        "dem_samples=${elevation?.sampleCount?.get() ?: 0} dem_voids=${elevation?.voidCount?.get() ?: 0} " +
+        "dem_ms=${elevation?.sampleMs?.get() ?: 0} " +
+        "dem_skipped_grids=${elevation?.skippedGridCount?.get() ?: 0} " +
+        "heap_used=${runtime.totalMemory() - runtime.freeMemory()} heap_max=${runtime.maxMemory()} " +
+        "internal_gpu_bytes=unavailable first_useful_frame=unavailable"
 }
 
 private suspend fun waitForWorldWindReady(
