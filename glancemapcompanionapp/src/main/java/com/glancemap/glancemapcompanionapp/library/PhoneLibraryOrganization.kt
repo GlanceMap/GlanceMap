@@ -39,8 +39,9 @@ internal val PhoneLibraryFilter.hasFolders: Boolean
 internal data class PhoneLibraryEntryOrganization(
     @field:SerializedName("folderId")
     val folderId: String? = null,
+    // Null means no manual choice: the GPX's own recorded activity, otherwise Hike, applies.
     @field:SerializedName("activity")
-    val activity: PhoneLibraryActivity? = PhoneLibraryActivity.HIKE,
+    val activity: PhoneLibraryActivity? = null,
 )
 
 internal data class PhoneLibraryOrganization(
@@ -52,9 +53,13 @@ internal data class PhoneLibraryOrganization(
     fun folder(id: String?): PhoneLibraryFolder? = folders.firstOrNull { it.id == id }
 
     fun entry(item: PhoneLibraryItem): PhoneLibraryEntryOrganization {
+        val entry = storedEntry(item)
+        return if (entry.activity == null) entry.copy(activity = item.defaultActivity()) else entry
+    }
+
+    private fun storedEntry(item: PhoneLibraryItem): PhoneLibraryEntryOrganization {
         val key = item.organizationKey()
-        val entry = entries[key] ?: PhoneLibraryEntryOrganization()
-        return if (entry.activity == null) entry.copy(activity = PhoneLibraryActivity.HIKE) else entry
+        return entries[key] ?: PhoneLibraryEntryOrganization()
     }
 
     fun folderPath(id: String?): String {
@@ -108,14 +113,15 @@ internal data class PhoneLibraryOrganization(
         folderId: String?,
     ): PhoneLibraryOrganization {
         require(folderId == null || folder(folderId) != null)
-        return copy(entries = entries + (item.organizationKey() to entry(item).copy(folderId = folderId)))
+        // Moving keeps an automatic activity automatic instead of freezing the current default.
+        return copy(entries = entries + (item.organizationKey() to storedEntry(item).copy(folderId = folderId)))
     }
 
     fun classify(
         item: PhoneLibraryItem,
         activity: PhoneLibraryActivity,
     ): PhoneLibraryOrganization {
-        val updated = entry(item).copy(activity = activity)
+        val updated = storedEntry(item).copy(activity = activity)
         return copy(entries = entries + (item.organizationKey() to updated))
     }
 
@@ -159,6 +165,14 @@ internal fun PhoneLibraryItem.organizationKey(): String =
         else -> key
     }
 
+/** Recordings carry their profile (`gmap:activityProfile`); everything else defaults to Hike. */
+internal fun PhoneLibraryItem.defaultActivity(): PhoneLibraryActivity =
+    if (this is PhoneLibraryItem.Gpx && route.activityProfile.equals("BIKE", ignoreCase = true)) {
+        PhoneLibraryActivity.BIKE
+    } else {
+        PhoneLibraryActivity.HIKE
+    }
+
 internal fun PhoneLibraryItem.gpxKind(): PhoneLibraryGpxKind? =
     when (this) {
         is PhoneLibraryItem.Gpx -> if (route.isRecording) PhoneLibraryGpxKind.RECORDING else PhoneLibraryGpxKind.ROUTE
@@ -189,7 +203,7 @@ internal fun browsePhoneLibraryItems(
             (
                 category != PhoneLibraryFilter.GPX ||
                     browse.activity == null ||
-                    (entry.activity ?: PhoneLibraryActivity.HIKE) == browse.activity
+                    entry.activity == browse.activity
             )
     }
 

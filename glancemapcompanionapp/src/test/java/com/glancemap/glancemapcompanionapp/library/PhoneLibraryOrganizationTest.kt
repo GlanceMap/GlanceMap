@@ -140,7 +140,7 @@ class PhoneLibraryOrganizationTest {
         val item = route("default", "Default route")
         val organization = PhoneLibraryOrganization()
         assertEquals(listOf(PhoneLibraryActivity.HIKE, PhoneLibraryActivity.BIKE), PhoneLibraryActivity.entries)
-        assertEquals(PhoneLibraryActivity.HIKE, PhoneLibraryEntryOrganization().activity)
+        assertEquals(null, PhoneLibraryEntryOrganization().activity)
         assertEquals(PhoneLibraryActivity.HIKE, organization.entry(item).activity)
         assertEquals(
             listOf(item),
@@ -185,10 +185,33 @@ class PhoneLibraryOrganizationTest {
             }
     }
 
+    @Test
+    fun recordedBikeGpxDefaultsToBikeUntilTheUserChoosesAnotherActivity() {
+        val bike = route("ride", "Bike ride", recorded = true, activityProfile = "BIKE")
+        val hike = route("walk", "Walk", recorded = true, activityProfile = "HIKE")
+        val organization = PhoneLibraryOrganization().createFolder("trip", "Trip", null)
+        assertEquals(PhoneLibraryActivity.BIKE, organization.entry(bike).activity)
+        assertEquals(PhoneLibraryActivity.HIKE, organization.entry(hike).activity)
+        assertEquals(
+            listOf(bike),
+            browsePhoneLibraryItems(
+                listOf(bike, hike),
+                PhoneLibraryFilter.GPX,
+                PhoneLibraryBrowseState(activity = PhoneLibraryActivity.BIKE),
+                organization,
+            ),
+        )
+        val moved = organization.move(bike, "trip")
+        assertEquals(PhoneLibraryActivity.BIKE, moved.entry(bike).activity)
+        assertEquals(null, moved.entries.getValue(bike.organizationKey()).activity)
+        assertEquals(PhoneLibraryActivity.HIKE, moved.classify(bike, PhoneLibraryActivity.HIKE).entry(bike).activity)
+    }
+
     private fun route(
         id: String,
         title: String,
         recorded: Boolean = false,
+        activityProfile: String? = null,
     ): PhoneLibraryItem.Gpx =
         PhoneLibraryItem.Gpx(
             RouteLibraryRoute(
@@ -198,6 +221,7 @@ class PhoneLibraryOrganizationTest {
                 1L,
                 RouteLibrarySummary(1000.0, 100.0, 80.0, 1000.0, 0, 1000.0, 100.0),
                 isRecording = recorded,
+                activityProfile = activityProfile,
             ),
         )
 }

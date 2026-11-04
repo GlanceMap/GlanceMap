@@ -48,6 +48,9 @@ data class RouteLibraryRoute(
     val sourceExportId: String? = null,
     @field:SerializedName("publishedTrailId")
     val publishedTrailId: String? = null,
+    // Recorded `gmap:activityProfile`; blank once checked and absent, null when not yet read.
+    @field:SerializedName("activityProfile")
+    val activityProfile: String? = null,
 )
 
 data class RouteLibrarySummary(
@@ -110,7 +113,7 @@ class RouteLibraryRepository(
 
     suspend fun load(): RouteLibraryUiState =
         mutex.withLock {
-            val index = readIndex()
+            val index = readIndexWithActivityProfiles()
             val routes = index.routes.filter { route -> File(routesDirectory, route.storedFileName).isFile }
             val selectedRouteId = index.selectedRouteId?.takeIf { id -> routes.any { it.id == id } }
             RouteLibraryUiState(
@@ -409,6 +412,24 @@ class RouteLibraryRepository(
             )
         }
 
+    /** Fills the activity profile once for recordings indexed before it was stored. */
+    private fun readIndexWithActivityProfiles(): RouteLibraryIndex {
+        val index = readIndex()
+        if (index.routes.none { it.isRecording && it.activityProfile == null }) return index
+        val updated =
+            index.copy(
+                routes =
+                    index.routes.map { route ->
+                        if (!route.isRecording || route.activityProfile != null) return@map route
+                        val file = File(routesDirectory, route.storedFileName)
+                        val profile = if (file.isFile) gpxHeaderActivityProfile(file).orEmpty() else null
+                        route.copy(activityProfile = profile)
+                    },
+            )
+        runCatching { writeIndex(updated) }
+        return updated
+    }
+
     private fun readIndex(): RouteLibraryIndex =
         runCatching {
             AtomicFile(indexFile).openRead().reader().use { reader ->
@@ -479,6 +500,7 @@ class RouteLibraryRepository(
                 isRecording = isRecording,
                 sourceExportId = sourceExportId,
                 publishedTrailId = publishedTrailId,
+                activityProfile = parsed.activityStatistics?.activityProfile.orEmpty(),
             )
         val previous = readIndex()
         val next =
@@ -550,3 +572,21 @@ class RouteLibraryRepository(
         const val NEXT_WINDOW_SECONDS = 30.0 * 60.0
     }
 }
+
+private const val GPX_HEADER_SCAN_CHARS = 16 * 1024
+private val gpxActivityProfilePattern = Regex("""<(?:\w+:)?activityProfile>\s*([A-Za-z_]+)\s*</""")
+
+/** Recording metadata is written before the track, so the header is enough to read the profile. */
+internal fun gpxHeaderActivityProfile(file: File): String? =
+    runCatching {
+        val buffer = CharArray(GPX_HEADER_SCAN_CHARS)
+        var read = 0
+        file.reader().use { reader ->
+            while (read < buffer.size) {
+                val count = reader.read(buffer, read, buffer.size - read)
+                if (count < 0) break
+                read += count
+            }
+        }
+        gpxActivityProfilePattern.find(String(buffer, 0, read))?.groupValues?.get(1)
+    }.getOrNull()
