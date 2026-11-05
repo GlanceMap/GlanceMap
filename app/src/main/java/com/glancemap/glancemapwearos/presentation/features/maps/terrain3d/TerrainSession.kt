@@ -107,6 +107,15 @@ internal class TerrainSession {
         if (angle.isFinite()) interactiveViewingAngle = angle.coerceIn(45f, 70f)
     }
 
+    fun setPresetViewingAngle(angle: Int) {
+        if (!isTerrainAnglePreset(angle)) return
+        interactiveViewingAngle = angle.toFloat()
+        view?.let {
+            it.setPresetViewingAngle(angle)
+            requestZoomExtent(it.terrainCameraDistance)
+        }
+    }
+
     fun resetInteractiveViewingAngle() {
         interactiveViewingAngle = viewingAngle.toFloat()
     }
@@ -390,7 +399,11 @@ private suspend fun runTerrainSession(
                         },
                     ),
             )
-        view.setInteractiveViewingAngle(session.interactiveViewingAngle)
+        if (session.interactiveViewingAngle < 45f) {
+            view.setPresetViewingAngle(session.interactiveViewingAngle.toInt())
+        } else {
+            view.setInteractiveViewingAngle(session.interactiveViewingAngle)
+        }
         bitmap = null
         session.center = prepared.center
         session.requestedCenter = prepared.center

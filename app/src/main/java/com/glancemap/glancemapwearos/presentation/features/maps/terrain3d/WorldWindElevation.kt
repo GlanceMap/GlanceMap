@@ -5,6 +5,7 @@ import android.os.SystemClock
 import com.glancemap.glancemapwearos.core.maps.Dem3CoverageUtils
 import com.glancemap.glancemapwearos.presentation.features.maps.DemElevationSample
 import com.glancemap.glancemapwearos.presentation.features.maps.DemTileData
+import com.glancemap.glancemapwearos.presentation.features.maps.ReliefDemCacheStats
 import com.glancemap.glancemapwearos.presentation.features.maps.ReliefDemRepository
 import com.glancemap.glancemapwearos.presentation.features.maps.TerrainSource
 import earth.worldwind.geom.Angle.Companion.degrees
@@ -21,9 +22,16 @@ import kotlinx.coroutines.withContext
 import org.mapsforge.core.model.BoundingBox
 import java.nio.Buffer
 import java.nio.ShortBuffer
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.math.floor
 import kotlin.math.roundToInt
+
+private const val WORLDWIND_DEM_CACHE_ENTRIES = 4
+
+private interface WorldWindGridFactory : ElevationSource.ElevationDataFactory {
+    val skipped: AtomicBoolean
+}
 
 internal fun worldWindHeight(value: Double?): Short {
     val valid = value?.takeIf { it.isFinite() }?.takeIf { it > Short.MIN_VALUE && it <= Short.MAX_VALUE }
@@ -36,15 +44,19 @@ internal class WorldWindElevation(
     source: TerrainSource,
     bounds: BoundingBox,
 ) : AutoCloseable {
+    val cacheStats = ReliefDemCacheStats()
     private val repository =
         ReliefDemRepository(
             source.demSource.readFallbackOrder().map { Dem3CoverageUtils.demRootDir(context, it) },
             TERRAIN_LOG_TAG,
+            cacheEntryLimit = WORLDWIND_DEM_CACHE_ENTRIES,
+            cacheStats = cacheStats,
         )
     val gridCount = AtomicLong()
     val sampleCount = AtomicLong()
     val voidCount = AtomicLong()
     val skippedGridCount = AtomicLong()
+    val failedGridCount = AtomicLong()
     val sampleMs = AtomicLong()
     private val lock = Any()
     private var closed = false
@@ -59,7 +71,7 @@ internal class WorldWindElevation(
             (3.0 / 3600.0).degrees,
         )
     val coverage =
-        TiledElevationCoverage(
+        object : TiledElevationCoverage(
             matrices,
             object : ElevationSourceFactory {
                 override val contentType = "Local HGT"
@@ -70,7 +82,9 @@ internal class WorldWindElevation(
                     column: Int,
                 ): ElevationSource =
                     ElevationSource.fromElevationDataFactory(
-                        object : ElevationSource.ElevationDataFactory {
+                        object : WorldWindGridFactory {
+                            override val skipped = AtomicBoolean()
+
                             @Suppress("LongMethod")
                             override suspend fun fetchElevationData(): Buffer? =
                                 withContext(dispatcher) {
@@ -92,6 +106,7 @@ internal class WorldWindElevation(
                                         latitudes.map { floor(it).toInt() }.distinct().size *
                                             longitudes.map { floor(it).toInt() }.distinct().size
                                     if (tiles > 4) {
+                                        skipped.set(true)
                                         skippedGridCount.incrementAndGet()
                                         return@withContext null
                                     }
@@ -143,7 +158,21 @@ internal class WorldWindElevation(
                         },
                     )
             },
-        )
+        ) {
+            override fun retrievalFailed(
+                key: Long,
+                source: ElevationSource,
+                ex: Throwable?,
+            ) {
+                val factory = source.asElevationDataFactory() as? WorldWindGridFactory
+                if (ex == null && factory?.skipped?.get() == true) {
+                    retrievalFailed(key)
+                } else {
+                    failedGridCount.incrementAndGet()
+                    super.retrievalFailed(key, source, ex)
+                }
+            }
+        }
 
     fun sampleAt(
         latitude: Double,

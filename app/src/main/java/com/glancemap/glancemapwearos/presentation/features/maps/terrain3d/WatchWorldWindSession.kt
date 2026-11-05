@@ -116,6 +116,7 @@ private suspend fun runWatchWorldWindSession(
         val currentWindow = WatchWorldWindWindow(context, { session.center = it }, { session.onUserPanStarted() })
         window = currentWindow
         currentWindow.engine.layers.clearLayers()
+        currentWindow.engine.layers.addLayer(currentWindow.globeBackground)
         currentWindow.engine.globe.elevationModel
             .clearCoverages()
         if (currentSource.hillShadingEnabled) {
@@ -190,8 +191,16 @@ private suspend fun runWatchWorldWindSession(
                     "dem_samples=${elevationProvider.sampleCount.get()} " +
                     "dem_voids=${elevationProvider.voidCount.get()} dem_ms=${elevationProvider.sampleMs.get()} " +
                     "dem_skipped_grids=${elevationProvider.skippedGridCount.get()} " +
+                    "dem_failed_grids=${elevationProvider.failedGridCount.get()} " +
+                    "dem_cache_hits=${elevationProvider.cacheStats.hits.get()} " +
+                    "dem_cache_misses=${elevationProvider.cacheStats.misses.get()} " +
+                    "dem_hgt_loads=${elevationProvider.cacheStats.loads.get()} " +
+                    "dem_hgt_decoded_bytes=${elevationProvider.cacheStats.decodedBytes.get()} " +
+                    "dem_hgt_load_ms=${elevationProvider.cacheStats.loadNanos.get() / 1_000_000} " +
                     "pan=${currentWindow.panCount.get()} zoom=${currentWindow.zoomCount.get()} " +
                     "orbit=${currentWindow.orbitCount.get()} recenter=${currentWindow.recenterCount.get()} " +
+                    "track_rebuilds=${currentWindow.trackRebuildCount.get()} " +
+                    "marker_updates=${currentWindow.markerUpdateCount.get()} " +
                     "internal_gpu_bytes=unavailable",
             )
             previousDraws = drawsNow
@@ -218,17 +227,29 @@ private suspend fun runWatchWorldWindSession(
             view.onPause()
             (view.parent as? ViewGroup)?.removeView(view)
         }
-        try {
-            withContext(NonCancellable + Dispatchers.IO) {
+        finishWorldWindResources(
+            close = {
                 elevation?.close()
                 imagery?.close()
-            }
-        } finally {
-            session.running = false
-        }
-        val endMessage = worldWindEndMessage(sessionId, started, demContext, window, imagery, elevation)
-        Log.i(TERRAIN_LOG_TAG, endMessage)
-        DebugTelemetry.log(TERRAIN_LOG_TAG, endMessage)
+            },
+            onFinished = {
+                session.running = false
+                val endMessage = worldWindEndMessage(sessionId, started, demContext, window, imagery, elevation)
+                Log.i(TERRAIN_LOG_TAG, endMessage)
+                DebugTelemetry.log(TERRAIN_LOG_TAG, endMessage)
+            },
+        )
+    }
+}
+
+internal suspend fun finishWorldWindResources(
+    close: suspend () -> Unit,
+    onFinished: () -> Unit,
+) {
+    try {
+        withContext(NonCancellable + Dispatchers.IO) { close() }
+    } finally {
+        onFinished()
     }
 }
 
@@ -248,6 +269,8 @@ private fun worldWindEndMessage(
         "idle_draws=${window?.idleDraws?.get() ?: 0} redraws=${window?.redrawRequests?.get() ?: 0} " +
         "pan=${window?.panCount?.get() ?: 0} zoom=${window?.zoomCount?.get() ?: 0} " +
         "orbit=${window?.orbitCount?.get() ?: 0} recenter=${window?.recenterCount?.get() ?: 0} " +
+        "track_rebuilds=${window?.trackRebuildCount?.get() ?: 0} " +
+        "marker_updates=${window?.markerUpdateCount?.get() ?: 0} " +
         "requests=${imagery?.tileRequests?.get() ?: 0} renders=${imagery?.tileRenders?.get() ?: 0} " +
         "images=${imagery?.tileImagesAvailable?.get() ?: 0} failed=${imagery?.tileFailures?.get() ?: 0} " +
         "coalesced=${imagery?.tileCoalesced?.get() ?: 0} cancelled=${imagery?.tileCancelled?.get() ?: 0} " +
@@ -255,6 +278,12 @@ private fun worldWindEndMessage(
         "dem_samples=${elevation?.sampleCount?.get() ?: 0} dem_voids=${elevation?.voidCount?.get() ?: 0} " +
         "dem_ms=${elevation?.sampleMs?.get() ?: 0} " +
         "dem_skipped_grids=${elevation?.skippedGridCount?.get() ?: 0} " +
+        "dem_failed_grids=${elevation?.failedGridCount?.get() ?: 0} " +
+        "dem_cache_hits=${elevation?.cacheStats?.hits?.get() ?: 0} " +
+        "dem_cache_misses=${elevation?.cacheStats?.misses?.get() ?: 0} " +
+        "dem_hgt_loads=${elevation?.cacheStats?.loads?.get() ?: 0} " +
+        "dem_hgt_decoded_bytes=${elevation?.cacheStats?.decodedBytes?.get() ?: 0} " +
+        "dem_hgt_load_ms=${(elevation?.cacheStats?.loadNanos?.get() ?: 0) / 1_000_000} " +
         "heap_used=${runtime.totalMemory() - runtime.freeMemory()} heap_max=${runtime.maxMemory()} " +
         "internal_gpu_bytes=unavailable first_useful_frame=unavailable"
 }

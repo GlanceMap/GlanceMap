@@ -7,6 +7,7 @@ import earth.worldwind.geom.AltitudeMode
 import earth.worldwind.geom.Position
 import earth.worldwind.layer.RenderableLayer
 import earth.worldwind.render.Color
+import earth.worldwind.render.Renderable
 import earth.worldwind.shape.Path
 import earth.worldwind.shape.Placemark
 import earth.worldwind.shape.PlacemarkAttributes
@@ -29,23 +30,40 @@ internal fun worldWindGpxLayer(
         overlay.tracks.forEach { track ->
             worldWindTrackSegments(track.trackPoints).forEach { points ->
                 addRenderable(
-                    Path(points.map { Position.fromDegrees(it.latitude, it.longitude, 3.0) }, attributes).apply {
-                        altitudeMode = AltitudeMode.RELATIVE_TO_GROUND
-                        isFollowTerrain = true
-                    },
+                    worldWindTrackPath(points, attributes),
                 )
             }
         }
-        location?.let {
-            val marker =
-                PlacemarkAttributes().apply {
-                    imageColor = Color(0.1f, 0.45f, 1f, 1f)
-                    imageScale = 14.0
-                }
-            addRenderable(
-                Placemark(Position.fromDegrees(it.latitude, it.longitude, 5.0), marker).apply {
-                    altitudeMode = AltitudeMode.RELATIVE_TO_GROUND
-                },
-            )
+        updateWorldWindLocation(this, null, worldWindLocationMarker(location))
+    }
+
+internal fun updateWorldWindLocation(
+    layer: RenderableLayer,
+    previous: Renderable?,
+    next: Renderable?,
+): Renderable? {
+    previous?.let(layer::removeRenderable)
+    next?.let(layer::addRenderable)
+    return next
+}
+
+internal fun worldWindLocationMarker(location: LatLong?): Placemark? =
+    location?.let {
+        val attributes =
+            PlacemarkAttributes().apply {
+                imageColor = Color(0.1f, 0.45f, 1f, 1f)
+                imageScale = 14.0
+            }
+        Placemark(Position.fromDegrees(it.latitude, it.longitude, 5.0), attributes).apply {
+            altitudeMode = AltitudeMode.RELATIVE_TO_GROUND
         }
+    }
+
+internal fun worldWindTrackPath(
+    points: List<LatLong>,
+    attributes: ShapeAttributes,
+): Path =
+    Path(points.map { Position.fromDegrees(it.latitude, it.longitude, 0.0) }, attributes).apply {
+        altitudeMode = AltitudeMode.CLAMP_TO_GROUND
+        isFollowTerrain = true
     }

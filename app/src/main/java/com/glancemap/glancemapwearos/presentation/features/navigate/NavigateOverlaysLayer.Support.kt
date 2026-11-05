@@ -130,6 +130,7 @@ internal fun BoxScope.SlopeOverlayStatusIndicator(
     sideButtonSize: Dp,
     modifier: Modifier = Modifier,
     terrain3d: Boolean = false,
+    onClick: (() -> Unit)? = null,
 ) {
     val slopeIndicatorButtonSize =
         when (screenSize) {
@@ -150,9 +151,16 @@ internal fun BoxScope.SlopeOverlayStatusIndicator(
             WearScreenSize.SMALL -> 3.dp
         }
     val slopeIndicatorModifier =
-        modifier
-            .align(Alignment.CenterEnd)
-            .padding(end = sideButtonEdgePadding + sideButtonSize + slopeIndicatorToolGap)
+        if (terrain3d) {
+            modifier
+                .align(Alignment.CenterEnd)
+                .offset(y = sideButtonSize + 14.dp)
+                .padding(end = sideButtonEdgePadding + 8.dp)
+        } else {
+            modifier
+                .align(Alignment.CenterEnd)
+                .padding(end = sideButtonEdgePadding + sideButtonSize + slopeIndicatorToolGap)
+        }
 
     AnimatedVisibility(
         visible = visible && enabled && (processing || terrain3d),
@@ -180,54 +188,69 @@ internal fun BoxScope.SlopeOverlayStatusIndicator(
                 -90f
             }
 
-        Box(
-            modifier =
-                Modifier
-                    .size(slopeIndicatorButtonSize)
-                    .background(Color.Black.copy(alpha = 0.7f), CircleShape),
-            contentAlignment = Alignment.Center,
-        ) {
-            Canvas(
+        val angleLabel = stringResource(R.string.map_3d_viewing_angle)
+        val target =
+            if (onClick != null) {
+                Modifier.size(48.dp).clickable(role = Role.Button, onClickLabel = angleLabel, onClick = onClick)
+            } else if (terrain3d) {
+                Modifier.size(48.dp)
+            } else {
+                Modifier.size(slopeIndicatorButtonSize)
+            }
+        Box(modifier = target, contentAlignment = Alignment.Center) {
+            Box(
                 modifier =
                     Modifier
-                        .fillMaxSize()
-                        .padding(1.dp),
+                        .size(slopeIndicatorButtonSize)
+                        .background(Color.Black.copy(alpha = 0.7f), CircleShape),
+                contentAlignment = Alignment.Center,
             ) {
-                val ringStroke = (size.minDimension * 0.12f).coerceAtLeast(1.5f)
-                drawArc(
-                    color = Color.White.copy(alpha = 0.25f),
-                    startAngle = -90f,
-                    sweepAngle = 360f,
-                    useCenter = false,
-                    style = Stroke(width = ringStroke),
-                )
-                drawArc(
-                    color = Color(0xFFFFB300),
-                    startAngle = startAngle,
-                    sweepAngle = if (terrain3d && processing) 100f else sweepDeg,
-                    useCenter = false,
-                    style = Stroke(width = ringStroke, cap = StrokeCap.Round),
-                )
-            }
-            if (terrain3d) {
-                val description =
-                    stringResource(
-                        if (processing) R.string.navigate_3d_terrain_loading else R.string.map_terrain_3d_experimental,
+                Canvas(
+                    modifier =
+                        Modifier
+                            .fillMaxSize()
+                            .padding(1.dp),
+                ) {
+                    val ringStroke = (size.minDimension * 0.12f).coerceAtLeast(1.5f)
+                    drawArc(
+                        color = Color.White.copy(alpha = 0.25f),
+                        startAngle = -90f,
+                        sweepAngle = 360f,
+                        useCenter = false,
+                        style = Stroke(width = ringStroke),
                     )
-                Text(
-                    text = "3D",
-                    modifier = Modifier.semantics { contentDescription = description },
-                    color = Color(0xFFFFB300),
-                    fontSize = 9.sp,
-                    fontWeight = FontWeight.Bold,
-                )
-            } else {
-                Icon(
-                    imageVector = Icons.Default.Landscape,
-                    contentDescription = stringResource(R.string.navigate_slope_rendering_in_progress),
-                    modifier = Modifier.size(slopeIndicatorIconSize),
-                    tint = Color(0xFFFFB300),
-                )
+                    drawArc(
+                        color = Color(0xFFFFB300),
+                        startAngle = startAngle,
+                        sweepAngle = if (terrain3d && processing) 100f else sweepDeg,
+                        useCenter = false,
+                        style = Stroke(width = ringStroke, cap = StrokeCap.Round),
+                    )
+                }
+                if (terrain3d) {
+                    val description =
+                        stringResource(
+                            if (processing) {
+                                R.string.navigate_3d_terrain_loading
+                            } else {
+                                R.string.map_terrain_3d_experimental
+                            },
+                        )
+                    Text(
+                        text = "3D",
+                        modifier = Modifier.semantics { contentDescription = description },
+                        color = Color(0xFFFFB300),
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
+                } else {
+                    Icon(
+                        imageVector = Icons.Default.Landscape,
+                        contentDescription = stringResource(R.string.navigate_slope_rendering_in_progress),
+                        modifier = Modifier.size(slopeIndicatorIconSize),
+                        tint = Color(0xFFFFB300),
+                    )
+                }
             }
         }
     }

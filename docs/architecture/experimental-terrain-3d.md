@@ -91,15 +91,32 @@ including where Detailed terrain is present, to avoid claiming uniform 1-second
 resolution across fallback boundaries. Coarse elevation grids spanning more than
 four HGT files are omitted. The WorldWind resource-cache capacity is one eighth
 of maximum heap, capped at 16 MiB and floored at 1 MiB; it is a cache capacity,
-not a measured GPU allocation. The existing decoded HGT cache remains separate.
+not a measured GPU allocation. The decoded HGT cache remains separate and is
+capped at the lower of four tiles or the existing adaptive limit for WorldWind.
+This limits retained decoded tiles, not transient allocations or total heap use;
+other relief and recording consumers retain their existing cache policy. A grid
+intentionally omitted by the four-tile safeguard is counted as skipped rather
+than logged as a retrieval failure. Unexpected failures remain logged and counted.
 
 WorldWind uses the existing angle, compass orientation, location and GPX inputs.
-Drag pans; long-press and drag temporarily rotates horizontally and tilts vertically.
-The 3D indicator remains visible while the renderer is active, and its zoom label
-shows the relative camera range rather than a ground-distance scale. WorldWind
-button and crown zoom allow a 250–50,000 m camera range; these experimental limits
-require watch validation. The existing explicit orbit mode remains available. Basic GPX follows terrain and preserves segments; advanced elevation
-colouring is not reproduced. Hill shading enables normal-based relief without
+Drag pans; long-press and drag temporarily rotates horizontally and tilts vertically
+from straight down to 85° from vertical. At wide ranges the displayed tilt gradually
+returns to straight down, leaving the selected tilt available when zooming back in.
+The tools shortcut remains available in 3D; actions that start recording, guidance,
+or route tools retain the existing switch to 2D. The 3D indicator below the tools
+button cycles session-only 0°, 30°, 45°, and 60° viewing-angle presets; this does not
+change the saved default. The custom renderer keeps its conservative footprint
+calculation when using the 0° or 30° preset.
+WorldWind zoom is no longer restricted to the previous 250–50,000 m range; the
+camera can move back far enough to frame the globe. At ranges of 50 km and above,
+WorldWind's bundled low-resolution global background fills areas outside the
+selected offline map; it uses no network. The 3D indicator remains visible and zoom displays the
+same distance-scale style as the regular map, using an approximate range conversion.
+These interactions and globe rendering require watch validation. The existing
+explicit orbit mode remains available. Basic GPX is draped onto the rendered terrain
+surface and preserves segments; advanced elevation colouring is not reproduced.
+Terrain can still obscure a track behind a ridge. Location updates replace the
+marker without rebuilding unchanged GPX paths. Hill shading enables normal-based relief without
 shadow maps. Recenter and return to 2D use the 3D ground center. Session and
 interval diagnostics identify the renderer; WorldWind reports observed redraw
 and draw callbacks and tile work, including totals at session end for short runs;

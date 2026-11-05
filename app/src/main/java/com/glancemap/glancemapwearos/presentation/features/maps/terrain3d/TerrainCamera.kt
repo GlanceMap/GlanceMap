@@ -6,6 +6,12 @@ import kotlin.math.max
 import kotlin.math.sin
 import kotlin.math.tan
 
+private val TERRAIN_ANGLE_PRESETS = listOf(0, 30, 45, 60)
+
+internal fun nextTerrainAnglePreset(angle: Int): Int = TERRAIN_ANGLE_PRESETS.firstOrNull { it > angle } ?: 0
+
+internal fun isTerrainAnglePreset(angle: Int): Boolean = angle in TERRAIN_ANGLE_PRESETS
+
 private const val MIN_TERRAIN_CAMERA_DISTANCE = 1000f
 private const val MAX_TERRAIN_CAMERA_DISTANCE = 14000f
 private const val TERRAIN_ZOOM_STEP_FACTOR = 1.4f
@@ -143,6 +149,13 @@ internal class TerrainPitch(
 
     val viewingAngleDegrees: Float
         get() = 90f - rendererElevationDegrees
+
+    fun setPresetViewingAngle(angle: Int): Boolean {
+        val elevation = 90f - angle
+        if (!isTerrainAnglePreset(angle) || rendererElevationDegrees == elevation) return false
+        rendererElevationDegrees = elevation
+        return true
+    }
 
     @Suppress("ReturnCount")
     fun setInteractiveViewingAngle(angle: Float): Boolean {

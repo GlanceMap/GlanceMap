@@ -7,6 +7,7 @@ import com.glancemap.glancemapwearos.core.service.diagnostics.BenchmarkTrace
 import java.io.File
 import java.util.LinkedHashMap
 import java.util.Locale
+import java.util.concurrent.atomic.AtomicLong
 import kotlin.math.abs
 import kotlin.math.floor
 import kotlin.math.min
@@ -14,6 +15,8 @@ import kotlin.math.min
 internal class ReliefDemRepository(
     private val demRootDirs: List<File>,
     private val tag: String,
+    private val cacheEntryLimit: Int? = null,
+    private val cacheStats: ReliefDemCacheStats? = null,
 ) {
     constructor(
         demRootDir: File,
@@ -25,11 +28,10 @@ internal class ReliefDemRepository(
         private const val MAX_DEM_TILE_CACHE_ENTRIES = 8
     }
 
-    private val maxDemTileCacheEntries: Int = computeMaxDemTileCacheEntries()
-    private val demTileCache =
-        object : LinkedHashMap<String, DemTileData?>(16, 0.75f, true) {
-            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, DemTileData?>?): Boolean = size > maxDemTileCacheEntries
-        }
+    private val maxDemTileCacheEntries: Int =
+        cacheEntryLimit?.let { minOf(it.coerceAtLeast(1), computeMaxDemTileCacheEntries()) }
+            ?: computeMaxDemTileCacheEntries()
+    private val demTileCache = ReliefDemTileCache(maxDemTileCacheEntries)
 
     fun loadDemTileFor(
         lat: Double,
@@ -85,14 +87,23 @@ internal class ReliefDemRepository(
         val tileId = tileId(latTile, lonTile)
         synchronized(demTileCache) {
             if (demTileCache.containsKey(tileId)) {
+                cacheStats?.hits?.incrementAndGet()
                 return demTileCache[tileId]
             }
         }
 
+        cacheStats?.misses?.incrementAndGet()
         val loaded =
             runCatching {
                 val file = resolveDemFile(demRootDirs, tileId) ?: return@runCatching null
-                BenchmarkTrace.section("relief.demReadDecode") { readReliefDemTile(file) }
+                val started = if (cacheStats != null) System.nanoTime() else 0L
+                val tile = BenchmarkTrace.section("relief.demReadDecode") { readReliefDemTile(file) }
+                if (tile != null && cacheStats != null) {
+                    cacheStats.loads.incrementAndGet()
+                    cacheStats.decodedBytes.addAndGet(tile.samples.size.toLong() * Short.SIZE_BYTES)
+                    cacheStats.loadNanos.addAndGet(System.nanoTime() - started)
+                }
+                tile
             }.onFailure { error ->
                 Log.w(tag, "Failed to load DEM tile $tileId", error)
             }.getOrNull()
@@ -219,3 +230,17 @@ internal fun interpolateDemElevation(
 }
 
 internal const val DEM_VOID_SAMPLE: Short = Short.MIN_VALUE
+
+internal class ReliefDemCacheStats {
+    val hits = AtomicLong()
+    val misses = AtomicLong()
+    val loads = AtomicLong()
+    val decodedBytes = AtomicLong()
+    val loadNanos = AtomicLong()
+}
+
+internal class ReliefDemTileCache(
+    private val maxEntries: Int,
+) : LinkedHashMap<String, DemTileData?>(16, 0.75f, true) {
+    override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, DemTileData?>?): Boolean = size > maxEntries
+}

@@ -7,6 +7,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
@@ -53,7 +54,7 @@ internal fun TerrainZoomControls(
                         imageVector = if (step > 0) Icons.Default.Add else Icons.Default.Remove,
                         contentDescription =
                             stringResource(if (step > 0) R.string.navigation_zoom_in else R.string.navigation_zoom_out),
-                        modifier = Modifier.size(iconSize),
+                        modifier = Modifier.size(iconSize).rotate(if (step > 0) 52f else 120f),
                     )
                 }
             }

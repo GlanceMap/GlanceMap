@@ -240,6 +240,14 @@ recenter sequence, and a 10–15-minute exploration capture. Record redraw and
 draw counts, heap, battery and temperature where available. Renderer preference
 is included in Battery Benchmark Context; session interval telemetry identifies
 the active renderer; WorldWind session-end totals also cover sessions shorter than
-one minute. GPU memory and WorldWind internal work that is not exposed
+one minute. Compare `dem_skipped_grids` (intentional coarse-grid limit) with
+`dem_failed_grids` (unexpected retrieval errors), heap and tile work; compare
+read/load and panning behavior near HGT boundaries when evaluating the four-tile
+WorldWind cache cap. `dem_cache_hits`, `dem_cache_misses`, `dem_hgt_loads`,
+`dem_hgt_decoded_bytes` and `dem_hgt_load_ms` are cumulative session counters;
+decoded bytes are total work, not currently retained or peak memory.
+`track_rebuilds` and `marker_updates` distinguish GPX geometry rebuilds from
+location marker updates; compare them during a moving-GPS run. GPU memory
+and WorldWind internal work that is not exposed
 are unavailable, not zero. A short or noisy battery run does not establish
 battery equivalence.

@@ -18,13 +18,19 @@ import earth.worldwind.geom.Angle.Companion.degrees
 import earth.worldwind.geom.LookAt
 import earth.worldwind.gesture.GestureRecognizer
 import earth.worldwind.gesture.GestureState
+import earth.worldwind.layer.BackgroundLayer
 import earth.worldwind.layer.RenderableLayer
 import earth.worldwind.render.RenderResourceCache
+import earth.worldwind.render.Renderable
 import org.mapsforge.core.model.LatLong
 import java.util.concurrent.atomic.AtomicLong
 import javax.microedition.khronos.egl.EGLConfig
 import javax.microedition.khronos.opengles.GL10
 import kotlin.math.abs
+import kotlin.math.cos
+import kotlin.math.ln
+import kotlin.math.log2
+import kotlin.math.min
 
 private const val MIB = 1024L * 1024L
 
@@ -37,12 +43,28 @@ internal fun worldWindZoomByStep(
     step: Int,
 ): Double =
     when {
-        step > 0 -> (range / 1.4).coerceIn(250.0, 50_000.0)
-        step < 0 -> (range * 1.4).coerceIn(250.0, 50_000.0)
+        step > 0 -> (range / 1.4).coerceAtLeast(1.0)
+        step < 0 -> (range * 1.4).coerceAtMost(Double.MAX_VALUE)
         else -> range
     }
 
 internal fun worldWindViewingAngle(angle: Int): Double = sanitizeTerrain3dViewingAngle(angle).toDouble()
+
+internal fun worldWindDisplayedTilt(
+    preferred: Double,
+    range: Double,
+): Double {
+    val progress = (ln(range / 50_000.0) / ln(2_000_000.0 / 50_000.0)).coerceIn(0.0, 1.0)
+    return min(preferred.coerceIn(0.0, 85.0), 85.0 * (1.0 - progress))
+}
+
+internal fun worldWindApproximateZoom(
+    latitude: Double,
+    range: Double,
+): Int =
+    log2(40_075_016.686 * cos(Math.toRadians(latitude.coerceIn(-85.0, 85.0))) * 1.4 / range.coerceAtLeast(1.0))
+        .toInt()
+        .coerceIn(1, 22)
 
 /** A watch-owned view; provider and lifecycle ownership remain with the session. */
 @Suppress("TooManyFunctions")
@@ -55,6 +77,7 @@ internal class WatchWorldWindWindow(
         renderResourceCache = RenderResourceCache(context, worldWindCacheBudget(Runtime.getRuntime().maxMemory())),
     ) {
     val lookAt = LookAt()
+    val globeBackground = BackgroundLayer().apply { isEnabled = false }
     val surfaceReadyAt = AtomicLong()
     val draws = AtomicLong()
     val idleDraws = AtomicLong()
@@ -63,6 +86,8 @@ internal class WatchWorldWindWindow(
     val zoomCount = AtomicLong()
     val orbitCount = AtomicLong()
     val recenterCount = AtomicLong()
+    val trackRebuildCount = AtomicLong()
+    val markerUpdateCount = AtomicLong()
     private val lastInteractionMs = AtomicLong(SystemClock.elapsedRealtime())
     var longPressOrbit by mutableStateOf(false)
         private set
@@ -96,9 +121,12 @@ internal class WatchWorldWindWindow(
         }
     var pinchEnabled = true
     private var configuredViewingAngle: Int? = null
+    private var preferredTilt = 60.0
     private var overlayLayer: RenderableLayer? = null
-    private var overlayValue: Pair<TerrainGpxOverlay, LatLong?>? = null
-    val hasGpx: Boolean get() = overlayValue?.first?.tracks?.isNotEmpty() == true
+    private var overlayValue: TerrainGpxOverlay? = null
+    private var locationValue: LatLong? = null
+    private var locationMarker: Renderable? = null
+    val hasGpx: Boolean get() = overlayValue?.tracks?.isNotEmpty() == true
     private var lastX = 0f
     private var lastY = 0f
     private var anchoredElevation = 0.0
@@ -108,7 +136,8 @@ internal class WatchWorldWindWindow(
         controller =
             object : BasicWorldWindowController(this) {
                 override fun applyChanges() {
-                    super.applyChanges()
+                    placeCamera(lookAt)
+                    requestRedraw()
                     this@WatchWorldWindWindow.lookAt.copy(lookAt)
                     cameraRange = lookAt.range
                     onCenterChanged(LatLong(lookAt.position.latitude.inDegrees, lookAt.position.longitude.inDegrees))
@@ -137,6 +166,7 @@ internal class WatchWorldWindWindow(
         bearing: Float,
     ) {
         configuredViewingAngle = angle
+        preferredTilt = worldWindViewingAngle(angle)
         lookAt.set(
             center.latitude.degrees,
             center.longitude.degrees,
@@ -154,11 +184,20 @@ internal class WatchWorldWindWindow(
         overlay: TerrainGpxOverlay,
         location: LatLong?,
     ) {
-        val next = overlay to location
-        if (overlayValue == next) return
-        overlayLayer?.let(engine.layers::removeLayer)
-        overlayLayer = worldWindGpxLayer(overlay, location).also(engine.layers::addLayer)
-        overlayValue = next
+        val tracksChanged = overlayValue != overlay
+        if (!tracksChanged && locationValue == location) return
+        if (tracksChanged) {
+            trackRebuildCount.incrementAndGet()
+            overlayLayer?.let(engine.layers::removeLayer)
+            overlayLayer = worldWindGpxLayer(overlay, null).also(engine.layers::addLayer)
+            overlayValue = overlay
+            locationMarker = null
+        }
+        overlayLayer?.let { layer ->
+            locationMarker = updateWorldWindLocation(layer, locationMarker, worldWindLocationMarker(location))
+            markerUpdateCount.incrementAndGet()
+        }
+        locationValue = location
         requestRedraw()
     }
 
@@ -166,8 +205,14 @@ internal class WatchWorldWindWindow(
         if (configuredViewingAngle == angle) return
         configuredViewingAngle = angle
         val next = worldWindViewingAngle(angle)
-        if (lookAt.tilt.inDegrees == next) return
-        lookAt.tilt = next.degrees
+        if (preferredTilt == next) return
+        preferredTilt = next
+        applyLookAt()
+    }
+
+    fun setPresetViewingAngle(angle: Int) {
+        if (!isTerrainAnglePreset(angle) || preferredTilt == angle.toDouble()) return
+        preferredTilt = angle.toDouble()
         applyLookAt()
     }
 
@@ -206,8 +251,20 @@ internal class WatchWorldWindWindow(
 
     private fun applyLookAt() {
         anchoredElevation = engine.globe.getElevation(lookAt.position.latitude, lookAt.position.longitude)
-        engine.cameraFromLookAt(lookAt)
+        placeCamera(lookAt)
         requestRedraw()
+    }
+
+    private fun placeCamera(cameraLookAt: LookAt) {
+        globeBackground.isEnabled = cameraLookAt.range >= 50_000.0
+        cameraLookAt.tilt = worldWindDisplayedTilt(preferredTilt, cameraLookAt.range).degrees
+        val wanted = cameraLookAt.range
+        engine.cameraFromLookAt(cameraLookAt)
+        val remainder = wanted - cameraLookAt.range
+        if (remainder > 0.0) {
+            engine.camera.position.altitude += remainder
+            cameraLookAt.range = wanted
+        }
     }
 
     override fun renderFrame(frame: Frame) {
@@ -250,9 +307,8 @@ internal class WatchWorldWindWindow(
             }
             MotionEvent.ACTION_MOVE -> {
                 val heading = lookAt.heading.inDegrees + (event.x - lastX) * 0.5
-                val tilt = (lookAt.tilt.inDegrees - (event.y - lastY) * 0.1).coerceIn(45.0, 70.0)
+                preferredTilt = (preferredTilt - (event.y - lastY) * 0.1).coerceIn(0.0, 85.0)
                 lookAt.heading = heading.degrees
-                lookAt.tilt = tilt.degrees
                 lastX = event.x
                 lastY = event.y
                 applyLookAt()

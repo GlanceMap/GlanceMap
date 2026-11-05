@@ -185,6 +185,10 @@ internal class TerrainGlView(
         if (!released && terrainRenderer.pitch.setInteractiveViewingAngle(angle) && active) requestRender()
     }
 
+    fun setPresetViewingAngle(angle: Int) {
+        if (!released && terrainRenderer.pitch.setPresetViewingAngle(angle) && active) requestRender()
+    }
+
     fun setViewingAngle(angle: Int) {
         if (released || !terrainRenderer.pitch.setViewingAngle(angle)) return
         logViewingAngle(angle)
@@ -535,6 +539,8 @@ private class TerrainGlRenderer(
             terrainCameraOffset(distance, pitch.rendererElevationDegrees, bearing.degrees)
         val targetEast = panEast
         val targetSouth = -panNorth
+        val (upEast, _, upSouth) = terrainCameraOffset(1f, 0f, bearing.degrees)
+        val straightDown = pitch.rendererElevationDegrees == 90f
         Matrix.setLookAtM(
             view,
             0,
@@ -544,9 +550,9 @@ private class TerrainGlRenderer(
             targetEast,
             0f,
             targetSouth,
-            0f,
-            1f,
-            0f,
+            if (straightDown) -upEast else 0f,
+            if (straightDown) 0f else 1f,
+            if (straightDown) -upSouth else 0f,
         )
         Matrix.perspectiveM(projection, 0, TERRAIN_FIELD_OF_VIEW_DEGREES, width.toFloat() / height, 20f, 150000f)
         Matrix.multiplyMM(combined, 0, projection, 0, view, 0)

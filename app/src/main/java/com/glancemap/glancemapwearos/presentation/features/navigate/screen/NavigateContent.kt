@@ -10,11 +10,13 @@ import android.view.View
 import android.view.ViewConfiguration
 import android.view.ViewGroup
 import android.widget.FrameLayout
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
@@ -31,6 +33,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
@@ -49,9 +52,9 @@ import androidx.compose.ui.input.rotary.onPreRotaryScrollEvent
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -66,6 +69,7 @@ import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.core.maps.MAP_ZOOM_MAX_LEVEL
 import com.glancemap.glancemapwearos.core.maps.MAP_ZOOM_MIN_LEVEL
 import com.glancemap.glancemapwearos.core.service.diagnostics.BenchmarkTrace
+import com.glancemap.glancemapwearos.core.service.diagnostics.CompassHeadingReferenceDiagnostics
 import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
 import com.glancemap.glancemapwearos.core.service.diagnostics.ScreenOffActivityDiagnostics
 import com.glancemap.glancemapwearos.core.service.location.model.GpsEnvironmentWarning
@@ -86,10 +90,12 @@ import com.glancemap.glancemapwearos.presentation.features.maps.terrain3d.Terrai
 import com.glancemap.glancemapwearos.presentation.features.maps.terrain3d.TerrainZoomControls
 import com.glancemap.glancemapwearos.presentation.features.maps.terrain3d.WatchWorldWindSession
 import com.glancemap.glancemapwearos.presentation.features.maps.terrain3d.customTerrainMayStart
+import com.glancemap.glancemapwearos.presentation.features.maps.terrain3d.nextTerrainAnglePreset
 import com.glancemap.glancemapwearos.presentation.features.maps.terrain3d.rememberTerrainSession
 import com.glancemap.glancemapwearos.presentation.features.maps.terrain3d.rememberWatchWorldWindSession
 import com.glancemap.glancemapwearos.presentation.features.maps.terrain3d.selectTerrainRenderer
 import com.glancemap.glancemapwearos.presentation.features.maps.terrain3d.useWorldWind
+import com.glancemap.glancemapwearos.presentation.features.maps.terrain3d.worldWindApproximateZoom
 import com.glancemap.glancemapwearos.presentation.features.maps.terrain3d.worldWindMayStart
 import com.glancemap.glancemapwearos.presentation.features.navigate.guidance.TurnByTurnGuidanceState
 import com.glancemap.glancemapwearos.presentation.features.poi.PoiNavigateTarget
@@ -97,6 +103,7 @@ import com.glancemap.glancemapwearos.presentation.features.poi.PoiOverlayMarker
 import com.glancemap.glancemapwearos.presentation.features.recording.TraceRecordingUiState
 import com.glancemap.glancemapwearos.presentation.features.recording.TraceRecordingViewModel
 import com.glancemap.glancemapwearos.presentation.features.recording.dashboard.LocalFullscreenPopupTimeFormat
+import com.glancemap.glancemapwearos.presentation.features.routetools.RouteShortcutTray
 import com.glancemap.glancemapwearos.presentation.features.routetools.RouteToolCreatePreview
 import com.glancemap.glancemapwearos.presentation.features.routetools.RouteToolSession
 import com.glancemap.glancemapwearos.presentation.ui.cappedFontScale
@@ -659,6 +666,10 @@ internal fun NavigateContent(
         bearing = -mapRotationDeg,
     )
     var terrainCameraAdjust by remember(terrainSession) { mutableStateOf(false) }
+    var terrainPresetAngle by remember(terrainSession, worldWindSession) { mutableIntStateOf(terrain3dViewingAngle) }
+    LaunchedEffect(terrain3dViewingAngle) {
+        terrainPresetAngle = terrain3dViewingAngle
+    }
     SideEffect {
         terrainSession.setViewingAngle(terrain3dViewingAngle)
         terrainSession.view?.pinchEnabled = mapPinchZoomEnabled
@@ -709,7 +720,10 @@ internal fun NavigateContent(
     )
     LaunchedEffect(terrainVisible) {
         rotaryScrollAccumulator = 0f
-        if (!terrainVisible) terrainCameraAdjust = false
+        if (!terrainVisible) {
+            terrainCameraAdjust = false
+            terrainPresetAngle = terrain3dViewingAngle
+        }
     }
     LaunchedEffect(terrainVisible, navMode, lastKnownLocation) {
         if (terrainVisible && navMode != NavMode.PANNING && !isOfflineMode) {
@@ -762,6 +776,23 @@ internal fun NavigateContent(
         )
     val scaleIndicator = liveHudState.scaleIndicator
     val showScaleBar = liveHudState.showScaleBar
+    val worldWindRange = worldWindSession.view?.cameraRange
+    var worldWindScaleVisible by remember { mutableStateOf(false) }
+    var lastWorldWindRange by remember { mutableStateOf<Double?>(null) }
+    LaunchedEffect(worldWindRange, terrainVisible, worldWindSelected) {
+        if (!terrainVisible || !worldWindSelected || worldWindRange == null) {
+            lastWorldWindRange = null
+            worldWindScaleVisible = false
+        } else {
+            val previous = lastWorldWindRange
+            lastWorldWindRange = worldWindRange
+            if (previous != null && previous != worldWindRange) {
+                worldWindScaleVisible = true
+                delay(5_000)
+                worldWindScaleVisible = false
+            }
+        }
+    }
     val liveElevationLabel = liveHudState.liveElevationLabel
     val liveDistanceLabel = liveHudState.liveDistanceLabel
     val fullScreenPopupExpanded =
@@ -776,6 +807,13 @@ internal fun NavigateContent(
             visibleControls = mapFocusVisibleControls,
             toolsAvailable = hasLocationPermission && mapView != null && !routeToolModeActive,
         )
+    val headingReferenceTestActive by CompassHeadingReferenceDiagnostics.active.collectAsState()
+    LaunchedEffect(terrainVisible, shortcutTrayExpanded, routeToolModeActive, headingReferenceTestActive) {
+        if (!terrainVisible || !shortcutTrayExpanded) return@LaunchedEffect
+        if (routeToolModeActive || headingReferenceTestActive) return@LaunchedEffect
+        delay(5_000L)
+        onShortcutTrayDismiss()
+    }
     val suppressNavigateTimeForLayout =
         !fullScreenPopupExpanded &&
             adaptive.fontScale > 1f &&
@@ -1380,14 +1418,16 @@ internal fun NavigateContent(
                     buttonSize = zoomButtonSize,
                     iconSize = zoomIconSize,
                     edgePadding = sideButtonEdgePadding,
-                    showPlus = showZoomPlusButton,
-                    showMinus = showZoomMinusButton,
+                    showPlus = showZoomPlusButton && mapChrome.shows(MapFocusControl.ZOOM_PLUS),
+                    showMinus = showZoomMinusButton && mapChrome.shows(MapFocusControl.ZOOM_MINUS),
                     onZoom = { step ->
-                        if (worldWindSelected) {
-                            worldWindSession.view?.zoomByStep(step)
-                        } else {
-                            terrainSession.view?.zoomByStep(step)
-                        }
+                        val zoomed =
+                            if (worldWindSelected) {
+                                worldWindSession.view?.zoomByStep(step)
+                            } else {
+                                terrainSession.view?.zoomByStep(step)
+                            }
+                        if (zoomed == true) triggerHaptic()
                     },
                 )
                 NavModeButtonOverlay(
@@ -1422,21 +1462,83 @@ internal fun NavigateContent(
                         }
                     },
                 )
+                if (mapChrome.showToolsControl) {
+                    RouteShortcutTray(
+                        expanded = shortcutTrayExpanded,
+                        mapFocusMode = mapFocusState.mapFocusMode,
+                        keepAppOpen = keepAppOpen,
+                        edgePadding = sideButtonEdgePadding,
+                        anchorSize = sideButtonSize,
+                        actionHeight = sideButtonSize,
+                        iconSize = sideButtonIconSize,
+                        onToggleExpanded = onShortcutTrayToggle,
+                        onKeepAppOpenClick = onKeepAppOpenToggle,
+                        onGpxToolsClick = onOpenGpxTools,
+                        onCreatePoiClick = onStartPoiCreation,
+                        onMapFocusClick = {
+                            onShortcutTrayDismiss()
+                            if (mapFocusState.mapFocusMode) onExitMapFocus("button") else onEnterMapFocus()
+                        },
+                        recordingActive = traceRecordingState.active,
+                        recordingPaused = traceRecordingState.paused,
+                        recordingSaving = traceRecordingState.saving,
+                        headingReferenceTestActive = headingReferenceTestActive,
+                        onRecordingClick = {
+                            onShortcutTrayDismiss()
+                            if (traceRecordingState.active || traceRecordingState.saving) {
+                                expandedOverlayState.requestRecordingActionPrompt()
+                            } else {
+                                onStartRecording()
+                            }
+                        },
+                        onHeadingReferenceMark = { referenceHeadingDeg ->
+                            val result = CompassHeadingReferenceDiagnostics.recordReference(referenceHeadingDeg)
+                            Toast
+                                .makeText(
+                                    context,
+                                    resources.getString(result.userMessageRes),
+                                    Toast.LENGTH_SHORT,
+                                ).show()
+                        },
+                    )
+                }
             }
 
-            if (terrainVisible && worldWindSelected && mapChrome.shows(MapFocusControl.SCALE)) {
+            val showWorldWindScale = terrainVisible && worldWindSelected && worldWindScaleVisible
+            if (showWorldWindScale && mapChrome.shows(MapFocusControl.SCALE)) {
                 worldWindSession.view?.let { view ->
-                    Text(
-                        text = String.format(LocalLocale.current.platformLocale, "%.1f×", 2000.0 / view.cameraRange),
-                        modifier =
-                            Modifier
-                                .align(Alignment.TopCenter)
-                                .padding(top = zoomLabelTopPadding)
-                                .background(Color.Black.copy(alpha = 0.78f), RoundedCornerShape(5.dp))
-                                .padding(horizontal = 5.dp, vertical = 1.dp),
-                        color = Color.White,
-                        fontSize = 10.sp,
-                    )
+                    val latitude = view.lookAt.position.latitude.inDegrees
+                    val indicator =
+                        calculateScaleIndicatorForZoom(
+                            zoomLevel = worldWindApproximateZoom(latitude, view.cameraRange),
+                            viewportWidthPx = visibleMapSizePx.width.toDouble(),
+                            latitudeDegrees = latitude,
+                            isMetric = isMetric,
+                            resources = resources,
+                        )
+                    indicator?.let {
+                        Column(
+                            modifier = Modifier.align(Alignment.TopCenter).padding(top = zoomLabelTopPadding),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) {
+                            Text(
+                                text = it.label,
+                                modifier =
+                                    Modifier
+                                        .padding(top = 2.dp)
+                                        .background(Color.Black.copy(alpha = 0.78f), RoundedCornerShape(5.dp))
+                                        .padding(horizontal = 5.dp, vertical = 1.dp),
+                                color = Color.White,
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 10.sp,
+                                lineHeight = 10.sp,
+                            )
+                            StandardScaleBar(
+                                width = zoomScaleBarWidth * it.widthRatio,
+                                modifier = Modifier.padding(top = 2.dp),
+                            )
+                        }
+                    }
                 }
             }
             val slopeIndicatorVisible = slopeOverlayToggleEnabled && slopeOverlayEnabled && slopeOverlayProcessing
@@ -1462,6 +1564,20 @@ internal fun NavigateContent(
                         Modifier
                     },
                 terrain3d = true,
+                onClick =
+                    if (terrainVisible) {
+                        {
+                            terrainPresetAngle = nextTerrainAnglePreset(terrainPresetAngle)
+                            if (worldWindSelected) {
+                                worldWindSession.view?.setPresetViewingAngle(terrainPresetAngle)
+                            } else {
+                                terrainSession.setPresetViewingAngle(terrainPresetAngle)
+                            }
+                            triggerHaptic()
+                        }
+                    } else {
+                        null
+                    },
             )
 
             // The tray owns the top-center slot; its REC shortcut keeps recording actions available.
