@@ -104,9 +104,9 @@ from straight down to 85° from vertical. At wide ranges the displayed tilt grad
 returns to straight down, leaving the selected tilt available when zooming back in.
 The tools shortcut remains available in 3D; actions that start recording, guidance,
 or route tools retain the existing switch to 2D. The 3D indicator below the tools
-button cycles session-only 0°, 30°, 45°, and 60° viewing-angle presets; this does not
+button cycles session-only 0°, 60°, and 80° viewing-angle presets; this does not
 change the saved default. The custom renderer keeps its conservative footprint
-calculation when using the 0° or 30° preset.
+calculation when using the 0° or 80° preset.
 WorldWind zoom is no longer restricted to the previous 250–50,000 m range; the
 camera can move back far enough to frame the globe. At ranges of 50 km and above,
 WorldWind's bundled low-resolution global background fills areas outside the

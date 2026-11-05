@@ -16,6 +16,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -1541,44 +1542,45 @@ internal fun NavigateContent(
                     }
                 }
             }
-            val slopeIndicatorVisible = slopeOverlayToggleEnabled && slopeOverlayEnabled && slopeOverlayProcessing
-            SlopeOverlayStatusIndicator(
-                visible =
-                    terrainVisible ||
-                        (
-                            terrainEligible &&
-                                (if (worldWindSelected) worldWindSession.initializing else terrainSession.isLoading)
+            BoxWithConstraints(Modifier.fillMaxSize()) {
+                val controlRadius = minOf(maxWidth, maxHeight) / 2 - sideButtonEdgePadding - zoomButtonSize / 2
+                SlopeOverlayStatusIndicator(
+                    visible =
+                        terrainVisible ||
+                            (
+                                terrainEligible &&
+                                    (if (worldWindSelected) worldWindSession.initializing else terrainSession.isLoading)
+                            ),
+                    processing =
+                        (if (worldWindSelected) worldWindSession.initializing else terrainSession.isLoading) &&
+                            terrainInteractive,
+                    progressPercent = null,
+                    enabled = true,
+                    screenSize = screenSize,
+                    sideButtonEdgePadding = sideButtonEdgePadding,
+                    sideButtonSize = sideButtonSize,
+                    modifier =
+                        Modifier.offset(
+                            x = -(maxWidth / 2 - controlRadius * 0.8660254f - 24.dp),
+                            y = controlRadius / 2,
                         ),
-                processing =
-                    (if (worldWindSelected) worldWindSession.initializing else terrainSession.isLoading) &&
-                        terrainInteractive,
-                progressPercent = null,
-                enabled = true,
-                screenSize = screenSize,
-                sideButtonEdgePadding = sideButtonEdgePadding,
-                sideButtonSize = sideButtonSize,
-                modifier =
-                    if (!terrainVisible && slopeIndicatorVisible) {
-                        Modifier.offset(y = (-36).dp)
-                    } else {
-                        Modifier
-                    },
-                terrain3d = true,
-                onClick =
-                    if (terrainVisible) {
-                        {
-                            terrainPresetAngle = nextTerrainAnglePreset(terrainPresetAngle)
-                            if (worldWindSelected) {
-                                worldWindSession.view?.setPresetViewingAngle(terrainPresetAngle)
-                            } else {
-                                terrainSession.setPresetViewingAngle(terrainPresetAngle)
+                    terrain3d = true,
+                    onClick =
+                        if (terrainVisible) {
+                            {
+                                terrainPresetAngle = nextTerrainAnglePreset(terrainPresetAngle)
+                                if (worldWindSelected) {
+                                    worldWindSession.view?.setPresetViewingAngle(terrainPresetAngle)
+                                } else {
+                                    terrainSession.setPresetViewingAngle(terrainPresetAngle)
+                                }
+                                triggerHaptic()
                             }
-                            triggerHaptic()
-                        }
-                    } else {
-                        null
-                    },
-            )
+                        } else {
+                            null
+                        },
+                )
+            }
 
             // The tray owns the top-center slot; its REC shortcut keeps recording actions available.
             CenteredNavigateTimeChip(

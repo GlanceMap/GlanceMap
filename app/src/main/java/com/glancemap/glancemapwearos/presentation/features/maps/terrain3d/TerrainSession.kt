@@ -399,7 +399,7 @@ private suspend fun runTerrainSession(
                         },
                     ),
             )
-        if (session.interactiveViewingAngle < 45f) {
+        if (session.interactiveViewingAngle < 45f || session.interactiveViewingAngle > 70f) {
             view.setPresetViewingAngle(session.interactiveViewingAngle.toInt())
         } else {
             view.setInteractiveViewingAngle(session.interactiveViewingAngle)

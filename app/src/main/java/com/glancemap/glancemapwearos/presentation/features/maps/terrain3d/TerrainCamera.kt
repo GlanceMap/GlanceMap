@@ -6,7 +6,7 @@ import kotlin.math.max
 import kotlin.math.sin
 import kotlin.math.tan
 
-private val TERRAIN_ANGLE_PRESETS = listOf(0, 30, 45, 60)
+private val TERRAIN_ANGLE_PRESETS = listOf(0, 60, 80)
 
 internal fun nextTerrainAnglePreset(angle: Int): Int = TERRAIN_ANGLE_PRESETS.firstOrNull { it > angle } ?: 0
 

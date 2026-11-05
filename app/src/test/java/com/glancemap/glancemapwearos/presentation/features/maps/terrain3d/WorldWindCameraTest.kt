@@ -1,10 +1,19 @@
 package com.glancemap.glancemapwearos.presentation.features.maps.terrain3d
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class WorldWindCameraTest {
+    @Test
+    fun `compass bearing does not interrupt manual orbit and resumes afterwards`() {
+        assertFalse(worldWindShouldApplyBearing(30f, 20f, manualOrbit = true))
+        assertTrue(worldWindShouldApplyBearing(30f, 20f, manualOrbit = false))
+        assertFalse(worldWindShouldApplyBearing(30f, 30f, manualOrbit = false))
+        assertFalse(worldWindShouldApplyBearing(Float.NaN, 20f, manualOrbit = false))
+    }
+
     @Test
     fun `cache budget scales with heap but is capped`() {
         assertEquals(8L * 1024 * 1024, worldWindCacheBudget(64L * 1024 * 1024))

@@ -5,20 +5,19 @@ import org.junit.Test
 
 class TerrainAnglePresetsTest {
     @Test
-    fun `tapping cycles through 0 30 45 and 60 degrees`() {
-        assertEquals(30, nextTerrainAnglePreset(0))
-        assertEquals(45, nextTerrainAnglePreset(30))
-        assertEquals(60, nextTerrainAnglePreset(45))
-        assertEquals(0, nextTerrainAnglePreset(60))
+    fun `tapping cycles through 0 60 and 80 degrees`() {
+        assertEquals(60, nextTerrainAnglePreset(0))
+        assertEquals(80, nextTerrainAnglePreset(60))
+        assertEquals(0, nextTerrainAnglePreset(80))
         assertEquals(60, nextTerrainAnglePreset(50))
-        assertEquals(0, nextTerrainAnglePreset(70))
+        assertEquals(80, nextTerrainAnglePreset(70))
     }
 
     @Test
-    fun `legacy camera accepts the 30 degree preset`() {
+    fun `legacy camera accepts the 0 and 80 degree presets`() {
         val pitch = TerrainPitch(60)
-        pitch.setPresetViewingAngle(30)
-        assertEquals(30f, pitch.viewingAngleDegrees, 0f)
+        pitch.setPresetViewingAngle(80)
+        assertEquals(80f, pitch.viewingAngleDegrees, 0f)
         pitch.setPresetViewingAngle(0)
         assertEquals(0f, pitch.viewingAngleDegrees, 0f)
     }

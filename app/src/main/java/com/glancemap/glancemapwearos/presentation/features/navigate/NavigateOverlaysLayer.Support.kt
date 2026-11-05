@@ -152,10 +152,7 @@ internal fun BoxScope.SlopeOverlayStatusIndicator(
         }
     val slopeIndicatorModifier =
         if (terrain3d) {
-            modifier
-                .align(Alignment.CenterEnd)
-                .offset(y = sideButtonSize + 14.dp)
-                .padding(end = sideButtonEdgePadding + 8.dp)
+            modifier.align(Alignment.CenterEnd)
         } else {
             modifier
                 .align(Alignment.CenterEnd)
@@ -168,7 +165,7 @@ internal fun BoxScope.SlopeOverlayStatusIndicator(
         exit = fadeOut(tween(180)),
         modifier = slopeIndicatorModifier,
     ) {
-        val progress = (progressPercent ?: 0).coerceIn(0, 100)
+        val progress = if (terrain3d && !processing) 100 else (progressPercent ?: 0).coerceIn(0, 100)
         val sweepDeg by animateFloatAsState(
             targetValue = 360f * (progress / 100f),
             animationSpec = tween(durationMillis = 220),

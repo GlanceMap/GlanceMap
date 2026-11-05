@@ -50,6 +50,12 @@ internal fun worldWindZoomByStep(
 
 internal fun worldWindViewingAngle(angle: Int): Double = sanitizeTerrain3dViewingAngle(angle).toDouble()
 
+internal fun worldWindShouldApplyBearing(
+    degrees: Float,
+    previous: Float?,
+    manualOrbit: Boolean,
+): Boolean = !manualOrbit && degrees.isFinite() && previous != degrees
+
 internal fun worldWindDisplayedTilt(
     preferred: Double,
     range: Double,
@@ -217,7 +223,7 @@ internal class WatchWorldWindWindow(
     }
 
     fun setBearing(degrees: Float) {
-        if (!degrees.isFinite() || externalBearing == degrees) return
+        if (!worldWindShouldApplyBearing(degrees, externalBearing, orbitMode || longPressOrbit)) return
         externalBearing = degrees
         if (lookAt.heading.inDegrees == degrees.toDouble()) return
         lookAt.heading = degrees.toDouble().degrees
