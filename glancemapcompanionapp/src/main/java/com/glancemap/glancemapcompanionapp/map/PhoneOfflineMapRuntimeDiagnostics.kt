@@ -16,6 +16,7 @@ internal data class PhoneOfflineMapRuntimeDiagnostics(
     val firstLevelCacheCapacity: Int? = null,
     val estimatedFirstLevelBitmapBytes: Long? = null,
     val configuredCacheMemoryBudgetBytes: Long? = null,
+    val tileCacheStats: PhoneMapsforgeTileCacheStats? = null,
     val mapViewAttached: Boolean,
     val mapViewHasWindowFocus: Boolean,
     val mapViewWidth: Int,
@@ -64,6 +65,7 @@ internal data class PhoneOfflineMapRuntimeDiagnostics(
                     configuredCacheMemoryBudgetBytes,
                 ),
             )
+            append(phoneMapsforgeCacheStatsReportDetails(tileCacheStats))
             appendLine("MapView attached: $mapViewAttached")
             appendLine("MapView window focus: $mapViewHasWindowFocus")
             appendLine("MapView size: ${mapViewWidth}x$mapViewHeight")
@@ -113,6 +115,15 @@ private fun phoneMapsforgeCacheReportDetails(
                 (estimatedBitmapBytes ?: "unknown"),
         )
         appendLine("Configured cache memory budget bytes: ${memoryBudgetBytes ?: "unknown"}")
+    }
+
+private fun phoneMapsforgeCacheStatsReportDetails(stats: PhoneMapsforgeTileCacheStats?): String =
+    buildString {
+        appendLine("Tile cache persistent: ${stats?.persistent ?: "unknown"}")
+        appendLine("Tiles rendered into cache: ${stats?.renderedTilesStored ?: "unknown"}")
+        appendLine("Tiles reused from disk during index: ${stats?.diskFallbackReads ?: "unknown"}")
+        appendLine("Disk tile read failures: ${stats?.diskFallbackFailures ?: "unknown"}")
+        appendLine("Disk index fallback active: ${stats?.diskFallbackActive ?: "unknown"}")
     }
 
 /** One renderer-neutral follow decision, kept pure so outside-map fixes can never move the camera. */

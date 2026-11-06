@@ -1040,6 +1040,7 @@ internal class PhoneOfflineMapsforgeView(
                 firstLevelCacheCapacity = rendererSnapshot.firstLevelCacheCapacity,
                 estimatedFirstLevelBitmapBytes = rendererSnapshot.estimatedFirstLevelBitmapBytes,
                 configuredCacheMemoryBudgetBytes = rendererSnapshot.configuredCacheMemoryBudgetBytes,
+                tileCacheStats = rendererSnapshot.tileCacheStats,
                 mapViewAttached = mapView.isAttachedToWindow,
                 mapViewHasWindowFocus = mapView.hasWindowFocus(),
                 mapViewWidth = mapView.width,

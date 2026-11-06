@@ -4,6 +4,7 @@ import android.app.ActivityManager
 import android.content.Context
 import android.graphics.Bitmap
 import android.os.SystemClock
+import com.glancemap.glancemapcompanionapp.BuildConfig
 import org.mapsforge.core.graphics.Canvas
 import org.mapsforge.core.graphics.GraphicFactory
 import org.mapsforge.core.graphics.TileBitmap
@@ -31,10 +32,11 @@ import org.mapsforge.map.reader.MapFile
 import org.mapsforge.map.rendertheme.internal.MapsforgeThemes
 import org.mapsforge.map.util.LayerUtil
 import java.io.File
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.math.min
 
-private const val PHONE_MAP_CACHE_PREFIX = "phone-offline"
 private const val PHONE_MAP_CACHE_MAX_TILES = 256
 private const val PHONE_MAP_CONSTRAINED_CACHE_MAX_TILES = 80
 private const val PHONE_MAP_MEMORY_BUDGET_FRACTION = 1.0 / 16.0
@@ -120,7 +122,17 @@ internal class PhoneMapsforgeTileCache(
     val tileSizePx: Int = 0,
     val bytesPerPixel: Int = 0,
     val configuredMemoryBudgetBytes: Long = 0L,
+    private val bucket: PhoneMapsforgePersistentBucket? = null,
 ) : TwoLevelTileCache(firstLevel, secondLevel) {
+    private val destroyed = AtomicBoolean(false)
+    private val diskTileReader = bucket?.reader
+    private val clockMs = bucket?.clockMs ?: { 0L }
+    private val openedAtMs = clockMs()
+    private val renderedTilesStored = AtomicInteger(0)
+    private val diskFallbackReads = AtomicInteger(0)
+    private val diskFallbackFailures = AtomicInteger(0)
+    private val unreadableDiskKeys = ConcurrentHashMap.newKeySet<String>()
+
     val estimatedFirstLevelBitmapBytes: Long
         get() =
             if (tileSizePx > 0 && bytesPerPixel > 0) {
@@ -129,12 +141,74 @@ internal class PhoneMapsforgeTileCache(
                 0L
             }
 
+    val stats: PhoneMapsforgeTileCacheStats
+        get() =
+            PhoneMapsforgeTileCacheStats(
+                persistent = diskTileReader != null,
+                renderedTilesStored = renderedTilesStored.get(),
+                diskFallbackReads = diskFallbackReads.get(),
+                diskFallbackFailures = diskFallbackFailures.get(),
+                diskFallbackActive = isDiskFallbackActive(),
+            )
+
+    override fun containsKey(key: Job): Boolean = super.containsKey(key) || canReadFromDisk(key)
+
+    override fun get(key: Job): TileBitmap? = super.get(key) ?: readFromDisk(key)
+
     override fun getImmediately(key: Job): TileBitmap? = get(key)
+
+    /** Only render workers store tiles through this entry point; level promotions bypass it. */
+    override fun put(
+        key: Job,
+        bitmap: TileBitmap,
+    ) {
+        super.put(key, bitmap)
+        renderedTilesStored.incrementAndGet()
+    }
+
+    private fun isDiskFallbackActive(): Boolean {
+        val windowMs = bucket?.fallbackWindowMs ?: return false
+        return !destroyed.get() && clockMs() - openedAtMs < windowMs
+    }
+
+    private fun canReadFromDisk(key: Job): Boolean {
+        val reader = diskTileReader ?: return false
+        return isDiskFallbackActive() && key.key !in unreadableDiskKeys && reader.hasTile(key)
+    }
+
+    private fun readFromDisk(key: Job): TileBitmap? {
+        val bitmap = if (canReadFromDisk(key)) decodeOrMarkUnreadable(key) else null
+        if (bitmap != null) {
+            // Same ownership as TwoLevelTileCache.get: the first level keeps one reference.
+            firstLevelTileCache.put(key, bitmap)
+            diskFallbackReads.incrementAndGet()
+        }
+        return bitmap
+    }
+
+    private fun decodeOrMarkUnreadable(key: Job): TileBitmap? =
+        runCatching { diskTileReader?.read(key) }.getOrNull().also { bitmap ->
+            if (bitmap == null) {
+                // A partial or corrupt file must not block rendering of that tile.
+                unreadableDiskKeys += key.key
+                diskFallbackFailures.incrementAndGet()
+            }
+        }
+
+    override fun destroy() {
+        if (!destroyed.compareAndSet(false, true)) return
+        try {
+            super.destroy()
+        } finally {
+            bucket?.onReleased?.invoke()
+        }
+    }
 }
 
 internal fun phoneMapsforgeTileCacheId(
     identity: PhoneMapsforgeBaseLayerIdentity,
     role: PhoneOfflineMapRendererRole = PhoneOfflineMapRendererRole.BASE,
+    renderSignature: String = "",
 ): String {
     val themeIdentity =
         buildString {
@@ -146,9 +220,10 @@ internal fun phoneMapsforgeTileCacheId(
                 append(':')
                 append(overlayIds.sorted().joinToString(","))
             }
+            if (renderSignature.isNotEmpty()) append('|').append(renderSignature)
         }
     val id =
-        "$PHONE_MAP_CACHE_PREFIX-${phoneMapsforgeIdentityHash(identity.mapIdentity)}-" +
+        "$PHONE_MAP_TILE_CACHE_DIR_PREFIX${phoneMapsforgeIdentityHash(identity.mapIdentity)}-" +
             phoneMapsforgeIdentityHash(themeIdentity)
     return if (role == PhoneOfflineMapRendererRole.COMPARISON) "$id-comparison" else id
 }
@@ -274,11 +349,53 @@ internal enum class PhoneFirstVisibleTileSource {
     COLD_RENDER,
 }
 
+/** Timing of the first drawable tile after a layer's first draw. */
+internal data class PhoneFirstVisibleTileTiming(
+    val source: PhoneFirstVisibleTileSource,
+    val zoom: Int,
+    val firstDrawToTileMs: Long,
+    val drawableAtFirstDraw: Int,
+)
+
 private data class PhoneFirstVisibleTileCallbacks(
     val onFirstDraw: (PhoneFirstVisibleTileRendererLayer) -> Unit,
-    val onFirstVisibleTile: (PhoneFirstVisibleTileRendererLayer, PhoneFirstVisibleTileSource) -> Unit,
+    val onFirstVisibleTile: (PhoneFirstVisibleTileRendererLayer, PhoneFirstVisibleTileTiming) -> Unit,
     val onCoverageChanged: () -> Unit,
+    val onViewportFilled: (PhoneFirstVisibleTileRendererLayer, Int, PhoneTileFillEvent) -> Unit,
 )
+
+/** Debug-capture lifecycle events for one renderer's tile layers. */
+private fun phoneFirstVisibleTileCallbacks(
+    rendererId: Long,
+    onRuntimeChanged: () -> Unit,
+    cacheStats: () -> PhoneMapsforgeTileCacheStats?,
+): PhoneFirstVisibleTileCallbacks =
+    PhoneFirstVisibleTileCallbacks(
+        onFirstDraw = { layer ->
+            PhoneOfflineMapRendererDiagnostics.recordLifecycleEvent(
+                event = "tile_layer_first_draw",
+                detail = "renderer=$rendererId layer=${System.identityHashCode(layer)}",
+            )
+            onRuntimeChanged()
+        },
+        onFirstVisibleTile = { layer, timing ->
+            PhoneOfflineMapRendererDiagnostics.recordLifecycleEvent(
+                event = "first_visible_tile_${timing.source.name.lowercase()}",
+                detail =
+                    "renderer=$rendererId layer=${System.identityHashCode(layer)} zoom=${timing.zoom} " +
+                        "firstDrawToTileMs=${timing.firstDrawToTileMs} " +
+                        "drawableAtFirstDraw=${timing.drawableAtFirstDraw}",
+            )
+            onRuntimeChanged()
+        },
+        onCoverageChanged = onRuntimeChanged,
+        onViewportFilled = { layer, zoom, fill ->
+            PhoneOfflineMapRendererDiagnostics.recordLifecycleEvent(
+                event = "viewport_tiles_complete",
+                detail = phoneViewportFillDetail(rendererId, System.identityHashCode(layer), zoom, fill, cacheStats()),
+            )
+        },
+    )
 
 /** Owns only the current Mapsforge base layer and its map-file/cache resources. */
 @Suppress("TooManyFunctions") // Lifecycle ownership is intentionally explicit for Mapsforge resources.
@@ -413,6 +530,7 @@ internal class PhoneMapsforgeRenderer(
                     ?.configuredMemoryBudgetBytes
                     ?.takeIf { it > 0L },
             mapBounds = currentBase?.bounds,
+            tileCacheStats = cacheStats(),
             coverage = currentBase?.layer?.latestCoverage ?: PhoneFirstVisibleTileCoverage(),
             tileLayerDrawObserved = currentBase?.layer?.hasDrawObserved == true,
             firstVisibleBaseTileObserved = currentBase?.layer?.hasFirstVisibleBaseTileObserved == true,
@@ -468,7 +586,16 @@ internal class PhoneMapsforgeRenderer(
         var layer: PhoneFirstVisibleTileRendererLayer? = null
         try {
             val camera = configureMapFile(mapFile, initialCamera, change, trace)
-            val cacheId = phoneMapsforgeTileCacheId(identity, rendererIdentity.role)
+            val cacheId =
+                phoneMapsforgeTileCacheId(
+                    identity = identity,
+                    role = rendererIdentity.role,
+                    renderSignature =
+                        phoneMapsforgeTileRenderSignature(
+                            tileSizePx = mapView.model.displayModel.tileSize,
+                            appVersionCode = BuildConfig.VERSION_CODE,
+                        ),
+                )
             cache = createTileCache(cacheId)
             trace.tileCacheCreated()
             trace.complete(PhoneOfflineMapRendererStage.TILE_CACHE_CREATE)
@@ -563,7 +690,7 @@ internal class PhoneMapsforgeRenderer(
             mapDataStore = mapFile,
             mapViewPosition = mapView.model.mapViewPosition,
             graphicFactory = AndroidGraphicFactory.INSTANCE,
-            callbacks = firstVisibleTileCallbacks(),
+            callbacks = phoneFirstVisibleTileCallbacks(rendererId, onRuntimeChanged, ::cacheStats),
         ).apply {
             setXmlRenderTheme(renderTheme.theme)
             trace.complete(PhoneOfflineMapRendererStage.TILE_LAYER_CREATE)
@@ -572,24 +699,7 @@ internal class PhoneMapsforgeRenderer(
         }
     }
 
-    private fun firstVisibleTileCallbacks(): PhoneFirstVisibleTileCallbacks =
-        PhoneFirstVisibleTileCallbacks(
-            onFirstDraw = { layer ->
-                PhoneOfflineMapRendererDiagnostics.recordLifecycleEvent(
-                    event = "tile_layer_first_draw",
-                    detail = "renderer=$rendererId layer=${System.identityHashCode(layer)}",
-                )
-                onRuntimeChanged()
-            },
-            onFirstVisibleTile = { layer, source ->
-                PhoneOfflineMapRendererDiagnostics.recordLifecycleEvent(
-                    event = "first_visible_tile_${source.name.lowercase()}",
-                    detail = "renderer=$rendererId layer=${System.identityHashCode(layer)}",
-                )
-                onRuntimeChanged()
-            },
-            onCoverageChanged = onRuntimeChanged,
-        )
+    private fun cacheStats(): PhoneMapsforgeTileCacheStats? = (currentBase?.cache as? PhoneMapsforgeTileCache)?.stats
 
     // A failed attachment must release the prepared Mapsforge resources as one unit.
     @Suppress("TooGenericExceptionCaught")
@@ -656,29 +766,10 @@ internal class PhoneMapsforgeRenderer(
                 memoryClassMb = context.getSystemService(ActivityManager::class.java)?.memoryClass ?: 0,
                 maxHeapBytes = Runtime.getRuntime().maxMemory(),
             )
-        var cache =
-            AndroidUtil.createExternalStorageTileCache(
-                context.applicationContext,
-                cacheId,
-                config.firstLevelTiles,
-                tileSizePx,
-                false,
-            )
-        if (cache !is TwoLevelTileCache) {
-            cache.destroy()
-            cache =
-                AndroidUtil.createExternalStorageTileCache(
-                    context.applicationContext.cacheDir,
-                    cacheId,
-                    config.firstLevelTiles,
-                    tileSizePx,
-                    false,
-                )
-        }
-        if (cache !is TwoLevelTileCache) {
-            cache.destroy()
-            error("Offline tile cache storage is unavailable.")
-        }
+        val appContext = context.applicationContext
+        val cacheRoots = listOfNotNull(appContext.externalCacheDir, appContext.cacheDir)
+        // Persistent buckets let a recreated surface reuse rendered tiles instead of re-rendering them.
+        val (cache, bucketDir) = openRetainedTwoLevelTileCache(appContext, cacheId, config, cacheRoots)
         val drawableCache =
             PhoneMapsforgeTileCache(
                 cache.firstLevelTileCache,
@@ -686,13 +777,27 @@ internal class PhoneMapsforgeRenderer(
                 tileSizePx = config.tileSizePx,
                 bytesPerPixel = config.bytesPerPixel,
                 configuredMemoryBudgetBytes = config.memoryBudgetBytes,
+                bucket =
+                    PhoneMapsforgePersistentBucket(
+                        reader = PhoneMapsforgeFileDiskTileReader(bucketDir, AndroidGraphicFactory.INSTANCE),
+                        onReleased = { PhoneMapsforgeTileCacheRetention.release(cacheId) },
+                    ),
             )
         PhoneOfflineMapRendererDiagnostics.recordLifecycleEvent(
             event = "tile_cache_created",
             detail =
-                "renderer=$rendererId cache=$cacheId tiles=${cache.capacityFirstLevel} " +
-                    "constrained=${config.constrainedMemory}",
+                "renderer=$rendererId cache=$cacheId tiles=${drawableCache.capacityFirstLevel} " +
+                    "constrained=${config.constrainedMemory} persistent=true " +
+                    "diskFallbackMs=$PHONE_MAP_DISK_INDEX_FALLBACK_MS",
         )
+        PhoneMapsforgeTileCacheRetention.scheduleCleanupOnce(cacheRoots) { result ->
+            PhoneOfflineMapRendererDiagnostics.recordLifecycleEvent(
+                event = "tile_cache_retention",
+                detail =
+                    "bucketsBefore=${result.bucketsBefore} bytesBefore=${result.bytesBefore} " +
+                        "deletedBuckets=${result.deletedBuckets} bytesAfter=${result.bytesAfter}",
+            )
+        }
         return drawableCache
     }
 
@@ -923,6 +1028,7 @@ internal data class PhoneMapsforgeRendererRuntimeSnapshot(
     val estimatedFirstLevelBitmapBytes: Long?,
     val configuredCacheMemoryBudgetBytes: Long?,
     val mapBounds: BoundingBox?,
+    val tileCacheStats: PhoneMapsforgeTileCacheStats? = null,
     val coverage: PhoneFirstVisibleTileCoverage,
     val tileLayerDrawObserved: Boolean,
     val firstVisibleBaseTileObserved: Boolean,
@@ -972,6 +1078,9 @@ private class PhoneFirstVisibleTileRendererLayer(
     private val drawObserved = AtomicBoolean(false)
     private val firstVisibleTileObserved = AtomicBoolean(false)
     private var lastCoverageSampleAtElapsedMs: Long? = null
+    private var firstDrawAtElapsedMs = 0L
+    private var drawableAtFirstDraw = 0
+    private val fillTracker = PhoneTileFillTracker()
 
     @Volatile
     var latestCoverage: PhoneFirstVisibleTileCoverage = PhoneFirstVisibleTileCoverage()
@@ -992,11 +1101,18 @@ private class PhoneFirstVisibleTileRendererLayer(
     ) {
         val firstDraw = drawObserved.compareAndSet(false, true)
         val coverageBefore = if (firstDraw) visibleTileCoverage(boundingBox, zoomLevel) else latestCoverage
-        if (firstDraw) callbacks.onFirstDraw(this)
+        if (firstDraw) {
+            firstDrawAtElapsedMs = SystemClock.elapsedRealtime()
+            drawableAtFirstDraw = coverageBefore.drawableVisibleTiles
+            fillTracker.onFirstDraw(firstDrawAtElapsedMs, coverageBefore)
+            callbacks.onFirstDraw(this)
+        }
         super.draw(boundingBox, zoomLevel, canvas, topLeftPoint, rotation)
         val nowElapsedMs = SystemClock.elapsedRealtime()
+        // While a fill is timed, sample every draw so completion is not delayed by the throttle.
         val shouldSampleCoverage =
             firstDraw ||
+                fillTracker.isFilling ||
                 isPhoneFirstVisibleTileCoverageSampleDue(
                     lastSampleAtElapsedMs = lastCoverageSampleAtElapsedMs,
                     nowElapsedMs = nowElapsedMs,
@@ -1010,17 +1126,28 @@ private class PhoneFirstVisibleTileRendererLayer(
             }
         latestCoverage = coverageAfter
         if (coverageAfter != coverageBefore) callbacks.onCoverageChanged()
+        if (shouldSampleCoverage) {
+            fillTracker.onCoverage(coverageAfter, nowElapsedMs)?.let { fill ->
+                callbacks.onViewportFilled(this, zoomLevel.toInt(), fill)
+            }
+        }
         if (
             coverageAfter.drawableVisibleTiles + coverageAfter.parentFallbackTiles > 0 &&
             firstVisibleTileObserved.compareAndSet(false, true)
         ) {
             callbacks.onFirstVisibleTile(
                 this,
-                if (firstDraw && coverageBefore.drawableVisibleTiles + coverageBefore.parentFallbackTiles > 0) {
-                    PhoneFirstVisibleTileSource.WARM_CACHE
-                } else {
-                    PhoneFirstVisibleTileSource.COLD_RENDER
-                },
+                PhoneFirstVisibleTileTiming(
+                    source =
+                        if (firstDraw && coverageBefore.drawableVisibleTiles + coverageBefore.parentFallbackTiles > 0) {
+                            PhoneFirstVisibleTileSource.WARM_CACHE
+                        } else {
+                            PhoneFirstVisibleTileSource.COLD_RENDER
+                        },
+                    zoom = zoomLevel.toInt(),
+                    firstDrawToTileMs = (nowElapsedMs - firstDrawAtElapsedMs).coerceAtLeast(0L),
+                    drawableAtFirstDraw = drawableAtFirstDraw,
+                ),
             )
         }
     }
