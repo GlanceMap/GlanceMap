@@ -13,7 +13,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import com.glancemap.glancemapcompanionapp.R
 import com.glancemap.glancemapcompanionapp.map.PhoneGeneralSettingsPreferences
+import com.glancemap.glancemapcompanionapp.map.phoneActivityMetricTiles
 import com.glancemap.glancemapcompanionapp.map.phoneActivityStatisticsGrid
+import com.glancemap.glancemapcompanionapp.map.phonePlannedRouteMetrics
 import com.glancemap.glancemapcompanionapp.routes.CompanionGpxRouteParser
 import com.glancemap.glancemapcompanionapp.routes.RecordedActivityStatistics
 import com.glancemap.glancemapcompanionapp.routes.RouteLibraryRepository
@@ -73,6 +75,12 @@ internal fun libraryActivityDetails(item: PhoneLibraryItem) {
         statistics != null -> {
             Text(stringResource(R.string.activity_details_title))
             phoneActivityStatisticsGrid(requireNotNull(statistics), isMetric)
+        }
+        item is PhoneLibraryItem.Gpx -> {
+            val summary = item.route.summary
+            val metrics = remember(summary, isMetric) { phonePlannedRouteMetrics(context, summary, isMetric) }
+            Text(stringResource(R.string.library_route_details_title))
+            phoneActivityMetricTiles(metrics)
         }
         else -> Text(libraryItemSummary(item))
     }

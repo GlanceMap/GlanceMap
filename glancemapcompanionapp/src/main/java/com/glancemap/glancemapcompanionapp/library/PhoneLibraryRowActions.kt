@@ -33,7 +33,7 @@ internal fun libraryRowActions(
 ) {
     val item = row.item
     if (visibility == null && !item.isNavigableGpx()) return
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.fillMaxWidth().padding(end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
         if (visibility != null) {
             libraryVisibilitySwitch(row, visibility, state, actions)
             Spacer(Modifier.width(8.dp))

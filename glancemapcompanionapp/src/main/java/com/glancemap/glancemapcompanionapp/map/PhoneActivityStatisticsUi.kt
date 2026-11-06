@@ -27,6 +27,11 @@ internal fun phoneActivityStatisticsGrid(
     val context = LocalContext.current
     val configuration = LocalConfiguration.current
     val metrics = remember(statistics, isMetric, configuration) { phoneActivityMetrics(context, statistics, isMetric) }
+    phoneActivityMetricTiles(metrics)
+}
+
+@Composable
+internal fun phoneActivityMetricTiles(metrics: List<PhoneActivityMetric>) {
     Column(Modifier.fillMaxWidth().testTag("activity-statistics"), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         metrics.chunked(2).forEach { row ->
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {

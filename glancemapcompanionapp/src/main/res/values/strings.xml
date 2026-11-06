@@ -4,6 +4,8 @@
     <string name="library_more_options">Library options</string>
     <string name="library_filter_planned">Planned</string>
     <string name="library_on_map">On map</string>
+    <string name="library_route_details_title">Route details</string>
+    <string name="library_estimated_time">Estimated time</string>
     <string name="library_share_route">Share</string>
     <string name="library_export_route">Export GPX</string>
     <string name="library_route_exported">GPX exported</string>

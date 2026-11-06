@@ -69,17 +69,8 @@ internal fun rememberLibraryRouteSharing(row: PhoneLibraryRowState): PhoneLibrar
 @Composable
 internal fun libraryRouteShareItems(
     sharing: PhoneLibraryRouteSharing,
-    onDetails: () -> Unit,
     onClose: () -> Unit,
 ) {
-    DropdownMenuItem(
-        text = { Text(stringResource(R.string.hike_route_details)) },
-        onClick = {
-            onClose()
-            onDetails()
-        },
-        modifier = Modifier.testTag("library-gpx-details"),
-    )
     DropdownMenuItem(
         text = { Text(stringResource(R.string.library_share_route)) },
         leadingIcon = { Icon(Icons.Default.Share, contentDescription = null) },

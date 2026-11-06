@@ -3,6 +3,7 @@ package com.glancemap.glancemapcompanionapp.map
 import android.content.Context
 import com.glancemap.glancemapcompanionapp.R
 import com.glancemap.glancemapcompanionapp.routes.RecordedActivityStatistics
+import com.glancemap.glancemapcompanionapp.routes.RouteLibrarySummary
 import java.util.Locale
 
 internal data class PhoneActivityMetric(
@@ -62,6 +63,25 @@ internal fun phoneActivityMetrics(
     return metrics
         .filterNot { it.label == R.string.activity_steps }
         .sortedBy { bikeOrder.indexOf(it.label).takeIf { index -> index >= 0 } ?: bikeOrder.size }
+}
+
+/** A planned route has only geometry and a pacing estimate; absent values are left out, not shown as "—". */
+internal fun phonePlannedRouteMetrics(
+    context: Context,
+    summary: RouteLibrarySummary,
+    isMetric: Boolean,
+): List<PhoneActivityMetric> {
+    val format = ActivityMetricFormatter(context, isMetric)
+    val distance = summary.distanceMeters.takeIf { it > 0.0 }
+    val estimate = summary.estimatedDurationSeconds.takeIf { it > 0.0 }
+    val ascent = summary.elevationGainMeters.takeIf { it.isFinite() }
+    val descent = summary.elevationLossMeters.takeIf { it.isFinite() }
+    return listOfNotNull(
+        distance?.let { PhoneActivityMetric(R.string.activity_distance, format.distance(it)) },
+        estimate?.let { PhoneActivityMetric(R.string.library_estimated_time, format.duration(it)) },
+        ascent?.let { PhoneActivityMetric(R.string.activity_ascent, format.elevation(it)) },
+        descent?.let { PhoneActivityMetric(R.string.activity_descent, format.elevation(it)) },
+    )
 }
 
 private class ActivityMetricFormatter(

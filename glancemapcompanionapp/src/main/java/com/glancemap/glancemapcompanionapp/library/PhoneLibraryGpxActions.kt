@@ -38,7 +38,6 @@ private enum class GpxRowDialog {
 internal fun libraryGpxOverflowMenu(
     row: PhoneLibraryRowState,
     mapActions: MapToolsPanelActions,
-    onDetails: () -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
     var dialog by remember(row.item.key) { mutableStateOf(GpxRowDialog.NONE) }
@@ -53,7 +52,7 @@ internal fun libraryGpxOverflowMenu(
         Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.hike_route_details))
     }
     DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-        libraryRouteShareItems(sharing, onDetails) { expanded = false }
+        libraryRouteShareItems(sharing) { expanded = false }
         if (item is PhoneLibraryItem.Gpx && row.watchKnown) {
             DropdownMenuItem(
                 text = { Text(stringResource(R.string.transfer_title_send_to_watch)) },

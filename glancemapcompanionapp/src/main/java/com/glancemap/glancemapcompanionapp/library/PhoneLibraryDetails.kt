@@ -33,7 +33,7 @@ internal fun libraryItemDetails(
                     Text(libraryItemSummary(item))
                 }
                 if (item.filter == PhoneLibraryFilter.GPX) {
-                    actions.onPreviewGpx?.takeIf { item.gpxKind() == PhoneLibraryGpxKind.RECORDING }?.let { preview ->
+                    actions.onPreviewGpx?.takeIf { item.isNavigableGpx() }?.let { preview ->
                         OutlinedButton(onClick = {
                             onDismiss()
                             preview(item)

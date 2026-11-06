@@ -40,10 +40,6 @@ internal fun libraryItemRow(
                     onClick = {
                         if (item is PhoneLibraryItem.OfflineMap) {
                             if (!state.maps.isLoading) actions.maps.onSelectOffline(item.map)
-                        } else if (item.gpxKind() == PhoneLibraryGpxKind.RECORDING) {
-                            onDetails()
-                        } else if (item.isNavigableGpx() && row.onPreviewGpx != null) {
-                            row.onPreviewGpx.invoke(item)
                         } else {
                             onDetails()
                         }
@@ -54,7 +50,8 @@ internal fun libraryItemRow(
                             ?.let { openInNewHikeTab -> { openInNewHikeTab(item) } },
                 ).testTag("library-item-${item.key}"),
     ) {
-        Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        // Compact rows: the trailing buttons keep their 48 dp touch targets, so only padding shrinks.
+        Column(Modifier.fillMaxWidth().padding(start = 12.dp, end = 4.dp, top = 8.dp, bottom = 4.dp)) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -78,7 +75,7 @@ private fun libraryRowText(
     modifier: Modifier,
 ) {
     val item = row.item
-    Column(modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Text(
             item.title,
             maxLines = 2,
@@ -120,7 +117,7 @@ private fun libraryRowTrailing(
     val item = row.item
     when {
         item is PhoneLibraryItem.Gpx || item is PhoneLibraryItem.FolderGpx ->
-            libraryGpxOverflowMenu(row, actions, onDetails)
+            libraryGpxOverflowMenu(row, actions)
         item is PhoneLibraryItem.Pois || item is PhoneLibraryItem.ReceivedGpx ->
             IconButton(onClick = onDetails, enabled = row.enabled) {
                 Icon(Icons.Default.MoreVert, stringResource(R.string.hike_route_details))

@@ -12,6 +12,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
+import androidx.test.espresso.Espresso
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -24,7 +25,7 @@ class PhoneLibraryGpxActionsUiTest {
     val composeRule = createAndroidComposeRule<ComponentActivity>()
 
     @Test
-    fun gpxOverflowMenuOffersDetailsRenameAndConfirmedDelete() {
+    fun tapOpensDetailsAndOverflowMenuOffersRenameAndConfirmedDelete() {
         val item = PhoneLibraryItem.Gpx(libraryTestRoute())
         val mapState = mutableStateOf(libraryTestMapState(composeRule.activity))
         var renamedRoute: Pair<String, String>? = null
@@ -48,9 +49,12 @@ class PhoneLibraryGpxActionsUiTest {
             }
         }
 
-        composeRule.onNodeWithTag("library-gpx-overflow-${item.key}").performClick()
-        composeRule.onNodeWithTag("library-gpx-details").assertIsDisplayed().performClick()
+        composeRule.onNodeWithTag("library-item-${item.key}").performClick()
         assertEquals(1, detailsOpened)
+        composeRule.onNodeWithTag("library-gpx-overflow-${item.key}").performClick()
+        composeRule.onNodeWithTag("library-gpx-details").assertDoesNotExist()
+        composeRule.onNodeWithTag("library-gpx-share").assertIsDisplayed()
+        Espresso.pressBack()
 
         composeRule.onNodeWithTag("library-gpx-overflow-${item.key}").performClick()
         composeRule.onNodeWithTag("library-gpx-send-watch").performClick()
@@ -116,7 +120,7 @@ class PhoneLibraryGpxActionsUiTest {
 
         composeRule.onNodeWithTag("library-gpx-overflow-${item.key}").performClick()
         composeRule.onNodeWithTag("library-gpx-send-watch").assertDoesNotExist()
-        composeRule.onNodeWithTag("library-gpx-details").assertExists()
+        composeRule.onNodeWithTag("library-gpx-share").assertExists()
         composeRule.runOnIdle { watchKnown.value = true }
         composeRule.onNodeWithTag("library-gpx-send-watch").assertExists()
     }
