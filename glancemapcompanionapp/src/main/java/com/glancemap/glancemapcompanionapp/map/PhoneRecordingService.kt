@@ -720,6 +720,7 @@ internal class PhoneRecordingService :
         clearAutoPauseCadence()
         autoResumeRecovery.clear()
         stationaryWindow.reset()
+        clearStillnessEvidence()
         movingWindow.reset()
         stationaryAnchor = null
         val state = sessionLifecycle.pause(System.currentTimeMillis())
@@ -749,6 +750,7 @@ internal class PhoneRecordingService :
         lastAcceptedElapsedRealtimeMillis = null
         callbackGapTracker.reset()
         stationaryWindow.reset()
+        clearStillnessEvidence()
         movingWindow.reset()
         stationaryAnchor = null
         publish(current.copy(session = state, message = PhoneRecordingMessage.RECORDING))
@@ -2028,6 +2030,10 @@ internal class PhoneRecordingService :
         if (accuracy > (if (bike) BIKE_AUTO_PAUSE_MAX_ACCURACY else HIKE_AUTO_PAUSE_MAX_ACCURACY)) {
             stationaryWindow.observe(elapsedMillis, false, effectiveIntervalMillis)
             stationaryAnchor = null
+            // Too inaccurate to show movement, so bike stillness evidence is kept.
+            if (bike && stillnessEvidence.stillSinceElapsedMillis != null) {
+                logEvent("auto_pause_fix_ignored reason=accuracy accuracy_m=${accuracy.formatDiagnostic()}")
+            }
             return false
         }
         val previous = current.points.lastOrNull() ?: return false
@@ -2038,22 +2044,49 @@ internal class PhoneRecordingService :
                 accuracy.toDouble() * AUTO_PAUSE_RADIUS_FACTOR,
             )
         val speed = point.speedMps
-        if (stationaryWindow.crossesGap(elapsedMillis, effectiveIntervalMillis)) stationaryAnchor = null
+        if (stationaryWindow.crossesGap(elapsedMillis, effectiveIntervalMillis)) {
+            stationaryAnchor = null
+            if (bike && stillnessEvidence.stillSinceElapsedMillis != null) logEvent("auto_pause_window_gap_restart")
+        }
         val anchor = stationaryAnchor ?: point.location
         val stationary =
             distance <= radius &&
                 (bike || recordingHaversineMeters(anchor, point.location) <= radius) &&
                 (speed == null || speed <= if (bike) BIKE_STOP_SPEED else HIKE_STOP_SPEED)
+        val motion =
+            "accuracy_m=${accuracy.formatDiagnostic()} distance_m=${distance.formatDiagnostic()} " +
+                "radius_m=${radius.formatDiagnostic()} speed_mps=${speed?.formatDiagnostic() ?: "na"}"
         if (!stationary) {
             stationaryWindow.observe(elapsedMillis, false, effectiveIntervalMillis)
             stationaryAnchor = null
+            if (bike && clearStillnessEvidence()) logEvent("auto_pause_still_cleared reason=moving $motion")
             return false
         }
         stationaryAnchor = anchor
-        val stationaryDurationMillis =
-            stationaryWindow.observe(elapsedMillis, true, effectiveIntervalMillis) ?: return false
+        if (bike && stillnessEvidence.observeStill(elapsedMillis)) {
+            logEvent("auto_pause_still_started $motion")
+            scheduleStillnessCheck()
+        }
+        val stationaryDurationMillis = stationaryWindow.observe(elapsedMillis, true, effectiveIntervalMillis)
         val required = if (bike) BIKE_AUTO_PAUSE_DURATION else HIKE_AUTO_PAUSE_DURATION
-        if (stationaryDurationMillis < required) return false
+        if (stationaryDurationMillis != null && stationaryDurationMillis >= required) {
+            applyAutoPause(current, stationaryDurationMillis, elapsedMillis, reason = "window")
+            return true
+        }
+        // Sparse still fixes keep restarting the window; the evidence still confirms the stop.
+        val stillDurationMillis = if (bike) stillnessEvidence.confirmedDurationAt(elapsedMillis) else null
+        if (stillDurationMillis == null) return false
+        applyAutoPause(current, stillDurationMillis, elapsedMillis, reason = "stillness")
+        return true
+    }
+
+    private suspend fun applyAutoPause(
+        current: PhoneRecordingUiState,
+        stationaryDurationMillis: Long,
+        elapsedMillis: Long,
+        reason: String,
+    ) {
+        clearStillnessEvidence()
         val wallNow = System.currentTimeMillis()
         val effectivePauseStart =
             effectiveRecordingAutoPauseStartMillis(
@@ -2069,8 +2102,39 @@ internal class PhoneRecordingService :
         startLocationUpdates()
         scheduleAutoPauseCadenceChange()
         persistDraftNow()
-        logEvent("session_auto_paused generation=${state.generation}")
-        return true
+        logEvent(
+            "session_auto_paused generation=${state.generation} reason=$reason stationary_ms=$stationaryDurationMillis",
+        )
+    }
+
+    /** Confirms a bike stop when GPS goes quiet after still fixes, since no callback would arrive to do it. */
+    private fun scheduleStillnessCheck() {
+        stillnessCheckJob?.cancel()
+        val deadline = stillnessEvidence.deadlineElapsedMillis() ?: return
+        val generation = sessionLifecycle.state.generation
+        stillnessCheckJob =
+            serviceScope.launch {
+                delay((deadline - SystemClock.elapsedRealtime()).coerceAtLeast(0L))
+                locationLock.withLock {
+                    // Detach first so pausing does not cancel this job before the draft is saved.
+                    if (stillnessCheckJob == coroutineContext[Job]) stillnessCheckJob = null
+                    val current = PhoneRecordingSessionStore.state.value
+                    val eligible =
+                        current.session.generation == generation &&
+                            current.session.acceptsFixes &&
+                            profile == PhoneActivityProfile.BIKE &&
+                            settings.autoPauseMode(profile) != RecordingSettings.RECORDING_AUTO_PAUSE_OFF
+                    val now = SystemClock.elapsedRealtime()
+                    val duration = stillnessEvidence.confirmedDurationAt(now)
+                    if (eligible && duration != null) applyAutoPause(current, duration, now, reason = "silence")
+                }
+            }
+    }
+
+    private fun clearStillnessEvidence(): Boolean {
+        stillnessCheckJob?.cancel()
+        stillnessCheckJob = null
+        return stillnessEvidence.clear()
     }
 
     @Suppress("CyclomaticComplexMethod", "ReturnCount")
@@ -2147,6 +2211,7 @@ internal class PhoneRecordingService :
         distanceGeometry.reset()
         lastAcceptedElapsedRealtimeMillis = null
         callbackGapTracker.reset()
+        clearStillnessEvidence()
         publish(current.copy(session = state, message = PhoneRecordingMessage.RECORDING))
         startLocationUpdates()
         updateNotification()
@@ -2155,6 +2220,8 @@ internal class PhoneRecordingService :
     }
 
     private val stationaryWindow = RecordingGpsConfirmationWindow()
+    private val stillnessEvidence = PhoneStillnessEvidence()
+    private var stillnessCheckJob: Job? = null
     private val movingWindow = RecordingGpsConfirmationWindow()
     private val stepResumeEvidence = RecordingStepResumeEvidence()
     private var stationaryAnchor: GeoPoint? = null
@@ -2521,6 +2588,7 @@ internal class PhoneRecordingService :
         elevationFilter.reset()
         lastAcceptedElapsedRealtimeMillis = null
         stationaryWindow.reset()
+        clearStillnessEvidence()
         movingWindow.reset()
         stationaryAnchor = null
         counters = PhoneRecordingCounters()
@@ -2889,3 +2957,7 @@ internal object PhoneMapLocationContext {
             ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) ==
             PackageManager.PERMISSION_GRANTED
 }
+
+private fun Double.formatDiagnostic(): String = String.format(Locale.US, "%.1f", this)
+
+private fun Float.formatDiagnostic(): String = toDouble().formatDiagnostic()

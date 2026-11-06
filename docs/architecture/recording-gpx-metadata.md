@@ -84,5 +84,18 @@ the GPX to the Library (disabled until two points exist), Discard asks for
 confirmation before deleting the session, and Cancel resumes only a session that
 the prompt itself paused. No second recap is shown after saving.
 
+Phone auto-pause confirms a stop from GPS stillness: accurate fixes within the
+stop radius of the last track point and below the stop speed. The regular window
+needs 20 s (bike) of such fixes and restarts after a 15 s gap. Once still, the
+fused provider often slows or stops delivering fixes, and indoors it loses the sky,
+so a bike stop is also confirmed after 30 s of stillness evidence from the first
+still fix: only an accurate fix showing movement clears that evidence, while
+inaccurate fixes and silence neither clear nor extend it. A timer confirms the
+stop when no fix arrives at all. GPS loss while moving never starts the evidence,
+so it does not pause. Both paths backdate the pause to the first still fix. Hike
+auto-pause is unchanged. Diagnostics log `auto_pause_still_started`,
+`auto_pause_still_cleared`, `auto_pause_fix_ignored`, `auto_pause_window_gap_restart`
+and the pause `reason` (`window`, `stillness` or `silence`).
+
 References: [GPX 1.1](https://www.topografix.com/GPX/1/1/),
 [Garmin extension schema](https://www8.garmin.com/xmlschemas/TrackPointExtensionv1.xsd).
