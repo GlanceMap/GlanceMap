@@ -10,15 +10,17 @@ class PhoneTileFillTrackerTest {
     @Test
     fun firstViewportFillIsTimedFromTheFirstDraw() {
         val tracker = PhoneTileFillTracker()
-        tracker.onFirstDraw(nowMs = 1_000L, coverage = coverage(drawable = 0))
+        tracker.onFirstDraw(nowMs = 1_000L, coverage = coverage(drawable = 0), renderedCount = 40)
 
         assertTrue(tracker.isFilling)
-        assertNull(tracker.onCoverage(coverage(drawable = 10, pending = 15), nowMs = 1_400L))
-        val fill = tracker.onCoverage(coverage(drawable = 25, pending = 0), nowMs = 2_250L)!!
+        assertNull(tracker.onCoverage(coverage(drawable = 10, pending = 15), nowMs = 1_400L, renderedCount = 50))
+        val fill = tracker.onCoverage(coverage(drawable = 25, pending = 0), nowMs = 2_250L, renderedCount = 65)!!
 
         assertTrue(fill.firstViewport)
         assertEquals(1_250L, fill.fillMs)
         assertEquals(0, fill.drawableAtStart)
+        assertEquals(25, fill.renderedDuringFill)
+        assertEquals(20.0, fill.tilesPerSecond!!, 0.001)
         assertFalse(tracker.isFilling)
     }
 
@@ -31,6 +33,7 @@ class PhoneTileFillTrackerTest {
 
         assertEquals(20L, fill.fillMs)
         assertEquals(25, fill.drawableAtStart)
+        assertNull(fill.tilesPerSecond)
     }
 
     @Test
@@ -61,14 +64,27 @@ class PhoneTileFillTrackerTest {
 
     @Test
     fun detailLineCarriesTheCountersNeededForDeviceComparison() {
-        val fill = PhoneTileFillEvent(true, 812L, 25, coverage(drawable = 25))
+        val fill = PhoneTileFillEvent(true, 812L, 25, coverage(drawable = 25), renderedDuringFill = 0)
         val stats = PhoneMapsforgeTileCacheStats(true, 0, 25, 0, true)
 
         assertEquals(
             "renderer=3 layer=7 first=true zoom=8 fillMs=812 visible=25 drawableAtStart=25 " +
-                "renderedTiles=0 diskReads=25 diskReadFailures=0",
+                "renderedDuringFill=0 tilesPerSec=na renderedTiles=0 diskReads=25 diskReadFailures=0",
             phoneViewportFillDetail(3L, 7, 8, fill, stats),
         )
+    }
+
+    @Test
+    fun theRenderRateUsesOnlyTilesRenderedDuringThatFill() {
+        val tracker = PhoneTileFillTracker()
+        tracker.onFirstDraw(nowMs = 0L, coverage = coverage(drawable = 25), renderedCount = 100)
+        tracker.onCoverage(coverage(drawable = 25), nowMs = 10L, renderedCount = 100)
+
+        tracker.onCoverage(coverage(drawable = 5, pending = 20), nowMs = 1_000L, renderedCount = 130)
+        val fill = tracker.onCoverage(coverage(drawable = 25), nowMs = 3_000L, renderedCount = 150)!!
+
+        assertEquals(20, fill.renderedDuringFill)
+        assertEquals(10.0, fill.tilesPerSecond!!, 0.001)
     }
 
     private fun coverage(

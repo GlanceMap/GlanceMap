@@ -141,6 +141,9 @@ internal class PhoneMapsforgeTileCache(
                 0L
             }
 
+    val renderedTileCount: Int
+        get() = renderedTilesStored.get()
+
     val stats: PhoneMapsforgeTileCacheStats
         get() =
             PhoneMapsforgeTileCacheStats(
@@ -362,6 +365,7 @@ private data class PhoneFirstVisibleTileCallbacks(
     val onFirstVisibleTile: (PhoneFirstVisibleTileRendererLayer, PhoneFirstVisibleTileTiming) -> Unit,
     val onCoverageChanged: () -> Unit,
     val onViewportFilled: (PhoneFirstVisibleTileRendererLayer, Int, PhoneTileFillEvent) -> Unit,
+    val onQueueReprioritized: (PhoneFirstVisibleTileRendererLayer, Int, Int, Int) -> Unit,
 )
 
 /** Debug-capture lifecycle events for one renderer's tile layers. */
@@ -393,6 +397,14 @@ private fun phoneFirstVisibleTileCallbacks(
             PhoneOfflineMapRendererDiagnostics.recordLifecycleEvent(
                 event = "viewport_tiles_complete",
                 detail = phoneViewportFillDetail(rendererId, System.identityHashCode(layer), zoom, fill, cacheStats()),
+            )
+        },
+        onQueueReprioritized = { layer, fromZoom, toZoom, pendingJobs ->
+            PhoneOfflineMapRendererDiagnostics.recordLifecycleEvent(
+                event = "tile_queue_reprioritized",
+                detail =
+                    "renderer=$rendererId layer=${System.identityHashCode(layer)} " +
+                        "fromZoom=$fromZoom toZoom=$toZoom pendingJobs=$pendingJobs",
             )
         },
     )
@@ -1080,6 +1092,7 @@ private class PhoneFirstVisibleTileRendererLayer(
     private var lastCoverageSampleAtElapsedMs: Long? = null
     private var firstDrawAtElapsedMs = 0L
     private var drawableAtFirstDraw = 0
+    private var lastDrawnZoom: Byte? = null
     private val fillTracker = PhoneTileFillTracker()
 
     @Volatile
@@ -1100,11 +1113,12 @@ private class PhoneFirstVisibleTileRendererLayer(
         rotation: Rotation,
     ) {
         val firstDraw = drawObserved.compareAndSet(false, true)
+        refreshQueueAfterZoomChange(zoomLevel)
         val coverageBefore = if (firstDraw) visibleTileCoverage(boundingBox, zoomLevel) else latestCoverage
         if (firstDraw) {
             firstDrawAtElapsedMs = SystemClock.elapsedRealtime()
             drawableAtFirstDraw = coverageBefore.drawableVisibleTiles
-            fillTracker.onFirstDraw(firstDrawAtElapsedMs, coverageBefore)
+            fillTracker.onFirstDraw(firstDrawAtElapsedMs, coverageBefore, renderedTileCount())
             callbacks.onFirstDraw(this)
         }
         super.draw(boundingBox, zoomLevel, canvas, topLeftPoint, rotation)
@@ -1127,7 +1141,7 @@ private class PhoneFirstVisibleTileRendererLayer(
         latestCoverage = coverageAfter
         if (coverageAfter != coverageBefore) callbacks.onCoverageChanged()
         if (shouldSampleCoverage) {
-            fillTracker.onCoverage(coverageAfter, nowElapsedMs)?.let { fill ->
+            fillTracker.onCoverage(coverageAfter, nowElapsedMs, renderedTileCount())?.let { fill ->
                 callbacks.onViewportFilled(this, zoomLevel.toInt(), fill)
             }
         }
@@ -1149,6 +1163,19 @@ private class PhoneFirstVisibleTileRendererLayer(
                     drawableAtFirstDraw = drawableAtFirstDraw,
                 ),
             )
+        }
+    }
+
+    private fun renderedTileCount(): Int = (cache as? PhoneMapsforgeTileCache)?.renderedTileCount ?: 0
+
+    private fun refreshQueueAfterZoomChange(zoomLevel: Byte) {
+        val previousZoom = lastDrawnZoom
+        lastDrawnZoom = zoomLevel
+        val queue = jobQueue
+        if (previousZoom == null || previousZoom == zoomLevel || queue == null) return
+        val pendingJobs = queue.size()
+        if (refreshPhoneMapTileJobPriorities(queue)) {
+            callbacks.onQueueReprioritized(this, previousZoom.toInt(), zoomLevel.toInt(), pendingJobs)
         }
     }
 

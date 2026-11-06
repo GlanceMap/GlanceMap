@@ -63,6 +63,24 @@ The runtime report adds "Tile cache persistent", "Tiles rendered into cache", "T
 reused from disk during index", "Disk tile read failures" and "Disk index fallback
 active".
 
+### Tiles per screen and render order
+
+Mapsforge's frame buffer is the view times an overdraw factor, squared to its
+diagonal so the map can rotate. With the default 1.2, a 720x1336 phone view needs
+16–25 tiles of 512 px per screen, against 4–9 on a 466x466 watch. At about 9 tiles per
+second, a new phone area took roughly 2.5 s to fill. The phone now uses an overdraw
+of 1.0 (`PHONE_MAPSFORGE_OVERDRAW_FACTOR`). The square still covers the view diagonal,
+so rotation keeps full coverage, and the same view needs 9–16 tiles. Less of the map
+beyond the screen edge is rendered ahead of a pan. The `mapview_render_ready` event
+logs the `overdraw` in use.
+
+Re-adding a tile job that Mapsforge already holds does not make it reschedule its
+queue. After a zoom, tiles of the previous level could keep their priority over the
+tiles on screen. As on the watch, the phone tile layer requeues one waiting job when
+the drawn zoom changes, which forces a reschedule, and logs
+`tile_queue_reprioritized fromZoom toZoom pendingJobs`. `viewport_tiles_complete`
+also reports `renderedDuringFill` and `tilesPerSec` for device comparisons.
+
 `PhoneMapsforgeTileCacheRetention` registers live buckets and runs one low-priority
 cleanup per process, using the same limits as the watch renderer. It deletes buckets
 unused for 14 days. Above 150 MiB in total, it deletes the oldest buckets first, keeping

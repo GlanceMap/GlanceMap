@@ -580,7 +580,8 @@ internal class PhoneOfflineMapsforgeView(
                 event = "mapview_render_ready",
                 detail =
                     "mapView=${System.identityHashCode(mapView)} " +
-                        "size=${mapView.width}x${mapView.height}",
+                        "size=${mapView.width}x${mapView.height} " +
+                        "overdraw=${mapView.model.frameBufferModel.overdrawFactor}",
             )
         }
         schedulePendingRendererWorkIfReady()
@@ -1244,6 +1245,8 @@ internal class PhoneOfflineMapsforgeMapView(
         }
 
     init {
+        // Set before the first layout and before observers, so the first frame buffer uses it.
+        model.frameBufferModel.overdrawFactor = PHONE_MAPSFORGE_OVERDRAW_FACTOR
         if (transparentBackground) {
             model.displayModel.setBackgroundColor(Color.TRANSPARENT)
             setBackgroundColor(Color.TRANSPARENT)
