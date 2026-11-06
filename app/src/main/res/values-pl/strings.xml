@@ -1247,6 +1247,7 @@
     <string name="navigate_saving_poi">"Zapisywanie POI..."</string>
     <string name="navigate_slope_rendering_in_progress">"Renderowanie nachylenia"</string>
     <string name="navigate_3d_terrain_loading">Ładowanie terenu 3D</string>
+    <string name="navigate_3d_terrain_partial_error">Nie udało się załadować niektórych kafelków mapy 3D</string>
     <string name="maps_3d_terrain_dem_required">Teren 3D wymaga danych wysokościowych dla tej mapy. Otwórz Mapy i dotknij DEM, aby je pobrać.</string>
     <string name="maps_terrain_features_disabled_no_dem">Brak danych wysokościowych dla tej mapy. Teren 3D, cieniowanie i nachylenie zostały wyłączone. Dotknij DEM, aby je pobrać.</string>
     <string name="navigate_start_from_nearest_point">"Zacząć od najbliższego punktu?"</string>
@@ -2099,10 +2100,5 @@
     <string name="settings_back_closes_app">"Wstecz zamyka aplikację"</string>
     <string name="settings_close_directly_from_navigate">"Zamknij bezpośrednio z Nawigacji"</string>
     <string name="map_terrain_3d_experimental">Teren 3D (eksperymentalny)</string>
-    <string name="map_3d_renderer">Silnik 3D</string>
-    <string name="map_3d_renderer_glancemap">GlanceMap</string>
-    <string name="map_3d_renderer_worldwind">WorldWind (eksperymentalny)</string>
     <string name="map_3d_viewing_angle">Kąt widzenia 3D</string>
-    <string name="map_3d_orbit_mode">Tryb obrotu 3D</string>
-    <string name="map_3d_viewing_angle_value">%1$d°</string>
 </resources>

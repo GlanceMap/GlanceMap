@@ -17,6 +17,7 @@ internal class ReliefDemRepository(
     private val tag: String,
     private val cacheEntryLimit: Int? = null,
     private val cacheStats: ReliefDemCacheStats? = null,
+    private val cacheByteLimit: Long? = null,
 ) {
     constructor(
         demRootDir: File,
@@ -74,9 +75,23 @@ internal class ReliefDemRepository(
         return interpolateDemElevation(tile, tileLat, tileLon, lat, lon)
     }
 
+    fun elevationAtUsingTileOrNaN(
+        tile: DemTileData,
+        tileLat: Int,
+        tileLon: Int,
+        lat: Double,
+        lon: Double,
+    ): Double {
+        if (floor(lat).toInt() != tileLat || floor(lon).toInt() != tileLon) {
+            return elevationAt(lat, lon) ?: Double.NaN
+        }
+        return interpolateDemElevationOrNaN(tile, tileLat, tileLon, lat, lon)
+    }
+
     fun clear() {
         synchronized(demTileCache) {
             demTileCache.clear()
+            cacheStats?.recordRetained(0)
         }
     }
 
@@ -110,6 +125,8 @@ internal class ReliefDemRepository(
 
         synchronized(demTileCache) {
             demTileCache[tileId] = loaded
+            cacheByteLimit?.let(demTileCache::trimToBytes)
+            cacheStats?.recordRetained(demTileCache.retainedBytes())
         }
         return loaded
     }
@@ -183,10 +200,18 @@ internal fun interpolateDemElevation(
     lonTile: Int,
     lat: Double,
     lon: Double,
-): Double? {
+): Double? = interpolateDemElevationOrNaN(tile, latTile, lonTile, lat, lon).takeUnless { it.isNaN() }
+
+internal fun interpolateDemElevationOrNaN(
+    tile: DemTileData,
+    latTile: Int,
+    lonTile: Int,
+    lat: Double,
+    lon: Double,
+): Double {
     val axisLen = tile.axisLen.coerceAtLeast(1)
     val rowLen = tile.rowLen
-    if (rowLen <= axisLen || tile.samples.size < rowLen * rowLen) return null
+    if (rowLen <= axisLen || tile.samples.size < rowLen * rowLen) return Double.NaN
 
     val fracLat = (lat - latTile.toDouble()).coerceIn(0.0, 1.0)
     val fracLon = (lon - lonTile.toDouble()).coerceIn(0.0, 1.0)
@@ -226,7 +251,7 @@ internal fun interpolateDemElevation(
         weightedElevation += z11.toDouble() * w11
         validWeight += w11
     }
-    return if (validWeight > 0.0) weightedElevation / validWeight else null
+    return if (validWeight > 0.0) weightedElevation / validWeight else Double.NaN
 }
 
 internal const val DEM_VOID_SAMPLE: Short = Short.MIN_VALUE
@@ -237,10 +262,31 @@ internal class ReliefDemCacheStats {
     val loads = AtomicLong()
     val decodedBytes = AtomicLong()
     val loadNanos = AtomicLong()
+    val retainedBytes = AtomicLong()
+    val peakRetainedBytes = AtomicLong()
+
+    fun recordRetained(bytes: Long) {
+        retainedBytes.set(bytes)
+        peakRetainedBytes.updateAndGet { maxOf(it, bytes) }
+    }
 }
 
 internal class ReliefDemTileCache(
     private val maxEntries: Int,
 ) : LinkedHashMap<String, DemTileData?>(16, 0.75f, true) {
     override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, DemTileData?>?): Boolean = size > maxEntries
+
+    fun retainedBytes(): Long = values.sumOf { (it?.samples?.size?.toLong() ?: 0L) * Short.SIZE_BYTES }
+
+    fun trimToBytes(maxBytes: Long) {
+        var bytes = retainedBytes()
+        var populatedTiles = values.count { it != null }
+        val iterator = entries.iterator()
+        while (bytes > maxBytes && populatedTiles > 1 && iterator.hasNext()) {
+            val tile = iterator.next().value
+            if (tile != null) populatedTiles--
+            bytes -= (tile?.samples?.size?.toLong() ?: 0L) * Short.SIZE_BYTES
+            iterator.remove()
+        }
+    }
 }

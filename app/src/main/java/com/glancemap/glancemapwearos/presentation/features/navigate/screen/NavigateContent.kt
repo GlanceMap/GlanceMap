@@ -67,6 +67,7 @@ import androidx.wear.compose.material3.IconButtonDefaults
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.Text
 import com.glancemap.glancemapwearos.R
+import com.glancemap.glancemapwearos.core.maps.DEFAULT_TERRAIN_3D_VIEWING_ANGLE
 import com.glancemap.glancemapwearos.core.maps.MAP_ZOOM_MAX_LEVEL
 import com.glancemap.glancemapwearos.core.maps.MAP_ZOOM_MIN_LEVEL
 import com.glancemap.glancemapwearos.core.service.diagnostics.BenchmarkTrace
@@ -79,25 +80,17 @@ import com.glancemap.glancemapwearos.core.service.location.model.isInteractive
 import com.glancemap.glancemapwearos.data.repository.MapFocusControl
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import com.glancemap.glancemapwearos.presentation.features.gpx.GpxTrackDetails
-import com.glancemap.glancemapwearos.presentation.features.maps.DemSetupBottomSheet
-import com.glancemap.glancemapwearos.presentation.features.maps.DemSetupReason
 import com.glancemap.glancemapwearos.presentation.features.maps.MapHolder
 import com.glancemap.glancemapwearos.presentation.features.maps.MapLayerMutationCoordinator
 import com.glancemap.glancemapwearos.presentation.features.maps.MapZoomChangeAttribution
 import com.glancemap.glancemapwearos.presentation.features.maps.RotatableMarker
 import com.glancemap.glancemapwearos.presentation.features.maps.terrain3d.TERRAIN_LOG_TAG
 import com.glancemap.glancemapwearos.presentation.features.maps.terrain3d.TerrainGpxOverlay
-import com.glancemap.glancemapwearos.presentation.features.maps.terrain3d.TerrainRendererSelection
 import com.glancemap.glancemapwearos.presentation.features.maps.terrain3d.TerrainZoomControls
 import com.glancemap.glancemapwearos.presentation.features.maps.terrain3d.WatchWorldWindSession
-import com.glancemap.glancemapwearos.presentation.features.maps.terrain3d.customTerrainMayStart
 import com.glancemap.glancemapwearos.presentation.features.maps.terrain3d.nextTerrainAnglePreset
-import com.glancemap.glancemapwearos.presentation.features.maps.terrain3d.rememberTerrainSession
 import com.glancemap.glancemapwearos.presentation.features.maps.terrain3d.rememberWatchWorldWindSession
-import com.glancemap.glancemapwearos.presentation.features.maps.terrain3d.selectTerrainRenderer
-import com.glancemap.glancemapwearos.presentation.features.maps.terrain3d.useWorldWind
 import com.glancemap.glancemapwearos.presentation.features.maps.terrain3d.worldWindApproximateZoom
-import com.glancemap.glancemapwearos.presentation.features.maps.terrain3d.worldWindMayStart
 import com.glancemap.glancemapwearos.presentation.features.navigate.guidance.TurnByTurnGuidanceState
 import com.glancemap.glancemapwearos.presentation.features.poi.PoiNavigateTarget
 import com.glancemap.glancemapwearos.presentation.features.poi.PoiOverlayMarker
@@ -133,9 +126,6 @@ internal fun NavigateContent(
     focusRequester: FocusRequester,
     mapHolder: MapHolder?,
     terrain3dEnabled: Boolean,
-    terrain3dRenderer: String,
-    onTerrain3dDemUnavailable: () -> Unit,
-    terrain3dViewingAngle: Int,
     terrainMapPath: String?,
     terrainInteractive: Boolean,
     onMapViewReadyForRendering: () -> Unit,
@@ -640,58 +630,24 @@ internal fun NavigateContent(
             !turnByTurnGuidancePaused &&
             !traceRecordingState.active &&
             !traceRecordingState.saving
-    val worldWindSelected = useWorldWind(terrainEligible, terrain3dRenderer)
     val worldWindSession = remember(mapHolder, terrainMapPath) { WatchWorldWindSession() }
-    val terrainSession =
-        rememberTerrainSession(
-            enabled = customTerrainMayStart(terrainEligible, terrain3dRenderer, worldWindSession.running),
-            holder = mapHolder,
-            mapPath = terrainMapPath,
-            mapAppearanceInProgress = mapAppearanceApplyInProgress,
-            interactive = terrainInteractive,
-        )
     rememberWatchWorldWindSession(
         session = worldWindSession,
-        enabled =
-            worldWindMayStart(
-                terrainEligible,
-                terrain3dRenderer,
-                terrainSession.view != null,
-                terrainSession.isLoading,
-            ),
+        enabled = terrainEligible,
         holder = mapHolder,
         mapPath = terrainMapPath,
         appearanceInProgress = mapAppearanceApplyInProgress,
         interactive = terrainInteractive,
-        angle = terrain3dViewingAngle,
+        angle = DEFAULT_TERRAIN_3D_VIEWING_ANGLE,
         bearing = -mapRotationDeg,
     )
-    var terrainCameraAdjust by remember(terrainSession) { mutableStateOf(false) }
-    var terrainPresetAngle by remember(terrainSession, worldWindSession) { mutableIntStateOf(terrain3dViewingAngle) }
-    LaunchedEffect(terrain3dViewingAngle) {
-        terrainPresetAngle = terrain3dViewingAngle
-    }
+    var terrainPresetAngle by remember(worldWindSession) { mutableIntStateOf(DEFAULT_TERRAIN_3D_VIEWING_ANGLE) }
+    val worldWindLongPressOrbit = worldWindSession.view?.longPressOrbit == true
     SideEffect {
-        terrainSession.setViewingAngle(terrain3dViewingAngle)
-        terrainSession.view?.pinchEnabled = mapPinchZoomEnabled
-        terrainSession.view?.cameraAdjustMode = terrainCameraAdjust
-        if (!terrainCameraAdjust) terrainSession.view?.setBearing(-mapRotationDeg)
-        terrainSession.updateGpx(
-            TerrainGpxOverlay(
-                activeGpxDetails,
-                gpxTrackColor,
-                gpxTrackColorMode,
-                gpxTrackWidth,
-                gpxTrackOpacityPercent,
-            ),
-        )
-        terrainSession.onUserPanStarted = onUserPanStarted
         worldWindSession.onUserPanStarted = onUserPanStarted
-        worldWindSession.view?.let { view ->
+        worldWindSession.view?.takeIf { terrainInteractive }?.let { view ->
             view.pinchEnabled = mapPinchZoomEnabled
-            view.orbitMode = terrainCameraAdjust
-            view.setViewingAngle(terrain3dViewingAngle)
-            if (!terrainCameraAdjust) view.setBearing(-mapRotationDeg)
+            if (!worldWindLongPressOrbit) view.setBearing(-mapRotationDeg)
             view.updateOverlay(
                 TerrainGpxOverlay(
                     activeGpxDetails,
@@ -704,41 +660,22 @@ internal fun NavigateContent(
             )
         }
     }
-    val terrainVisible =
-        if (worldWindSelected) {
-            worldWindSession.view != null && !worldWindSession.failed
-        } else {
-            selectTerrainRenderer(terrainEligible, terrainSession.view != null, terrainSession.failed) ==
-                TerrainRendererSelection.TERRAIN
-        }
-    LaunchedEffect(terrainSession.demUnavailable) {
-        if (terrainSession.demUnavailable) onTerrain3dDemUnavailable()
-    }
-    DemSetupBottomSheet(
-        visible = terrainSession.demUnavailable,
-        reason = DemSetupReason.TERRAIN_3D,
-        onDismiss = { terrainSession.demUnavailable = false },
-    )
+    val terrainVisible = terrainEligible && worldWindSession.view != null && !worldWindSession.failed
     LaunchedEffect(terrainVisible) {
         rotaryScrollAccumulator = 0f
         if (!terrainVisible) {
-            terrainCameraAdjust = false
-            terrainPresetAngle = terrain3dViewingAngle
+            terrainPresetAngle = DEFAULT_TERRAIN_3D_VIEWING_ANGLE
         }
     }
     LaunchedEffect(terrainVisible, navMode, lastKnownLocation) {
         if (terrainVisible && navMode != NavMode.PANNING && !isOfflineMode) {
             lastKnownLocation?.let { location ->
-                if (worldWindSelected) {
-                    worldWindSession.view?.recenter(location)
-                } else {
-                    terrainSession.recenter(location)
-                }
+                worldWindSession.view?.recenter(location)
             }
         }
     }
     DisposableEffect(mapView, terrainVisible) {
-        val center = if (worldWindSelected) worldWindSession.center else terrainSession.center
+        val center = worldWindSession.center
         if (terrainVisible && mapView != null && center != null) {
             MapLayerMutationCoordinator.setGestureActive(mapView, false)
             (mapView.parent as? ViewGroup)?.removeView(mapView)
@@ -747,7 +684,7 @@ internal fun NavigateContent(
         onDispose {
             if (terrainVisible && mapView != null && center != null) {
                 val start = SystemClock.elapsedRealtime()
-                mapView.setCenter((if (worldWindSelected) worldWindSession.center else terrainSession.center) ?: center)
+                mapView.setCenter(worldWindSession.center ?: center)
                 mapView.layerManager.proceed()
                 mapView.layerManager.redrawLayers()
                 Log.i(TERRAIN_LOG_TAG, "switch_3d_to_2d_resume_ms=${SystemClock.elapsedRealtime() - start}")
@@ -780,8 +717,8 @@ internal fun NavigateContent(
     val worldWindRange = worldWindSession.view?.cameraRange
     var worldWindScaleVisible by remember { mutableStateOf(false) }
     var lastWorldWindRange by remember { mutableStateOf<Double?>(null) }
-    LaunchedEffect(worldWindRange, terrainVisible, worldWindSelected) {
-        if (!terrainVisible || !worldWindSelected || worldWindRange == null) {
+    LaunchedEffect(worldWindRange, terrainVisible) {
+        if (!terrainVisible || worldWindRange == null) {
             lastWorldWindRange = null
             worldWindScaleVisible = false
         } else {
@@ -897,13 +834,7 @@ internal fun NavigateContent(
                     while (rotaryScrollAccumulator >= thresholdPx) {
                         val zoomed =
                             if (terrainVisible) {
-                                (
-                                    if (worldWindSelected) {
-                                        worldWindSession.view?.zoomByStep(positiveStep)
-                                    } else {
-                                        terrainSession.view?.zoomByStep(positiveStep)
-                                    }
-                                ) == true
+                                worldWindSession.view?.zoomByStep(positiveStep) == true
                             } else {
                                 enqueueCrownZoomStep(step = positiveStep)
                             }
@@ -913,13 +844,7 @@ internal fun NavigateContent(
                     while (rotaryScrollAccumulator <= -thresholdPx) {
                         val zoomed =
                             if (terrainVisible) {
-                                (
-                                    if (worldWindSelected) {
-                                        worldWindSession.view?.zoomByStep(negativeStep)
-                                    } else {
-                                        terrainSession.view?.zoomByStep(negativeStep)
-                                    }
-                                ) == true
+                                worldWindSession.view?.zoomByStep(negativeStep) == true
                             } else {
                                 enqueueCrownZoomStep(step = negativeStep)
                             }
@@ -1037,7 +962,7 @@ internal fun NavigateContent(
             var lastMapSurfaceTelemetrySignature by remember { mutableStateOf<String?>(null) }
 
             if (terrainVisible) {
-                val terrainView = if (worldWindSelected) worldWindSession.view else terrainSession.view
+                val terrainView = worldWindSession.view
                 terrainView?.let { terrainView ->
                     key(terrainView) {
                         AndroidView(factory = { terrainView }, modifier = Modifier.fillMaxSize())
@@ -1422,12 +1347,7 @@ internal fun NavigateContent(
                     showPlus = showZoomPlusButton && mapChrome.shows(MapFocusControl.ZOOM_PLUS),
                     showMinus = showZoomMinusButton && mapChrome.shows(MapFocusControl.ZOOM_MINUS),
                     onZoom = { step ->
-                        val zoomed =
-                            if (worldWindSelected) {
-                                worldWindSession.view?.zoomByStep(step)
-                            } else {
-                                terrainSession.view?.zoomByStep(step)
-                            }
+                        val zoomed = worldWindSession.view?.zoomByStep(step)
                         if (zoomed == true) triggerHaptic()
                     },
                 )
@@ -1451,16 +1371,8 @@ internal fun NavigateContent(
                     onToggleOrientation = onToggleOrientation,
                     navigationMarkerAnchorMode = navigationMarkerAnchorMode,
                     isScreenInteractive = terrainInteractive,
-                    terrainOrbitMode =
-                        terrainCameraAdjust ||
-                            (worldWindSelected && worldWindSession.view?.longPressOrbit == true),
-                    onTerrainOrbitChange = { terrainCameraAdjust = it },
                     onTerrainRecenter = { location ->
-                        if (worldWindSelected) {
-                            worldWindSession.view?.recenter(location)
-                        } else {
-                            terrainSession.recenter(location)
-                        }
+                        worldWindSession.view?.recenter(location)
                     },
                 )
                 if (mapChrome.showToolsControl) {
@@ -1505,7 +1417,7 @@ internal fun NavigateContent(
                 }
             }
 
-            val showWorldWindScale = terrainVisible && worldWindSelected && worldWindScaleVisible
+            val showWorldWindScale = terrainVisible && worldWindScaleVisible
             if (showWorldWindScale && mapChrome.shows(MapFocusControl.SCALE)) {
                 worldWindSession.view?.let { view ->
                     val latitude = view.lookAt.position.latitude.inDegrees
@@ -1543,18 +1455,21 @@ internal fun NavigateContent(
                 }
             }
             BoxWithConstraints(Modifier.fillMaxSize()) {
-                val controlRadius = minOf(maxWidth, maxHeight) / 2 - sideButtonEdgePadding - zoomButtonSize / 2
+                val controlRadius = minOf(maxWidth, maxHeight) / 2 - sideButtonEdgePadding - sideButtonSize / 2 - 1.dp
                 SlopeOverlayStatusIndicator(
                     visible =
                         terrainVisible ||
                             (
                                 terrainEligible &&
-                                    (if (worldWindSelected) worldWindSession.initializing else terrainSession.isLoading)
+                                    worldWindSession.initializing
                             ),
                     processing =
-                        (if (worldWindSelected) worldWindSession.initializing else terrainSession.isLoading) &&
+                        (worldWindSession.initializing || worldWindSession.rendering) &&
                             terrainInteractive,
-                    progressPercent = null,
+                    progressPercent =
+                        worldWindSession.renderProgress?.let {
+                            if (worldWindSession.initializing) it.coerceAtMost(99) else it
+                        },
                     enabled = true,
                     screenSize = screenSize,
                     sideButtonEdgePadding = sideButtonEdgePadding,
@@ -1565,15 +1480,12 @@ internal fun NavigateContent(
                             y = controlRadius / 2,
                         ),
                     terrain3d = true,
+                    renderError = worldWindSession.renderError,
                     onClick =
                         if (terrainVisible) {
                             {
                                 terrainPresetAngle = nextTerrainAnglePreset(terrainPresetAngle)
-                                if (worldWindSelected) {
-                                    worldWindSession.view?.setPresetViewingAngle(terrainPresetAngle)
-                                } else {
-                                    terrainSession.setPresetViewingAngle(terrainPresetAngle)
-                                }
+                                worldWindSession.view?.setPresetViewingAngle(terrainPresetAngle)
                                 triggerHaptic()
                             }
                         } else {

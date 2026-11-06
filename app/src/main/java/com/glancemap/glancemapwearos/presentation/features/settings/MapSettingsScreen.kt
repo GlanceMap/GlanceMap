@@ -16,7 +16,6 @@ import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.Slider
 import androidx.wear.compose.material3.Text
 import com.glancemap.glancemapwearos.R
-import com.glancemap.glancemapwearos.core.maps.TERRAIN_3D_VIEWING_ANGLES
 import com.glancemap.glancemapwearos.core.service.diagnostics.TerrainDiagnostics
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import com.glancemap.glancemapwearos.domain.model.maps.theme.ThemeListItem
@@ -40,8 +39,6 @@ fun MapSettingsScreen(
     val autoRecenterEnabled by viewModel.autoRecenterEnabled.collectAsState()
     val autoRecenterDelay by viewModel.autoRecenterDelay.collectAsState(initial = 5)
     val terrain3dEnabled by viewModel.terrain3dEnabled.collectAsState()
-    val terrain3dRenderer by viewModel.terrain3dRenderer.collectAsState()
-    val terrain3dViewingAngle by viewModel.terrain3dViewingAngle.collectAsState()
     val liveElevation by viewModel.liveElevation.collectAsState()
     val liveDistance by viewModel.liveDistance.collectAsState()
     val navigationMarkerAnchorMode by viewModel.navigationMarkerAnchorMode.collectAsState()
@@ -181,31 +178,6 @@ fun MapSettingsScreen(
                 },
                 label = stringResource(R.string.map_terrain_3d_experimental),
             )
-        }
-        if (terrain3dEnabled) {
-            item {
-                SettingsOptionPickerRow(
-                    label = stringResource(R.string.map_3d_renderer),
-                    selectedValue = terrain3dRenderer,
-                    options =
-                        listOf(
-                            "custom" to stringResource(R.string.map_3d_renderer_glancemap),
-                            "worldwind" to stringResource(R.string.map_3d_renderer_worldwind),
-                        ),
-                    onSelect = viewModel::setTerrain3dRenderer,
-                )
-            }
-            item {
-                SettingsOptionPickerRow(
-                    label = stringResource(R.string.map_3d_viewing_angle),
-                    selectedValue = terrain3dViewingAngle,
-                    options =
-                        TERRAIN_3D_VIEWING_ANGLES.map { angle ->
-                            angle to stringResource(R.string.map_3d_viewing_angle_value, angle)
-                        },
-                    onSelect = viewModel::setTerrain3dViewingAngle,
-                )
-            }
         }
         item {
             SettingsToggleChip(

@@ -10,15 +10,7 @@ class TerrainAnglePresetsTest {
         assertEquals(80, nextTerrainAnglePreset(60))
         assertEquals(0, nextTerrainAnglePreset(80))
         assertEquals(60, nextTerrainAnglePreset(50))
+        assertEquals(60, nextTerrainAnglePreset(45))
         assertEquals(80, nextTerrainAnglePreset(70))
-    }
-
-    @Test
-    fun `legacy camera accepts the 0 and 80 degree presets`() {
-        val pitch = TerrainPitch(60)
-        pitch.setPresetViewingAngle(80)
-        assertEquals(80f, pitch.viewingAngleDegrees, 0f)
-        pitch.setPresetViewingAngle(0)
-        assertEquals(0f, pitch.viewingAngleDegrees, 0f)
     }
 }

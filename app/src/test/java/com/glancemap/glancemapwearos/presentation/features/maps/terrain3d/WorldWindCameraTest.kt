@@ -1,5 +1,6 @@
 package com.glancemap.glancemapwearos.presentation.features.maps.terrain3d
 
+import com.glancemap.glancemapwearos.core.maps.DEFAULT_TERRAIN_3D_VIEWING_ANGLE
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -31,7 +32,8 @@ class WorldWindCameraTest {
 
     @Test
     fun `initial field of view maps the existing camera range`() {
-        assertEquals(2000.0, worldWindInitialRange(), 0.01)
+        assertEquals(4000.0, worldWindInitialRange(), 0.01)
+        assertEquals(45, DEFAULT_TERRAIN_3D_VIEWING_ANGLE)
         assertEquals(60.0, worldWindViewingAngle(60), 0.01)
         assertEquals(45.0, worldWindViewingAngle(45), 0.01)
         assertEquals(70.0, worldWindViewingAngle(70), 0.01)

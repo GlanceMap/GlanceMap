@@ -40,7 +40,6 @@ import androidx.compose.material.icons.filled.LocationDisabled
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Navigation
 import androidx.compose.material.icons.filled.Route
-import androidx.compose.material.icons.filled._3dRotation
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -130,8 +129,11 @@ internal fun BoxScope.SlopeOverlayStatusIndicator(
     sideButtonSize: Dp,
     modifier: Modifier = Modifier,
     terrain3d: Boolean = false,
+    renderError: Boolean = false,
     onClick: (() -> Unit)? = null,
 ) {
+    val terrainError = terrain3d && renderError
+    val terrainWaitingForProgress = terrain3d && processing && progressPercent == null
     val slopeIndicatorButtonSize =
         when (screenSize) {
             WearScreenSize.LARGE -> 28.dp
@@ -165,14 +167,14 @@ internal fun BoxScope.SlopeOverlayStatusIndicator(
         exit = fadeOut(tween(180)),
         modifier = slopeIndicatorModifier,
     ) {
-        val progress = if (terrain3d && !processing) 100 else (progressPercent ?: 0).coerceIn(0, 100)
+        val progress = (progressPercent ?: 0).coerceIn(0, 100)
         val sweepDeg by animateFloatAsState(
             targetValue = 360f * (progress / 100f),
             animationSpec = tween(durationMillis = 220),
             label = "slope_render_progress_sweep",
         )
         val startAngle =
-            if (terrain3d && processing) {
+            if (terrainWaitingForProgress && !terrainError) {
                 val transition = rememberInfiniteTransition(label = "terrain_loading")
                 val angle by transition.animateFloat(
                     initialValue = -90f,
@@ -202,41 +204,48 @@ internal fun BoxScope.SlopeOverlayStatusIndicator(
                         .background(Color.Black.copy(alpha = 0.7f), CircleShape),
                 contentAlignment = Alignment.Center,
             ) {
-                Canvas(
-                    modifier =
-                        Modifier
-                            .fillMaxSize()
-                            .padding(1.dp),
-                ) {
-                    val ringStroke = (size.minDimension * 0.12f).coerceAtLeast(1.5f)
-                    drawArc(
-                        color = Color.White.copy(alpha = 0.25f),
-                        startAngle = -90f,
-                        sweepAngle = 360f,
-                        useCenter = false,
-                        style = Stroke(width = ringStroke),
-                    )
-                    drawArc(
-                        color = Color(0xFFFFB300),
-                        startAngle = startAngle,
-                        sweepAngle = if (terrain3d && processing) 100f else sweepDeg,
-                        useCenter = false,
-                        style = Stroke(width = ringStroke, cap = StrokeCap.Round),
-                    )
+                if (processing || !terrain3d || terrainError) {
+                    Canvas(
+                        modifier =
+                            Modifier
+                                .fillMaxSize()
+                                .padding(1.dp),
+                    ) {
+                        val ringStroke = (size.minDimension * 0.12f).coerceAtLeast(1.5f)
+                        drawArc(
+                            color = Color.White.copy(alpha = 0.25f),
+                            startAngle = -90f,
+                            sweepAngle = 360f,
+                            useCenter = false,
+                            style = Stroke(width = ringStroke),
+                        )
+                        drawArc(
+                            color = if (terrainError) Color(0xFFE53935) else Color(0xFFFFB300),
+                            startAngle = startAngle,
+                            sweepAngle =
+                                when {
+                                    terrainError -> 360f
+                                    terrainWaitingForProgress -> 100f
+                                    else -> sweepDeg
+                                },
+                            useCenter = false,
+                            style = Stroke(width = ringStroke, cap = StrokeCap.Round),
+                        )
+                    }
                 }
                 if (terrain3d) {
                     val description =
                         stringResource(
-                            if (processing) {
-                                R.string.navigate_3d_terrain_loading
-                            } else {
-                                R.string.map_terrain_3d_experimental
+                            when {
+                                terrainError -> R.string.navigate_3d_terrain_partial_error
+                                processing -> R.string.navigate_3d_terrain_loading
+                                else -> R.string.map_terrain_3d_experimental
                             },
                         )
                     Text(
-                        text = "3D",
+                        text = if (terrainError) "3D!" else "3D",
                         modifier = Modifier.semantics { contentDescription = description },
-                        color = Color(0xFFFFB300),
+                        color = if (terrainError) Color(0xFFE53935) else Color(0xFFFFB300),
                         fontSize = 9.sp,
                         fontWeight = FontWeight.Bold,
                     )
@@ -774,25 +783,14 @@ private enum class NavButtonTrustState {
     UNAVAILABLE,
 }
 
-internal enum class TerrainModeAction {
+internal enum class NavModeAction {
     RECENTER,
     TOGGLE_ORIENTATION,
-    ENTER_ORBIT,
-    EXIT_ORBIT,
 }
 
-internal fun terrainModeButtonAction(
+internal fun navModeButtonAction(
     navMode: NavMode,
-    orbit: Boolean,
-    offline: Boolean,
-): TerrainModeAction =
-    when {
-        orbit -> TerrainModeAction.EXIT_ORBIT
-        offline -> TerrainModeAction.ENTER_ORBIT
-        navMode == NavMode.PANNING -> TerrainModeAction.RECENTER
-        navMode == NavMode.NORTH_UP_FOLLOW -> TerrainModeAction.ENTER_ORBIT
-        else -> TerrainModeAction.TOGGLE_ORIENTATION
-    }
+): NavModeAction = if (navMode == NavMode.PANNING) NavModeAction.RECENTER else NavModeAction.TOGGLE_ORIENTATION
 
 @Suppress("CyclomaticComplexMethod", "FunctionName", "FunctionNaming", "LongMethod", "LongParameterList")
 @Composable
@@ -816,14 +814,11 @@ internal fun BoxScope.NavModeButtonOverlay(
     onToggleOrientation: () -> Unit,
     navigationMarkerAnchorMode: String,
     isScreenInteractive: Boolean,
-    terrainOrbitMode: Boolean? = null,
-    onTerrainOrbitChange: (Boolean) -> Unit = {},
-    onTerrainRecenter: (LatLong) -> Unit = {},
+    onTerrainRecenter: ((LatLong) -> Unit)? = null,
 ) {
     if (!visible) return
     val navIcon =
         when {
-            terrainOrbitMode == true -> Icons.Default._3dRotation
             isOfflineMode -> Icons.Default.LocationDisabled
             navMode == NavMode.PANNING -> Icons.Default.MyLocation
             navMode == NavMode.COMPASS_FOLLOW -> Icons.Default.Explore
@@ -831,7 +826,6 @@ internal fun BoxScope.NavModeButtonOverlay(
         }
     val navTint =
         when {
-            terrainOrbitMode == true -> MaterialTheme.colorScheme.primary
             isOfflineMode -> Color(0xFFE53935)
             navMode != NavMode.PANNING -> MaterialTheme.colorScheme.primary
             else -> Color.White
@@ -908,7 +902,7 @@ internal fun BoxScope.NavModeButtonOverlay(
                 .combinedClickable(
                     interactionSource = null,
                     indication = null,
-                    enabled = !isOfflineMode || terrainOrbitMode != null,
+                    enabled = !isOfflineMode,
                     role = Role.Button,
                     onLongClickLabel = toggleAutoRecenterLabel,
                     hapticFeedbackEnabled = false,
@@ -921,15 +915,9 @@ internal fun BoxScope.NavModeButtonOverlay(
                     },
                     onClick = {
                         triggerHaptic()
-                        val action = terrainOrbitMode?.let { terrainModeButtonAction(navMode, it, isOfflineMode) }
-                        if (action == TerrainModeAction.ENTER_ORBIT) {
-                            onTerrainOrbitChange(true)
-                        } else if (action == TerrainModeAction.EXIT_ORBIT) {
-                            onTerrainOrbitChange(false)
-                            if (!isOfflineMode) onToggleOrientation()
-                        } else if (navMode == NavMode.PANNING) {
+                        if (navModeButtonAction(navMode) == NavModeAction.RECENTER) {
                             lastKnownLocation?.let {
-                                if (terrainOrbitMode != null) {
+                                if (onTerrainRecenter != null) {
                                     onTerrainRecenter(it)
                                 } else {
                                     mapView.setCenterForNavigationMarker(it, navigationMarkerAnchorMode)
@@ -979,7 +967,7 @@ internal fun BoxScope.NavModeButtonOverlay(
                         ),
                 contentAlignment = Alignment.Center,
             ) {
-                if (navMode == NavMode.NORTH_UP_FOLLOW && terrainOrbitMode != true) {
+                if (navMode == NavMode.NORTH_UP_FOLLOW) {
                     NorthUpLockedModeIcon(
                         iconSize = navButtonIconSize,
                         tint = navTint,
@@ -987,14 +975,7 @@ internal fun BoxScope.NavModeButtonOverlay(
                 } else {
                     Icon(
                         imageVector = navIcon,
-                        contentDescription =
-                            stringResource(
-                                if (terrainOrbitMode == true) {
-                                    R.string.map_3d_orbit_mode
-                                } else {
-                                    R.string.navigate_nav_mode
-                                },
-                            ),
+                        contentDescription = stringResource(R.string.navigate_nav_mode),
                         modifier = Modifier.size(navButtonIconSize),
                         tint = navTint,
                     )

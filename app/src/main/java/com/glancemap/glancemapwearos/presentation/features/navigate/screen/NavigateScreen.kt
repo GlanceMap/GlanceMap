@@ -188,8 +188,6 @@ fun NavigateScreen(
         // ---- VMS ----
         val selectedMapPath by mapViewModel.selectedMapPath.collectAsState()
         val terrain3dEnabled by settingsViewModel.terrain3dEnabled.collectAsState()
-        val terrain3dRenderer by settingsViewModel.terrain3dRenderer.collectAsState()
-        val terrain3dViewingAngle by settingsViewModel.terrain3dViewingAngle.collectAsState()
         val installedMapBounds by mapViewModel.installedMapBounds.collectAsState()
         val missingMapPromptDisabled by mapViewModel.missingMapPromptDisabled.collectAsState()
         val missingMapPromptDismissed by mapViewModel.missingMapPromptDismissed.collectAsState()
@@ -1079,9 +1077,6 @@ fun NavigateScreen(
             focusRequester = focusRequester,
             mapHolder = mapHolder,
             terrain3dEnabled = terrain3dEnabled,
-            terrain3dRenderer = terrain3dRenderer,
-            onTerrain3dDemUnavailable = { settingsViewModel.setTerrain3dEnabled(false) },
-            terrain3dViewingAngle = terrain3dViewingAngle,
             terrainMapPath = selectedMapPath,
             terrainInteractive = isScreenResumed && screenState.isInteractive,
             onMapViewReadyForRendering = { mapViewModel.onMapViewReadyForRendering() },

@@ -1170,6 +1170,7 @@
     <string name="navigate_saving_poi">"Saving POI..."</string>
     <string name="navigate_slope_rendering_in_progress">"Slope rendering in progress"</string>
     <string name="navigate_3d_terrain_loading">Loading 3D terrain</string>
+    <string name="navigate_3d_terrain_partial_error">Some 3D map tiles could not be loaded</string>
     <string name="maps_3d_terrain_dem_required">3D terrain needs elevation data for this map. Open Maps and tap DEM to download it.</string>
     <string name="maps_terrain_features_disabled_no_dem">No elevation data is available for this map. 3D terrain, hill shading and slope overlay were turned off. Tap DEM to download it.</string>
     <string name="navigate_start_from_nearest_point">"Start from nearest point?"</string>
@@ -2010,10 +2011,5 @@
     <string name="settings_back_closes_app">"Back closes app"</string>
     <string name="settings_close_directly_from_navigate">"Close directly from Navigate"</string>
     <string name="map_terrain_3d_experimental">3D terrain (experimental)</string>
-    <string name="map_3d_renderer">3D renderer</string>
-    <string name="map_3d_renderer_glancemap">GlanceMap</string>
-    <string name="map_3d_renderer_worldwind">WorldWind (experimental)</string>
     <string name="map_3d_viewing_angle">3D viewing angle</string>
-    <string name="map_3d_orbit_mode">3D rotation mode</string>
-    <string name="map_3d_viewing_angle_value">%1$d°</string>
 </resources>

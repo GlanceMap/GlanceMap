@@ -2,13 +2,14 @@ package com.glancemap.glancemapwearos.presentation.features.maps.terrain3d
 
 import android.content.Context
 import android.os.SystemClock
-import android.view.GestureDetector
 import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
+import android.view.ViewConfiguration
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableDoubleStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import com.glancemap.glancemapwearos.core.maps.DEFAULT_TERRAIN_3D_VIEWING_ANGLE
 import com.glancemap.glancemapwearos.core.maps.sanitizeTerrain3dViewingAngle
 import earth.worldwind.BasicWorldWindowController
 import earth.worldwind.WorldWindow
@@ -18,10 +19,12 @@ import earth.worldwind.geom.Angle.Companion.degrees
 import earth.worldwind.geom.LookAt
 import earth.worldwind.gesture.GestureRecognizer
 import earth.worldwind.gesture.GestureState
+import earth.worldwind.gesture.PanRecognizer
 import earth.worldwind.layer.BackgroundLayer
 import earth.worldwind.layer.RenderableLayer
 import earth.worldwind.render.RenderResourceCache
 import earth.worldwind.render.Renderable
+import kotlinx.coroutines.cancelChildren
 import org.mapsforge.core.model.LatLong
 import java.util.concurrent.atomic.AtomicLong
 import javax.microedition.khronos.egl.EGLConfig
@@ -100,34 +103,36 @@ internal class WatchWorldWindWindow(
     var cameraRange by mutableDoubleStateOf(worldWindInitialRange())
         private set
     private var externalBearing: Float? = null
-    private val longPressDetector =
-        GestureDetector(
-            context,
-            object : GestureDetector.SimpleOnGestureListener() {
-                override fun onDown(event: MotionEvent): Boolean = true
-
-                override fun onLongPress(event: MotionEvent) {
-                    if (orbitMode) return
-                    longPressOrbit = true
-                    lastX = event.x
-                    lastY = event.y
-                    orbitCount.incrementAndGet()
-                    performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
-                    val cancel = MotionEvent.obtain(event)
-                    cancel.action = MotionEvent.ACTION_CANCEL
-                    superTouch(cancel)
-                    cancel.recycle()
-                }
-            },
-        )
-    var orbitMode = false
-        set(value) {
-            if (field && !value) externalBearing = null
-            field = value
+    private val panInterpretDistance = ViewConfiguration.get(context).scaledTouchSlop * 2f
+    private val holdGesture = WorldWindHoldGesture(panInterpretDistance)
+    val holdMetrics: WorldWindHoldMetrics get() = holdGesture.metrics
+    private var holdDownTime = 0L
+    private var panStartX = 0f
+    private var panStartY = 0f
+    private var panStartValid = false
+    private val startOrbit =
+        Runnable {
+            if (holdGesture.activate(SystemClock.uptimeMillis() - holdDownTime)) {
+                longPressOrbit = true
+                lastX = holdGesture.lastX
+                lastY = holdGesture.lastY
+                orbitCount.incrementAndGet()
+                performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                val cancel =
+                    MotionEvent.obtain(
+                        holdDownTime,
+                        SystemClock.uptimeMillis(),
+                        MotionEvent.ACTION_CANCEL,
+                        lastX,
+                        lastY,
+                        0,
+                    )
+                superTouch(cancel)
+                cancel.recycle()
+            }
         }
     var pinchEnabled = true
-    private var configuredViewingAngle: Int? = null
-    private var preferredTilt = 60.0
+    private var preferredTilt = DEFAULT_TERRAIN_3D_VIEWING_ANGLE.toDouble()
     private var overlayLayer: RenderableLayer? = null
     private var overlayValue: TerrainGpxOverlay? = null
     private var locationValue: LatLong? = null
@@ -136,11 +141,17 @@ internal class WatchWorldWindWindow(
     private var lastX = 0f
     private var lastY = 0f
     private var anchoredElevation = 0.0
+    private var screenPaused = false
 
     init {
+        preserveEGLContextOnPause = true
         engine.camera.fieldOfView = TERRAIN_FIELD_OF_VIEW_DEGREES.toDouble().degrees
         controller =
             object : BasicWorldWindowController(this) {
+                init {
+                    (panRecognizer as PanRecognizer).interpretDistance = panInterpretDistance
+                }
+
                 override fun applyChanges() {
                     placeCamera(lookAt)
                     requestRedraw()
@@ -150,11 +161,15 @@ internal class WatchWorldWindWindow(
                 }
 
                 override fun handlePan(recognizer: GestureRecognizer) {
-                    if (recognizer.state == GestureState.BEGAN) {
+                    val began = recognizer.state == GestureState.BEGAN
+                    if (began) {
                         panCount.incrementAndGet()
                         onPanStarted()
                     }
                     super.handlePan(recognizer)
+                    if (began && panStartValid) {
+                        applyPanDelta3D((recognizer.x - panStartX).toDouble(), (recognizer.y - panStartY).toDouble())
+                    }
                 }
 
                 override fun handlePinch(recognizer: GestureRecognizer) {
@@ -171,7 +186,6 @@ internal class WatchWorldWindWindow(
         angle: Int,
         bearing: Float,
     ) {
-        configuredViewingAngle = angle
         preferredTilt = worldWindViewingAngle(angle)
         lookAt.set(
             center.latitude.degrees,
@@ -207,15 +221,6 @@ internal class WatchWorldWindWindow(
         requestRedraw()
     }
 
-    fun setViewingAngle(angle: Int) {
-        if (configuredViewingAngle == angle) return
-        configuredViewingAngle = angle
-        val next = worldWindViewingAngle(angle)
-        if (preferredTilt == next) return
-        preferredTilt = next
-        applyLookAt()
-    }
-
     fun setPresetViewingAngle(angle: Int) {
         if (!isTerrainAnglePreset(angle) || preferredTilt == angle.toDouble()) return
         preferredTilt = angle.toDouble()
@@ -223,7 +228,7 @@ internal class WatchWorldWindWindow(
     }
 
     fun setBearing(degrees: Float) {
-        if (!worldWindShouldApplyBearing(degrees, externalBearing, orbitMode || longPressOrbit)) return
+        if (!worldWindShouldApplyBearing(degrees, externalBearing, longPressOrbit)) return
         externalBearing = degrees
         if (lookAt.heading.inDegrees == degrees.toDouble()) return
         lookAt.heading = degrees.toDouble().degrees
@@ -301,16 +306,53 @@ internal class WatchWorldWindWindow(
 
     private fun superTouch(event: MotionEvent): Boolean = super.onTouchEvent(event)
 
+    fun setScreenInteractive(interactive: Boolean): Boolean {
+        if (screenPaused == !interactive) return false
+        screenPaused = !interactive
+        if (interactive) {
+            onResume()
+            requestRedraw()
+        } else {
+            holdGesture.cancel(WorldWindHoldCancelReason.INTERRUPTED)
+            removeCallbacks(startOrbit)
+            longPressOrbit = false
+            panStartValid = false
+            engine.renderResourceCache.mainScope.coroutineContext
+                .cancelChildren()
+            onPause()
+        }
+        return true
+    }
+
     override fun onTouchEvent(event: MotionEvent): Boolean {
         lastInteractionMs.set(SystemClock.elapsedRealtime())
-        if (!orbitMode && !longPressOrbit) longPressDetector.onTouchEvent(event)
-        if (!orbitMode && !longPressOrbit) return super.onTouchEvent(event)
-        when (event.actionMasked) {
-            MotionEvent.ACTION_DOWN -> {
-                orbitCount.incrementAndGet()
-                lastX = event.x
-                lastY = event.y
+        if (!longPressOrbit) {
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    removeCallbacks(startOrbit)
+                    holdDownTime = event.downTime
+                    panStartX = event.x
+                    panStartY = event.y
+                    panStartValid = true
+                    holdGesture.begin(event.x, event.y)
+                    postDelayed(startOrbit, ViewConfiguration.getLongPressTimeout().toLong())
+                }
+                MotionEvent.ACTION_MOVE -> if (!holdGesture.move(event.x, event.y)) removeCallbacks(startOrbit)
+                MotionEvent.ACTION_POINTER_DOWN, MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    panStartValid = false
+                    val reason =
+                        when (event.actionMasked) {
+                            MotionEvent.ACTION_POINTER_DOWN -> WorldWindHoldCancelReason.MULTITOUCH
+                            MotionEvent.ACTION_UP -> WorldWindHoldCancelReason.RELEASE
+                            else -> WorldWindHoldCancelReason.INTERRUPTED
+                        }
+                    holdGesture.cancel(reason)
+                    removeCallbacks(startOrbit)
+                }
             }
+            return super.onTouchEvent(event)
+        }
+        when (event.actionMasked) {
             MotionEvent.ACTION_MOVE -> {
                 val heading = lookAt.heading.inDegrees + (event.x - lastX) * 0.5
                 preferredTilt = (preferredTilt - (event.y - lastY) * 0.1).coerceIn(0.0, 85.0)
@@ -324,5 +366,11 @@ internal class WatchWorldWindWindow(
             longPressOrbit = false
         }
         return true
+    }
+
+    override fun onDetachedFromWindow() {
+        holdGesture.cancel(WorldWindHoldCancelReason.INTERRUPTED)
+        removeCallbacks(startOrbit)
+        super.onDetachedFromWindow()
     }
 }

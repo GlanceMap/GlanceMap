@@ -6,19 +6,31 @@ import android.util.Log
 import android.view.ViewGroup
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.platform.LocalContext
 import com.glancemap.glancemapwearos.core.maps.Dem3CoverageUtils
 import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
 import com.glancemap.glancemapwearos.presentation.features.maps.MapHolder
 import com.glancemap.glancemapwearos.presentation.features.maps.buildMapRendererThemeOrNull
 import com.glancemap.glancemapwearos.presentation.features.maps.resolveDemFile
+import earth.worldwind.layer.atmosphere.AtmosphereLayer
+import earth.worldwind.render.RenderContext
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.mapsforge.core.model.LatLong
 import java.util.UUID
@@ -27,9 +39,12 @@ internal class WatchWorldWindSession {
     var view by mutableStateOf<WatchWorldWindWindow?>(null)
     var center by mutableStateOf<LatLong?>(null)
     var initializing by mutableStateOf(false)
-    var running by mutableStateOf(false)
+    var rendering by mutableStateOf(false)
+    var renderError by mutableStateOf(false)
+    var renderProgress by mutableStateOf<Int?>(null)
     var failed by mutableStateOf(false)
     var onUserPanStarted: () -> Unit = {}
+    var onScreenInteractiveChanged: (Boolean) -> Unit = {}
 }
 
 @Suppress("LongParameterList")
@@ -45,12 +60,21 @@ internal fun rememberWatchWorldWindSession(
     bearing: Float,
 ): WatchWorldWindSession {
     val context = LocalContext.current
-    LaunchedEffect(enabled, holder, mapPath, appearanceInProgress, interactive) {
-        if (!enabled || appearanceInProgress || !interactive) return@LaunchedEffect
+    val currentInteractive = rememberUpdatedState(interactive)
+    val currentBearing = rememberUpdatedState(bearing)
+    LaunchedEffect(enabled, holder, mapPath, appearanceInProgress) {
+        if (!enabled || appearanceInProgress) return@LaunchedEffect
         if (holder == null || mapPath.isNullOrEmpty()) {
             return@LaunchedEffect
         }
-        runWatchWorldWindSession(session, holder, mapPath, context, angle, bearing)
+        runWorldWindWithStandby(snapshotFlow { currentInteractive.value }, WORLDWIND_STANDBY_MILLIS) {
+            runWatchWorldWindSession(session, holder, mapPath, context, angle, currentBearing.value, currentInteractive)
+        }
+    }
+    LaunchedEffect(session.view, interactive) {
+        session.view?.let { view ->
+            if (view.setScreenInteractive(interactive)) session.onScreenInteractiveChanged(interactive)
+        }
     }
     return session
 }
@@ -63,16 +87,20 @@ private suspend fun runWatchWorldWindSession(
     context: Context,
     angle: Int,
     bearing: Float,
+    interactive: State<Boolean>,
 ) {
     val sessionId = UUID.randomUUID().toString()
     val started = SystemClock.elapsedRealtime()
     var imagery: WorldWindMapsforge? = null
     var elevation: WorldWindElevation? = null
     var window: WatchWorldWindWindow? = null
+    var progressJob: Job? = null
     var demContext = "dem_actual=unavailable axis=unavailable"
     session.failed = false
-    session.running = true
     session.initializing = true
+    session.rendering = true
+    session.renderError = false
+    session.renderProgress = null
     val startMessage = "event=session_start renderer=worldwind session_id=$sessionId"
     Log.i(TERRAIN_LOG_TAG, startMessage)
     DebugTelemetry.log(TERRAIN_LOG_TAG, startMessage)
@@ -113,6 +141,7 @@ private suspend fun runWatchWorldWindSession(
                 }
             demContext = "dem_actual=${actual?.id ?: "unavailable"} axis=${sample.axisLen}"
         }
+        snapshotFlow { interactive.value }.first { it }
         val currentWindow = WatchWorldWindWindow(context, { session.center = it }, { session.onUserPanStarted() })
         window = currentWindow
         currentWindow.engine.layers.clearLayers()
@@ -130,18 +159,36 @@ private suspend fun runWatchWorldWindSession(
             currentWindow.engine.layers.addLayer(WorldWindReliefLayer())
         }
         currentWindow.engine.layers.addLayer(checkNotNull(imagery).layer)
+        currentWindow.engine.layers.addLayer(
+            object : AtmosphereLayer() {
+                override fun renderGround(rc: RenderContext) = Unit
+            },
+        )
         currentWindow.engine.globe.elevationModel
             .addCoverage(checkNotNull(elevation).coverage)
         currentWindow.initialize(center, angle, bearing)
         session.center = center
+        val imageryProvider = checkNotNull(imagery)
+        val elevationProvider = checkNotNull(elevation)
+        session.onScreenInteractiveChanged = { awake ->
+            if (!awake) imageryProvider.visibleTiles.set(null)
+            DebugTelemetry.log(
+                TERRAIN_LOG_TAG,
+                "event=standby renderer=worldwind session_id=$sessionId active=${!awake}",
+            )
+        }
         session.view = currentWindow
         val elapsed = SystemClock.elapsedRealtime() - started
         val viewMessage = "event=view_created renderer=worldwind session_id=$sessionId elapsed_ms=$elapsed"
         Log.i(TERRAIN_LOG_TAG, viewMessage)
         DebugTelemetry.log(TERRAIN_LOG_TAG, viewMessage)
-        val imageryProvider = checkNotNull(imagery)
-        val elevationProvider = checkNotNull(elevation)
-        waitForWorldWindReady(imageryProvider, currentWindow)
+        progressJob =
+            CoroutineScope(currentCoroutineContext()).launch {
+                snapshotFlow { interactive.value }.collectLatest { awake ->
+                    if (awake) observeWorldWindRenderProgress(session, imageryProvider, elevationProvider, sessionId)
+                }
+            }
+        waitForWorldWindReady(imageryProvider, currentWindow, interactive)
         session.initializing = false
         val surfaceReadyMs =
             currentWindow.surfaceReadyAt
@@ -194,11 +241,14 @@ private suspend fun runWatchWorldWindSession(
                     "dem_failed_grids=${elevationProvider.failedGridCount.get()} " +
                     "dem_cache_hits=${elevationProvider.cacheStats.hits.get()} " +
                     "dem_cache_misses=${elevationProvider.cacheStats.misses.get()} " +
+                    "dem_cache_retained_bytes=${elevationProvider.cacheStats.retainedBytes.get()} " +
+                    "dem_cache_peak_retained_bytes=${elevationProvider.cacheStats.peakRetainedBytes.get()} " +
                     "dem_hgt_loads=${elevationProvider.cacheStats.loads.get()} " +
                     "dem_hgt_decoded_bytes=${elevationProvider.cacheStats.decodedBytes.get()} " +
                     "dem_hgt_load_ms=${elevationProvider.cacheStats.loadNanos.get() / 1_000_000} " +
                     "pan=${currentWindow.panCount.get()} zoom=${currentWindow.zoomCount.get()} " +
                     "orbit=${currentWindow.orbitCount.get()} recenter=${currentWindow.recenterCount.get()} " +
+                    "${currentWindow.holdMetrics.logFields()} " +
                     "track_rebuilds=${currentWindow.trackRebuildCount.get()} " +
                     "marker_updates=${currentWindow.markerUpdateCount.get()} " +
                     "internal_gpu_bytes=unavailable",
@@ -221,10 +271,15 @@ private suspend fun runWatchWorldWindSession(
         Log.e(TERRAIN_LOG_TAG, failure, error)
         DebugTelemetry.log(TERRAIN_LOG_TAG, failure)
     } finally {
+        progressJob?.cancel()
         session.initializing = false
+        session.rendering = false
+        session.renderError = false
+        session.renderProgress = null
+        session.onScreenInteractiveChanged = {}
         session.view = null
         window?.let { view ->
-            view.onPause()
+            view.setScreenInteractive(false)
             (view.parent as? ViewGroup)?.removeView(view)
         }
         finishWorldWindResources(
@@ -233,12 +288,41 @@ private suspend fun runWatchWorldWindSession(
                 imagery?.close()
             },
             onFinished = {
-                session.running = false
                 val endMessage = worldWindEndMessage(sessionId, started, demContext, window, imagery, elevation)
                 Log.i(TERRAIN_LOG_TAG, endMessage)
                 DebugTelemetry.log(TERRAIN_LOG_TAG, endMessage)
             },
         )
+    }
+}
+
+private suspend fun observeWorldWindRenderProgress(
+    session: WatchWorldWindSession,
+    imagery: WorldWindMapsforge,
+    elevation: WorldWindElevation,
+    sessionId: String,
+) {
+    val progress = WorldWindRenderProgress()
+    while (currentCoroutineContext().isActive) {
+        val visible = imagery.visibleTiles.get()
+        val pendingElevation = elevation.pendingGrids.get()
+        val pendingImagery = imagery.outstandingRequests()
+        val percent = progress.update(visible, pendingElevation, pendingImagery, SystemClock.elapsedRealtime())
+        val renderError = (visible?.failed ?: 0) > 0
+        val rendering = !renderError && percent != 100
+        if (session.rendering != rendering || session.renderError != renderError) {
+            DebugTelemetry.log(
+                TERRAIN_LOG_TAG,
+                "event=render_activity renderer=worldwind session_id=$sessionId " +
+                    "active=$rendering visible_ready=${visible?.ready ?: 0} " +
+                    "visible_total=${visible?.total ?: 0} visible_failed=${visible?.failed ?: 0} " +
+                    "imagery_pending=$pendingImagery elevation_pending=$pendingElevation",
+            )
+        }
+        session.renderProgress = percent
+        session.renderError = renderError
+        session.rendering = rendering
+        delay(250)
     }
 }
 
@@ -269,6 +353,7 @@ private fun worldWindEndMessage(
         "idle_draws=${window?.idleDraws?.get() ?: 0} redraws=${window?.redrawRequests?.get() ?: 0} " +
         "pan=${window?.panCount?.get() ?: 0} zoom=${window?.zoomCount?.get() ?: 0} " +
         "orbit=${window?.orbitCount?.get() ?: 0} recenter=${window?.recenterCount?.get() ?: 0} " +
+        "${window?.holdMetrics?.logFields() ?: "hold_metrics=unavailable"} " +
         "track_rebuilds=${window?.trackRebuildCount?.get() ?: 0} " +
         "marker_updates=${window?.markerUpdateCount?.get() ?: 0} " +
         "requests=${imagery?.tileRequests?.get() ?: 0} renders=${imagery?.tileRenders?.get() ?: 0} " +
@@ -281,6 +366,8 @@ private fun worldWindEndMessage(
         "dem_failed_grids=${elevation?.failedGridCount?.get() ?: 0} " +
         "dem_cache_hits=${elevation?.cacheStats?.hits?.get() ?: 0} " +
         "dem_cache_misses=${elevation?.cacheStats?.misses?.get() ?: 0} " +
+        "dem_cache_retained_before_close_bytes=${elevation?.cacheRetainedBeforeClose?.get() ?: "unavailable"} " +
+        "dem_cache_peak_retained_bytes=${elevation?.cacheStats?.peakRetainedBytes?.get() ?: "unavailable"} " +
         "dem_hgt_loads=${elevation?.cacheStats?.loads?.get() ?: 0} " +
         "dem_hgt_decoded_bytes=${elevation?.cacheStats?.decodedBytes?.get() ?: 0} " +
         "dem_hgt_load_ms=${(elevation?.cacheStats?.loadNanos?.get() ?: 0) / 1_000_000} " +
@@ -291,11 +378,13 @@ private fun worldWindEndMessage(
 private suspend fun waitForWorldWindReady(
     imagery: WorldWindMapsforge,
     window: WatchWorldWindWindow,
+    interactive: State<Boolean>,
 ) {
     var waitedSeconds = 0
     while ((imagery.tileImagesAvailable.get() == 0L || window.draws.get() == 0L) && waitedSeconds < 30) {
+        snapshotFlow { interactive.value }.first { it }
         delay(1_000)
-        waitedSeconds++
+        if (interactive.value) waitedSeconds++
     }
     check(imagery.tileImagesAvailable.get() > 0L && window.draws.get() > 0L) {
         "WorldWind imagery or surface did not become ready"

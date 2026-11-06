@@ -3,14 +3,20 @@
 ## Experimental 3D terrain
 
 Use Full diagnostics for the same map, DEM, track, pitch and pan/zoom sequence
-on each watch run. `Terrain3D` records preparation and DEM times, texture time,
-extent, Java heap use, first-frame and window-swap times, and cancellations or
-refresh failures. Every 120 drawn frames it summarizes CPU time spent submitting
-draw calls; this is not GPU frame time or a smoothness measurement. Exported
-diagnostics include the existing memory snapshot. Use a frame trace to assess
-smoothness and a separate matched Battery Benchmark capture for battery and
-thermal comparisons. Capture modes and diagnostic overhead must match between
-runs. Physical-watch measurements are still required.
+on each watch run. `Terrain3D` reports session startup, tile and elevation work,
+draw and redraw counts, gesture counters, Java heap samples and failures. These
+counts are not GPU frame time or a smoothness measurement. Exported diagnostics
+include a memory snapshot. Use a frame trace to assess smoothness and a separate
+matched Battery Benchmark capture for battery and thermal comparisons. Capture
+modes and diagnostic overhead must match between runs. Physical-watch measurements
+are still required.
+
+`render_activity` records when the 3D loading ring starts or finishes, with the
+observed visible imagery, failed visible tiles and pending imagery/elevation
+counts. It does not prove that the GPU has presented a complete frame.
+`standby` records screen-off pause and wake within one session; compare session
+IDs, tile work, memory and wake timing on the physical watch. The session closes
+after 30 seconds off-screen, and Android can discard its EGL context earlier.
 
 Use these benchmarks before and after performance changes so improvements are measured on the same device and data set.
 
@@ -232,20 +238,26 @@ not around coroutine suspension. `reload_complete` also reports uptime for the w
 Real-watch cold/warm timings, correctness after import/selection changes, and battery impact still
 require device validation; unit tests do not establish those results.
 
-For the experimental 3D renderer comparison, keep map, theme, selected and
-actual DEM, ground footprint, angle, hill shading, GPX, brightness, connectivity
-and capture mode matched. Alternate GlanceMap and WorldWind order and collect at
-least three paired 15-minute settled idle captures, a repeated pan/zoom/orbit/
-recenter sequence, and a 10–15-minute exploration capture. Record redraw and
-draw counts, heap, battery and temperature where available. Renderer preference
-is included in Battery Benchmark Context; session interval telemetry identifies
-the active renderer; WorldWind session-end totals also cover sessions shorter than
-one minute. Compare `dem_skipped_grids` (intentional coarse-grid limit) with
+For WorldWind 3D benchmarking, record the map, theme, selected and actual DEM,
+angle, hill shading, GPX, brightness, connectivity and capture mode. Collect
+settled idle captures, a repeated pan/zoom/orbit/recenter sequence, and exploration
+captures. Record redraw and draw counts, heap, battery and temperature where
+available. Session interval telemetry identifies the renderer; WorldWind session-end
+totals also cover sessions shorter than one minute. Compare `dem_skipped_grids` (intentional coarse-grid limit) with
 `dem_failed_grids` (unexpected retrieval errors), heap and tile work; compare
-read/load and panning behavior near HGT boundaries when evaluating the four-tile
-WorldWind cache cap. `dem_cache_hits`, `dem_cache_misses`, `dem_hgt_loads`,
+read/load and panning behavior near HGT boundaries when evaluating WorldWind's
+decoded-tile cache budget. `dem_cache_hits`, `dem_cache_misses`, `dem_hgt_loads`,
 `dem_hgt_decoded_bytes` and `dem_hgt_load_ms` are cumulative session counters;
-decoded bytes are total work, not currently retained or peak memory.
+decoded bytes are total work. `dem_cache_retained_bytes` is the current decoded
+sample-array size after eviction, and `dem_cache_peak_retained_bytes` is its
+session peak. At session end `dem_cache_retained_before_close_bytes` records the
+size before teardown. These numbers exclude tiles being decoded, temporary arrays,
+other caches, native memory and GPU memory; they are not peak process memory.
+`hold_starts` counts single-finger downs on the 3D map, including ordinary taps and pans.
+`hold_activations`, `hold_cancel_movement`, `hold_cancel_release`,
+`hold_cancel_multitouch` and `hold_cancel_interrupted` count outcomes, not user
+intent. Activation delay totals and maxima are elapsed time from touch-down to
+the hold callback, not time to the first visible frame. They contain no coordinates.
 `track_rebuilds` and `marker_updates` distinguish GPX geometry rebuilds from
 location marker updates; compare them during a moving-GPS run. GPU memory
 and WorldWind internal work that is not exposed

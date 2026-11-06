@@ -23,19 +23,54 @@ import org.mapsforge.core.model.BoundingBox
 import java.nio.Buffer
 import java.nio.ShortBuffer
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.math.floor
 import kotlin.math.roundToInt
 
 private const val WORLDWIND_DEM_CACHE_ENTRIES = 4
+private const val WORLDWIND_DEM_CACHE_BYTES = 16L * 1024 * 1024
 
 private interface WorldWindGridFactory : ElevationSource.ElevationDataFactory {
     val skipped: AtomicBoolean
 }
 
-internal fun worldWindHeight(value: Double?): Short {
-    val valid = value?.takeIf { it.isFinite() }?.takeIf { it > Short.MIN_VALUE && it <= Short.MAX_VALUE }
-    return valid?.roundToInt()?.coerceIn(Short.MIN_VALUE + 1, Short.MAX_VALUE.toInt())?.toShort() ?: Short.MIN_VALUE
+internal fun worldWindHeight(value: Double?): Short = worldWindHeightPrimitive(value ?: Double.NaN)
+
+private fun worldWindHeightPrimitive(value: Double): Short =
+    if (value.isFinite() && value > Short.MIN_VALUE && value <= Short.MAX_VALUE) {
+        value.roundToInt().coerceIn(Short.MIN_VALUE + 1, Short.MAX_VALUE.toInt()).toShort()
+    } else {
+        Short.MIN_VALUE
+    }
+
+internal fun worldWindElevationGrid(
+    latitudes: DoubleArray,
+    longitudes: DoubleArray,
+    loadTile: (Double, Double) -> DemTileData?,
+    sampleTile: (DemTileData, Int, Int, Double, Double) -> Double,
+    checkCancelled: () -> Unit,
+): ShortArray {
+    val result = ShortArray(latitudes.size * longitudes.size) { Short.MIN_VALUE }
+    val rows = latitudes.indices.groupBy { floor(latitudes[it]).toInt() }
+    val columns = longitudes.indices.groupBy { floor(longitudes[it]).toInt() }
+    val tileCoordinates = rows.keys.flatMap { lat -> columns.keys.map { lon -> lat to lon } }
+    for ((tileLat, tileLon) in tileCoordinates) {
+        val tileRows = rows.getValue(tileLat)
+        val tileColumns = columns.getValue(tileLon)
+        checkCancelled()
+        val tile = loadTile(latitudes[tileRows.first()], longitudes[tileColumns.first()]) ?: continue
+        for (y in tileRows) {
+            checkCancelled()
+            for (x in tileColumns) {
+                result[y * longitudes.size + x] =
+                    worldWindHeightPrimitive(
+                        sampleTile(tile, tileLat, tileLon, latitudes[y], longitudes[x]),
+                    )
+            }
+        }
+    }
+    return result
 }
 
 /** Conservative three-arcsecond coverage also handles mixed Standard/Detailed fallback. */
@@ -45,12 +80,14 @@ internal class WorldWindElevation(
     bounds: BoundingBox,
 ) : AutoCloseable {
     val cacheStats = ReliefDemCacheStats()
+    val cacheRetainedBeforeClose = AtomicLong()
     private val repository =
         ReliefDemRepository(
             source.demSource.readFallbackOrder().map { Dem3CoverageUtils.demRootDir(context, it) },
             TERRAIN_LOG_TAG,
             cacheEntryLimit = WORLDWIND_DEM_CACHE_ENTRIES,
             cacheStats = cacheStats,
+            cacheByteLimit = WORLDWIND_DEM_CACHE_BYTES,
         )
     val gridCount = AtomicLong()
     val sampleCount = AtomicLong()
@@ -58,6 +95,7 @@ internal class WorldWindElevation(
     val skippedGridCount = AtomicLong()
     val failedGridCount = AtomicLong()
     val sampleMs = AtomicLong()
+    val pendingGrids = AtomicInteger()
     private val lock = Any()
     private var closed = false
     private val dispatcher = Dispatchers.IO.limitedParallelism(1)
@@ -86,75 +124,54 @@ internal class WorldWindElevation(
                             override val skipped = AtomicBoolean()
 
                             @Suppress("LongMethod")
-                            override suspend fun fetchElevationData(): Buffer? =
-                                withContext(dispatcher) {
-                                    val job = currentCoroutineContext()
-                                    val sector = tileMatrix.tileSector(row, column)
-                                    val width = tileMatrix.tileWidth
-                                    val height = tileMatrix.tileHeight
-                                    val latitudes =
-                                        DoubleArray(height) { y ->
-                                            sector.maxLatitude.inDegrees -
-                                                sector.deltaLatitude.inDegrees * (y + 0.5) / height
-                                        }
-                                    val longitudes =
-                                        DoubleArray(width) { x ->
-                                            sector.minLongitude.inDegrees +
-                                                sector.deltaLongitude.inDegrees * (x + 0.5) / width
-                                        }
-                                    val tiles =
-                                        latitudes.map { floor(it).toInt() }.distinct().size *
-                                            longitudes.map { floor(it).toInt() }.distinct().size
-                                    if (tiles > 4) {
-                                        skipped.set(true)
-                                        skippedGridCount.incrementAndGet()
-                                        return@withContext null
-                                    }
-                                    synchronized(lock) {
-                                        if (closed) return@synchronized null
-                                        val started = SystemClock.elapsedRealtime()
-                                        var voids = 0
-                                        val result = ShortArray(width * height)
-                                        val columns = IntArray(width) { x -> floor(longitudes[x]).toInt() }
-                                        val loadedTiles = mutableMapOf<Pair<Int, Int>, DemTileData?>()
-                                        for (y in 0 until height) {
-                                            job.ensureActive()
-                                            val tileLat = floor(latitudes[y]).toInt()
-                                            var tileLon = Int.MIN_VALUE
-                                            var tile: DemTileData? = null
-                                            for (x in 0 until width) {
-                                                if (columns[x] != tileLon) {
-                                                    tileLon = columns[x]
-                                                    val key = tileLat to tileLon
-                                                    if (!loadedTiles.containsKey(key)) {
-                                                        loadedTiles[key] =
-                                                            repository.loadDemTileFor(latitudes[y], longitudes[x])
-                                                    }
-                                                    tile = loadedTiles[key]
-                                                }
-                                                val sample =
-                                                    worldWindHeight(
-                                                        tile?.let {
-                                                            repository.elevationAtUsingTile(
-                                                                it,
-                                                                tileLat,
-                                                                tileLon,
-                                                                latitudes[y],
-                                                                longitudes[x],
-                                                            )
-                                                        },
-                                                    )
-                                                if (sample == Short.MIN_VALUE) voids++
-                                                result[y * width + x] = sample
+                            override suspend fun fetchElevationData(): Buffer? {
+                                pendingGrids.incrementAndGet()
+                                try {
+                                    return withContext(dispatcher) {
+                                        val job = currentCoroutineContext()
+                                        val sector = tileMatrix.tileSector(row, column)
+                                        val width = tileMatrix.tileWidth
+                                        val height = tileMatrix.tileHeight
+                                        val latitudes =
+                                            DoubleArray(height) { y ->
+                                                sector.maxLatitude.inDegrees -
+                                                    sector.deltaLatitude.inDegrees * (y + 0.5) / height
                                             }
+                                        val longitudes =
+                                            DoubleArray(width) { x ->
+                                                sector.minLongitude.inDegrees +
+                                                    sector.deltaLongitude.inDegrees * (x + 0.5) / width
+                                            }
+                                        val tiles =
+                                            latitudes.map { floor(it).toInt() }.distinct().size *
+                                                longitudes.map { floor(it).toInt() }.distinct().size
+                                        if (tiles > 4) {
+                                            skipped.set(true)
+                                            skippedGridCount.incrementAndGet()
+                                            return@withContext null
                                         }
-                                        gridCount.incrementAndGet()
-                                        sampleCount.addAndGet(result.size.toLong())
-                                        voidCount.addAndGet(voids.toLong())
-                                        sampleMs.addAndGet(SystemClock.elapsedRealtime() - started)
-                                        ShortBuffer.wrap(result)
+                                        synchronized(lock) {
+                                            if (closed) return@synchronized null
+                                            val started = SystemClock.elapsedRealtime()
+                                            val result =
+                                                worldWindElevationGrid(
+                                                    latitudes,
+                                                    longitudes,
+                                                    repository::loadDemTileFor,
+                                                    repository::elevationAtUsingTileOrNaN,
+                                                    job::ensureActive,
+                                                )
+                                            gridCount.incrementAndGet()
+                                            sampleCount.addAndGet(result.size.toLong())
+                                            voidCount.addAndGet(result.count { it == Short.MIN_VALUE }.toLong())
+                                            sampleMs.addAndGet(SystemClock.elapsedRealtime() - started)
+                                            ShortBuffer.wrap(result)
+                                        }
                                     }
+                                } finally {
+                                    pendingGrids.decrementAndGet()
                                 }
+                            }
                         },
                     )
             },
@@ -184,6 +201,7 @@ internal class WorldWindElevation(
 
     override fun close() {
         synchronized(lock) {
+            if (!closed) cacheRetainedBeforeClose.set(cacheStats.retainedBytes.get())
             closed = true
             coverage.clear()
             repository.clear()

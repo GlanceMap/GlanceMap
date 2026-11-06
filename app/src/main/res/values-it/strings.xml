@@ -1198,6 +1198,7 @@
     <string name="navigate_saving_poi">"Salvataggio POI..."</string>
     <string name="navigate_slope_rendering_in_progress">"Visualizzazione pendenze in corso"</string>
     <string name="navigate_3d_terrain_loading">Caricamento terreno 3D</string>
+    <string name="navigate_3d_terrain_partial_error">Impossibile caricare alcune porzioni della mappa 3D</string>
     <string name="maps_3d_terrain_dem_required">Il terreno 3D richiede dati altimetrici per questa mappa. Apri Mappe e tocca DEM per scaricarli.</string>
     <string name="maps_terrain_features_disabled_no_dem">Non ci sono dati altimetrici per questa mappa. Terreno 3D, ombreggiatura e pendenza sono stati disattivati. Tocca DEM per scaricarli.</string>
     <string name="navigate_start_from_nearest_point">"Partire dal punto più vicino?"</string>
@@ -2041,10 +2042,5 @@
     <string name="settings_back_closes_app">"Indietro chiude l’app"</string>
     <string name="settings_close_directly_from_navigate">"Chiudi direttamente da Naviga"</string>
     <string name="map_terrain_3d_experimental">Terreno 3D (sperimentale)</string>
-    <string name="map_3d_renderer">Motore 3D</string>
-    <string name="map_3d_renderer_glancemap">GlanceMap</string>
-    <string name="map_3d_renderer_worldwind">WorldWind (sperimentale)</string>
     <string name="map_3d_viewing_angle">Angolo di visuale 3D</string>
-    <string name="map_3d_orbit_mode">Modalità rotazione 3D</string>
-    <string name="map_3d_viewing_angle_value">%1$d°</string>
 </resources>

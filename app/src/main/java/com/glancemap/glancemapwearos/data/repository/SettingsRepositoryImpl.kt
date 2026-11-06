@@ -19,7 +19,6 @@ import com.glancemap.glancemapwearos.core.maps.DemSource
 import com.glancemap.glancemapwearos.core.maps.MAP_ZOOM_REPRESENTATIVE_LATITUDE_DEGREES
 import com.glancemap.glancemapwearos.core.maps.MAP_ZOOM_REPRESENTATIVE_VIEWPORT_WIDTH_PX
 import com.glancemap.glancemapwearos.core.maps.sanitizeMapZoomScaleMeters
-import com.glancemap.glancemapwearos.core.maps.sanitizeTerrain3dViewingAngle
 import com.glancemap.glancemapwearos.core.maps.scaleMetersForZoomLevel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
@@ -30,16 +29,8 @@ private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(na
 private const val RECORDING_DASHBOARD_SLOT_SEPARATOR = ","
 
 internal val TERRAIN_3D_ENABLED = booleanPreferencesKey("terrain_3d_enabled")
-internal val TERRAIN_3D_RENDERER = stringPreferencesKey("terrain_3d_renderer")
-internal val TERRAIN_3D_VIEWING_ANGLE = intPreferencesKey("terrain_3d_viewing_angle")
 
 internal fun Preferences.terrain3dEnabled(): Boolean = this[TERRAIN_3D_ENABLED] ?: false
-
-internal fun Preferences.terrain3dRenderer(): String = sanitizeTerrain3dRenderer(this[TERRAIN_3D_RENDERER])
-
-internal fun sanitizeTerrain3dRenderer(value: String?): String = if (value == "worldwind") "worldwind" else "custom"
-
-internal fun Preferences.terrain3dViewingAngle(): Int = sanitizeTerrain3dViewingAngle(this[TERRAIN_3D_VIEWING_ANGLE])
 
 internal fun Preferences.mapZoomScaleMeters(
     scaleKey: Preferences.Key<Int>,
@@ -1492,18 +1483,6 @@ class SettingsRepositoryImpl private constructor(
 
     override suspend fun setTerrain3dEnabled(enabled: Boolean) {
         context.dataStore.edit { it[TERRAIN_3D_ENABLED] = enabled }
-    }
-
-    override val terrain3dRenderer: Flow<String> = context.dataStore.data.map { it.terrain3dRenderer() }
-
-    override suspend fun setTerrain3dRenderer(renderer: String) {
-        context.dataStore.edit { it[TERRAIN_3D_RENDERER] = sanitizeTerrain3dRenderer(renderer) }
-    }
-
-    override val terrain3dViewingAngle: Flow<Int> = context.dataStore.data.map { it.terrain3dViewingAngle() }
-
-    override suspend fun setTerrain3dViewingAngle(angle: Int) {
-        context.dataStore.edit { it[TERRAIN_3D_VIEWING_ANGLE] = sanitizeTerrain3dViewingAngle(angle) }
     }
 
     override val liveElevation: Flow<Boolean> =

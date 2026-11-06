@@ -5,19 +5,12 @@ import org.junit.Test
 
 class TerrainModeButtonTest {
     @Test
-    fun modeButtonReusesRecenterCompassAndNorthBeforeOrbit() {
-        assertEquals(TerrainModeAction.RECENTER, terrainModeButtonAction(NavMode.PANNING, false, false))
+    fun modeButtonReusesRecenterCompassAndNorthWithoutOrbit() {
+        assertEquals(NavModeAction.RECENTER, navModeButtonAction(NavMode.PANNING))
         assertEquals(
-            TerrainModeAction.TOGGLE_ORIENTATION,
-            terrainModeButtonAction(NavMode.COMPASS_FOLLOW, false, false),
+            NavModeAction.TOGGLE_ORIENTATION,
+            navModeButtonAction(NavMode.COMPASS_FOLLOW),
         )
-        assertEquals(TerrainModeAction.ENTER_ORBIT, terrainModeButtonAction(NavMode.NORTH_UP_FOLLOW, false, false))
-        assertEquals(TerrainModeAction.EXIT_ORBIT, terrainModeButtonAction(NavMode.NORTH_UP_FOLLOW, true, false))
-    }
-
-    @Test
-    fun offlineModeCanEnterAndLeaveOrbitWithoutChangingNavigationMode() {
-        assertEquals(TerrainModeAction.ENTER_ORBIT, terrainModeButtonAction(NavMode.PANNING, false, true))
-        assertEquals(TerrainModeAction.EXIT_ORBIT, terrainModeButtonAction(NavMode.PANNING, true, true))
+        assertEquals(NavModeAction.TOGGLE_ORIENTATION, navModeButtonAction(NavMode.NORTH_UP_FOLLOW))
     }
 }

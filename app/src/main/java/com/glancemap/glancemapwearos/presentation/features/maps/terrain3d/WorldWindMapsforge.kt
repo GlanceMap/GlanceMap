@@ -1,12 +1,14 @@
 package com.glancemap.glancemapwearos.presentation.features.maps.terrain3d
 
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.os.SystemClock
 import com.glancemap.glancemapwearos.presentation.features.maps.TerrainSource
 import earth.worldwind.layer.mercator.MercatorTileFactory
 import earth.worldwind.layer.mercator.MercatorTiledImageLayer
+import earth.worldwind.layer.mercator.MercatorTiledSurfaceImage
+import earth.worldwind.render.RenderContext
 import earth.worldwind.render.image.ImageSource
+import earth.worldwind.render.image.ImageTile
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
@@ -24,10 +26,12 @@ import org.mapsforge.map.model.DisplayModel
 import org.mapsforge.map.reader.MapFile
 import org.mapsforge.map.rendertheme.XmlRenderTheme
 import org.mapsforge.map.rendertheme.rule.RenderThemeFuture
-import java.io.ByteArrayOutputStream
 import java.io.Closeable
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.AtomicReference
+
+private const val TILE_SIZE = 256
 
 /** Session-owned, single-worker Mapsforge tile provider; no disk cache. */
 internal class WorldWindMapsforge(
@@ -43,8 +47,9 @@ internal class WorldWindMapsforge(
     val tileFailures = AtomicLong()
     val tileCoalesced = AtomicLong()
     val tileCancelled = AtomicLong()
+    val visibleTiles = AtomicReference<WorldWindVisibleTiles?>(null)
     private val coalescer =
-        WorldWindCoalescer<WorldWindTileKey, ByteArray>(
+        WorldWindCoalescer<WorldWindTileKey, IntArray>(
             scope,
             { tileCoalesced.incrementAndGet() },
             { tileCancelled.incrementAndGet() },
@@ -80,31 +85,34 @@ internal class WorldWindMapsforge(
     val layer =
         MercatorTiledImageLayer(
             "Offline Mapsforge",
-            MercatorTiledImageLayer.buildTiledSurfaceImage(
-                object : MercatorTileFactory {
-                    override val contentType = "Offline Mapsforge"
+            WorldWindVisibleTileImage(
+                MercatorTiledImageLayer.buildTiledSurfaceImage(
+                    object : MercatorTileFactory {
+                        override val contentType = "Offline Mapsforge"
 
-                    override fun getImageSource(
-                        x: Int,
-                        y: Int,
-                        z: Int,
-                    ): ImageSource? {
-                        tileRequests.incrementAndGet()
-                        if (closed || !validTile(z, x, y)) return null
-                        val tile = worldWindTileBounds(z, x, y)
-                        val covered =
-                            tile.intersects(
-                                bounds.minLatitude,
-                                bounds.minLongitude,
-                                bounds.maxLatitude,
-                                bounds.maxLongitude,
-                            )
-                        val key = WorldWindTileKey(mapIdentity, themeIdentity, textScale, z, x, y, TILE_SIZE)
-                        return if (covered) imageFor(key) else null
-                    }
-                },
-                maxZoom = 20,
-                minZoom = 0,
+                        override fun getImageSource(
+                            x: Int,
+                            y: Int,
+                            z: Int,
+                        ): ImageSource? {
+                            tileRequests.incrementAndGet()
+                            if (closed || !validTile(z, x, y)) return null
+                            val tile = worldWindTileBounds(z, x, y)
+                            val covered =
+                                tile.intersects(
+                                    bounds.minLatitude,
+                                    bounds.minLongitude,
+                                    bounds.maxLatitude,
+                                    bounds.maxLongitude,
+                                )
+                            val key = WorldWindTileKey(mapIdentity, themeIdentity, textScale, z, x, y, TILE_SIZE)
+                            return if (covered) imageFor(key) else null
+                        }
+                    },
+                    maxZoom = 20,
+                    minZoom = 0,
+                ),
+                visibleTiles,
             ),
         )
 
@@ -122,14 +130,14 @@ internal class WorldWindMapsforge(
         ImageSource.fromImageFactory(
             object : ImageSource.ImageFactory {
                 override suspend fun createBitmap(): Bitmap? {
-                    val bytes = coalescer.get(key) { render(key) } ?: return null
+                    val pixels = coalescer.get(key) { render(key) } ?: return null
                     currentCoroutineContext().ensureActive()
-                    val decoded = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                    val decoded = worldWindBitmap(pixels)
                     return if (closed) {
-                        decoded?.recycle()
+                        decoded.recycle()
                         null
                     } else {
-                        if (decoded == null) tileFailures.incrementAndGet() else tileImagesAvailable.incrementAndGet()
+                        tileImagesAvailable.incrementAndGet()
                         decoded
                     }
                 }
@@ -137,7 +145,7 @@ internal class WorldWindMapsforge(
         )
 
     @Suppress("TooGenericExceptionCaught")
-    private fun render(key: WorldWindTileKey): ByteArray? =
+    private fun render(key: WorldWindTileKey): IntArray? =
         synchronized(lock) {
             if (closed) return null
             val tile = Tile(key.x, key.y, key.z.toByte(), key.resolution)
@@ -149,18 +157,19 @@ internal class WorldWindMapsforge(
                         tileFailures.incrementAndGet()
                         return null
                     }
-                val bytes =
+                val pixels =
                     try {
-                        ByteArrayOutputStream().use { output ->
-                            bitmap.compress(output)
-                            output.toByteArray()
+                        IntArray(key.resolution * key.resolution).also { pixels ->
+                            AndroidGraphicFactory
+                                .getBitmap(bitmap)
+                                .getPixels(pixels, 0, key.resolution, 0, 0, key.resolution, key.resolution)
                         }
                     } finally {
                         bitmap.decrementRefCount()
                     }
                 tileRenders.incrementAndGet()
                 tileRenderMs.addAndGet(SystemClock.elapsedRealtime() - started)
-                bytes
+                pixels
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
@@ -183,8 +192,50 @@ internal class WorldWindMapsforge(
         }
         worker.close()
     }
+}
 
-    private companion object {
-        const val TILE_SIZE = 256
+internal class WorldWindVisibleTileImage(
+    image: MercatorTiledSurfaceImage,
+    private val visibleTiles: AtomicReference<WorldWindVisibleTiles?>,
+) : MercatorTiledSurfaceImage(image.tileFactory, image.levelSet) {
+    private var total = 0
+    private var ready = 0
+    private var failed = 0
+
+    init {
+        imageOptions = image.imageOptions
+    }
+
+    override fun assembleTiles(rc: RenderContext) {
+        total = 0
+        ready = 0
+        failed = 0
+        super.assembleTiles(rc)
+        if (!rc.isPickMode) {
+            val previous = visibleTiles.get()
+            if (previous?.ready != ready || previous.total != total || previous.failed != failed) {
+                visibleTiles.set(WorldWindVisibleTiles(ready, total, failed))
+            }
+        }
+    }
+
+    override fun addTile(
+        rc: RenderContext,
+        tile: ImageTile,
+    ) {
+        super.addTile(rc, tile)
+        val source = tile.imageSource
+        if (source != null) {
+            total++
+            if (getTexture(rc, tile, false) != null) {
+                ready++
+            } else if (rc.renderResourceCache.absentResourceList.isResourceAbsent(source.hashCode())) {
+                failed++
+            }
+        }
     }
 }
+
+internal fun worldWindBitmap(
+    pixels: IntArray,
+): Bitmap = Bitmap.createBitmap(pixels, TILE_SIZE, TILE_SIZE, Bitmap.Config.ARGB_8888)
