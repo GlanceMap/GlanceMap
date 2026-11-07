@@ -33,6 +33,10 @@ internal enum class CompanionHomeArea(
     SETTINGS(R.string.map_tool_settings_title, Icons.Filled.Settings),
 }
 
+/** Screens that only make sense with a watch; hidden while the Watch switch is off. */
+internal val CompanionHomeArea.requiresWatch: Boolean
+    get() = this == CompanionHomeArea.SEND_TO_WATCH || this == CompanionHomeArea.LIVE_HIKE
+
 internal val companionMenuAreas =
     listOf(
         CompanionHomeArea.MISSION_PLAN,
@@ -46,6 +50,7 @@ internal data class CompanionMenuState(
     val debugCaptureActive: Boolean,
     val liveHikeSyncEnabled: Boolean = false,
     val mapGpsOff: Boolean = false,
+    val watchEnabled: Boolean = true,
 )
 
 internal data class CompanionMenuActions(
@@ -55,6 +60,7 @@ internal data class CompanionMenuActions(
     val onCreditsLegal: () -> Unit,
     val onLiveHikeSyncChanged: (Boolean) -> Unit = {},
     val onMapGpsOffChanged: (Boolean) -> Unit = {},
+    val onWatchEnabledChanged: (Boolean) -> Unit = {},
 )
 
 internal fun initialCompanionHomeArea(

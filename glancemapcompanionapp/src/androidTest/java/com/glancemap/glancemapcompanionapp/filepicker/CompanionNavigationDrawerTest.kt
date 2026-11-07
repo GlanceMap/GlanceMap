@@ -70,6 +70,42 @@ class CompanionNavigationDrawerTest {
     }
 
     @Test
+    fun watchSwitchHidesWatchScreensAndTurnsBackOn() {
+        val watchEnabled = mutableStateOf(true)
+        composeRule.setContent {
+            val drawer = rememberDrawerState(DrawerValue.Open)
+            MaterialTheme {
+                companionNavigationDrawer(
+                    drawerState = drawer,
+                    state =
+                        CompanionMenuState(
+                            CompanionHomeArea.SEND_TO_WATCH,
+                            debugCaptureActive = false,
+                            watchEnabled = watchEnabled.value,
+                        ),
+                    actions =
+                        CompanionMenuActions(
+                            onNavigate = {},
+                            onDebug = {},
+                            onQuickGuide = {},
+                            onCreditsLegal = {},
+                            onWatchEnabledChanged = { watchEnabled.value = it },
+                        ),
+                ) { Box(Modifier.fillMaxSize()) }
+            }
+        }
+        val sendToWatch = composeRule.activity.getString(R.string.transfer_title_send_to_watch)
+        composeRule.onNodeWithText(sendToWatch).assertIsDisplayed()
+        composeRule.onNodeWithTag("menu_watch_enabled", useUnmergedTree = true).assertIsOn().performClick()
+        composeRule.runOnIdle { assertFalse(watchEnabled.value) }
+        composeRule.onNodeWithTag("menu_watch_enabled", useUnmergedTree = true).assertIsOff()
+        composeRule.onNodeWithText(sendToWatch).assertDoesNotExist()
+        composeRule.onNodeWithText(composeRule.activity.getString(R.string.menu_live_hike)).assertDoesNotExist()
+        composeRule.onNodeWithText(composeRule.activity.getString(R.string.map_navigation_watch)).performClick()
+        composeRule.runOnIdle { assertTrue(watchEnabled.value) }
+    }
+
+    @Test
     fun menuUsesHalfTheWidthKeepsFooterVisibleAndBackPreservesMap() {
         lateinit var drawer: DrawerState
         var mapMounts = 0

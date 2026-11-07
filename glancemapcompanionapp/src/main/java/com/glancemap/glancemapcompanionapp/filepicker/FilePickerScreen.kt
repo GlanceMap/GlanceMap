@@ -111,6 +111,7 @@ import com.glancemap.glancemapcompanionapp.routes.missionPlanTodaySummary
 import com.glancemap.glancemapcompanionapp.routes.reversedForGuidance
 import com.glancemap.glancemapcompanionapp.routes.trailIntelligenceFor
 import com.glancemap.glancemapcompanionapp.routes.trailIntelligenceForProgress
+import com.glancemap.glancemapcompanionapp.transfer.PhoneWatchUsage
 import com.glancemap.glancemapcompanionapp.transfer.rememberPhoneWatchKnown
 import com.glancemap.glancemapcompanionapp.weather.LocationWeatherViewModel
 import com.glancemap.glancemapcompanionapp.weather.RouteWeatherScreenState
@@ -203,10 +204,18 @@ internal fun FilePickerScreen(
     var showHowToDialog by remember(autoOpenHelpOnFirstLaunch) { mutableStateOf(autoOpenHelpOnFirstLaunch) }
     var showDebugDialog by remember { mutableStateOf(false) }
     var mapGpsOff by rememberSaveable { mutableStateOf(false) }
+    var watchEnabled by remember { mutableStateOf(PhoneWatchUsage.isEnabled(context)) }
     var activeHomeArea by rememberSaveable {
         mutableStateOf(
             initialCompanionHomeArea(openLiveTrackingToken, openSendToWatchToken),
         )
+    }
+    LaunchedEffect(watchEnabled, activeHomeArea) {
+        if (!watchEnabled && activeHomeArea.requiresWatch) activeHomeArea = CompanionHomeArea.MAP
+    }
+    LaunchedEffect(Unit) {
+        // Keeps the watch receivers in step with the saved choice, e.g. after a backup restore.
+        withContext(Dispatchers.IO) { PhoneWatchUsage.applyWatchListeners(context, PhoneWatchUsage.isEnabled(context)) }
     }
     var discoveryMenuRequest by rememberSaveable { mutableStateOf(0L) }
     var weatherRouteId by remember { mutableStateOf<String?>(null) }
@@ -688,8 +697,11 @@ internal fun FilePickerScreen(
             LifecycleEventObserver { _, event ->
                 when (event) {
                     Lifecycle.Event.ON_START -> {
-                        viewModel.bindService(context)
-                        viewModel.findWatchNodes()
+                        // Without a watch there is nothing to search for or transfer to.
+                        if (PhoneWatchUsage.isEnabled(context)) {
+                            viewModel.bindService(context)
+                            viewModel.findWatchNodes()
+                        }
                     }
 
                     Lifecycle.Event.ON_RESUME -> {
@@ -779,6 +791,7 @@ internal fun FilePickerScreen(
                     debugCaptureActive = debugCaptureState.active,
                     liveHikeSyncEnabled = liveHikeSyncEnabled,
                     mapGpsOff = mapGpsOff,
+                    watchEnabled = watchEnabled,
                 ),
             actions =
                 CompanionMenuActions(
@@ -811,6 +824,16 @@ internal fun FilePickerScreen(
                     },
                     onLiveHikeSyncChanged = { enabled -> viewModel.setLiveHikeSyncEnabled(context, enabled) },
                     onMapGpsOffChanged = { enabled -> mapGpsOff = enabled },
+                    onWatchEnabledChanged = { enabled ->
+                        watchEnabled = enabled
+                        PhoneWatchUsage.setEnabled(context, enabled)
+                        if (enabled) {
+                            viewModel.bindService(context)
+                            viewModel.findWatchNodes()
+                        } else {
+                            viewModel.unbindService(context)
+                        }
+                    },
                 ),
         ) {
             RetainedMapDestination(
@@ -950,7 +973,10 @@ internal fun FilePickerScreen(
                                                 onRenameRoute = routeLibraryViewModel::renameRoute,
                                                 onDeleteRoute = routeLibraryViewModel::deleteRoute,
                                                 watchKnown =
-                                                    rememberPhoneWatchKnown(uiState.availableWatches.isNotEmpty()),
+                                                    rememberPhoneWatchKnown(
+                                                        reachableNow = uiState.availableWatches.isNotEmpty(),
+                                                        watchEnabled = watchEnabled,
+                                                    ),
                                                 routeUri = { id ->
                                                     withContext(Dispatchers.IO) {
                                                         runCatching { routeLibraryViewModel.contentUriFor(id) }.getOrNull()

@@ -1,5 +1,6 @@
 package com.glancemap.glancemapcompanionapp.filepicker
 
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
@@ -15,7 +16,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -31,15 +34,28 @@ internal fun companionWatchMenu(
     val watchSelected =
         state.activeArea == CompanionHomeArea.SEND_TO_WATCH || state.activeArea == CompanionHomeArea.LIVE_HIKE
     var expanded by rememberSaveable { mutableStateOf(watchSelected) }
+    val watchLabel = stringResource(R.string.menu_watch_enabled)
     NavigationDrawerItem(
         label = { Text(stringResource(R.string.map_navigation_watch)) },
         icon = { Icon(Icons.Filled.Watch, contentDescription = null, modifier = Modifier.size(20.dp)) },
-        badge = { Icon(if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore, contentDescription = null) },
-        selected = watchSelected || expanded,
-        onClick = { expanded = !expanded },
+        badge = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Switch(
+                    checked = state.watchEnabled,
+                    onCheckedChange = actions.onWatchEnabledChanged,
+                    modifier = Modifier.testTag("menu_watch_enabled").semantics { contentDescription = watchLabel },
+                )
+                if (state.watchEnabled) {
+                    Icon(if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore, contentDescription = null)
+                }
+            }
+        },
+        selected = state.watchEnabled && (watchSelected || expanded),
+        // Without a watch the row only holds the switch, so tapping it toggles the watch.
+        onClick = { if (state.watchEnabled) expanded = !expanded else actions.onWatchEnabledChanged(true) },
         modifier = Modifier.padding(horizontal = 4.dp),
     )
-    if (expanded) {
+    if (state.watchEnabled && expanded) {
         NavigationDrawerItem(
             label = {
                 Text(

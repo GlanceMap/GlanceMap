@@ -61,12 +61,16 @@ internal class PhoneKnownWatchStore(
 }
 
 @Composable
-internal fun rememberPhoneWatchKnown(reachableNow: Boolean): Boolean {
+internal fun rememberPhoneWatchKnown(
+    reachableNow: Boolean,
+    watchEnabled: Boolean = true,
+): Boolean {
     val context = LocalContext.current
     val store = remember(context) { PhoneKnownWatchStore(context) }
     var known by remember(store) { mutableStateOf(store.load()) }
-    LaunchedEffect(store, reachableNow) {
-        if (!known) known = store.refresh(reachableNow)
+    // With the watch switched off, skip the Wear OS query and hide watch actions.
+    LaunchedEffect(store, reachableNow, watchEnabled) {
+        if (watchEnabled && !known) known = store.refresh(reachableNow)
     }
-    return known
+    return watchEnabled && known
 }

@@ -15,4 +15,10 @@ class CompanionHomeAreaTest {
         assertEquals(CompanionHomeArea.LIVE_TRACKING, initialCompanionHomeArea(1L, 0L))
         assertEquals(CompanionHomeArea.LIVE_TRACKING, initialCompanionHomeArea(1L, 1L))
     }
+
+    @Test
+    fun onlySendToWatchAndLiveHikeNeedAWatch() {
+        val watchAreas = CompanionHomeArea.entries.filter { it.requiresWatch }
+        assertEquals(listOf(CompanionHomeArea.SEND_TO_WATCH, CompanionHomeArea.LIVE_HIKE), watchAreas)
+    }
 }
