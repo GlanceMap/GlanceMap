@@ -56,8 +56,7 @@ private const val GPX_WAYPOINT_POI_SUFFIX = "__waypoints.poi"
 internal val PhoneMapPoiSource.isUserPlaces: Boolean
     get() = section() == PhoneLibraryPoiSection.MY_CREATION
 
-internal fun PhoneMapPoiSource.childCategories(parentId: Int?): List<PoiSqliteCategory> =
-    categories.filter { it.parentId == parentId }.sortedBy { it.name.lowercase() }
+internal fun PhoneMapPoiSource.childCategories(parentId: Int?): List<PoiSqliteCategory> = categories.filter { it.parentId == parentId }.sortedBy { it.name.lowercase() }
 
 /** A category and every category below it. */
 internal fun PhoneMapPoiSource.categoryTree(id: Int): Set<Int> {

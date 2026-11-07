@@ -7,8 +7,10 @@ import com.glancemap.trailcore.map.MapRendererCapabilities
 internal const val OPEN_STREET_MAP_ATTRIBUTION =
     "<a href=\"https://www.openstreetmap.org/copyright\">© OpenStreetMap contributors</a>"
 
-/** The supported internet map datasets, separate from the online/offline renderer choice. */
-/** Declaration order is the default picker order; saved preferences store names, not ordinals. */
+/**
+ * The supported internet map datasets, separate from the online/offline renderer choice.
+ * Declaration order is the default picker order; saved preferences store names, not ordinals.
+ */
 internal enum class PhoneOnlineMapSource {
     OPEN_TOPO,
     OPEN_STREET_MAP,
