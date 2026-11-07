@@ -2,7 +2,9 @@
 
 Map settings expose an opt-in, default-off 3D terrain view powered by WorldWind.
 The retained Mapsforge view owns map selection and the 2D center. The 3D session
-uses the selected map, theme and DEM source. Previous renderer and viewing-angle
+uses the selected map and DEM source, with a dedicated hiking theme by default. A
+setting can instead use the selected 2D theme; it does not change that selection.
+Previous renderer and viewing-angle
 preferences are ignored; enabling 3D starts WorldWind at 45° and a 4,000 m range
 to provide a wider, more overhead initial view in mountainous areas. This does
 not guarantee that every nearby ridge is visible.
@@ -31,7 +33,10 @@ imagery requests are cancelled while the screen is off. A synchronous tile
 render already executing may finish before cancellation takes effect.
 
 WorldWind 2.1.1 uses offline 256-pixel Mapsforge tiles from the selected map and
-theme on a single worker, with duplicate in-flight requests coalesced. Rendered
+the chosen 3D theme on a single worker, with duplicate in-flight requests coalesced.
+The hiking theme emphasizes paths, peaks, contours and water with restrained land colours;
+features depend on the map data and labels are draped onto terrain. The selected
+2D theme remains unchanged. Rendered
 pixels are shared for coalescing, and each WorldWind request receives its own
 bitmap because WorldWind may recycle it. The
 existing selected-first local DEM repository supplies tiled elevations; no

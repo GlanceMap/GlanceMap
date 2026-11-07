@@ -1983,6 +1983,7 @@
     <string name="gpx_activity_profile_description_with_gaps">"Höhenprofil, %1$s, %2$s bis %3$s; graue Linien zeigen Lücken"</string>
     <string name="settings_back_closes_app">"Zurück schließt App"</string>
     <string name="settings_close_directly_from_navigate">"Direkt aus Navigieren schließen"</string>
-    <string name="map_terrain_3d_experimental">3D-Gelände (experimentell)</string>
+    <string name="map_terrain_3d_experimental">3D - Beta</string>
+    <string name="map_terrain_3d_hiking_theme">3D-Wanderthema</string>
     <string name="map_3d_viewing_angle">3D-Blickwinkel</string>
 </resources>

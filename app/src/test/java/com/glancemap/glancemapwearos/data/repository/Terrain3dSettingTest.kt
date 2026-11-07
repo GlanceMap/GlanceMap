@@ -21,6 +21,14 @@ class Terrain3dSettingTest {
     @get:Rule val temporaryFolder = TemporaryFolder()
 
     @Test
+    fun hikingThemeDefaultsOnAndCanBeDisabled() {
+        val preferences = mutablePreferencesOf()
+        assertTrue(preferences.terrain3dHikingThemeEnabled())
+        preferences[TERRAIN_3D_HIKING_THEME_ENABLED] = false
+        assertFalse(preferences.terrain3dHikingThemeEnabled())
+    }
+
+    @Test
     fun enabledSettingSurvivesLegacyRendererAndAnglePreferences() {
         val preferences =
             mutablePreferencesOf(
@@ -38,7 +46,10 @@ class Terrain3dSettingTest {
             val firstScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
             val first = PreferenceDataStoreFactory.create(scope = firstScope) { file }
             assertFalse(first.data.first().terrain3dEnabled())
-            first.edit { it[TERRAIN_3D_ENABLED] = true }
+            first.edit {
+                it[TERRAIN_3D_ENABLED] = true
+                it[TERRAIN_3D_HIKING_THEME_ENABLED] = false
+            }
             assertTrue(first.data.first().terrain3dEnabled())
             firstScope.coroutineContext[kotlinx.coroutines.Job]!!.cancel()
             firstScope.coroutineContext[kotlinx.coroutines.Job]!!.join()
@@ -46,6 +57,7 @@ class Terrain3dSettingTest {
             try {
                 val second = PreferenceDataStoreFactory.create(scope = secondScope) { file }
                 assertTrue(second.data.first().terrain3dEnabled())
+                assertFalse(second.data.first().terrain3dHikingThemeEnabled())
                 second.edit { it[TERRAIN_3D_ENABLED] = false }
                 assertFalse(second.data.first().terrain3dEnabled())
             } finally {

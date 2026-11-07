@@ -2010,6 +2010,7 @@
     <string name="gpx_activity_profile_description_with_gaps">"Elevation profile, %1$s, %2$s to %3$s; grey lines indicate gaps"</string>
     <string name="settings_back_closes_app">"Back closes app"</string>
     <string name="settings_close_directly_from_navigate">"Close directly from Navigate"</string>
-    <string name="map_terrain_3d_experimental">3D terrain (experimental)</string>
+    <string name="map_terrain_3d_experimental">3D - Beta</string>
+    <string name="map_terrain_3d_hiking_theme">3D hiking theme</string>
     <string name="map_3d_viewing_angle">3D viewing angle</string>
 </resources>

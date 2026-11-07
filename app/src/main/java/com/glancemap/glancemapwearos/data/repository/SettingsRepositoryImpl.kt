@@ -29,8 +29,11 @@ private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(na
 private const val RECORDING_DASHBOARD_SLOT_SEPARATOR = ","
 
 internal val TERRAIN_3D_ENABLED = booleanPreferencesKey("terrain_3d_enabled")
+internal val TERRAIN_3D_HIKING_THEME_ENABLED = booleanPreferencesKey("terrain_3d_hiking_theme_enabled")
 
 internal fun Preferences.terrain3dEnabled(): Boolean = this[TERRAIN_3D_ENABLED] ?: false
+
+internal fun Preferences.terrain3dHikingThemeEnabled(): Boolean = this[TERRAIN_3D_HIKING_THEME_ENABLED] ?: true
 
 internal fun Preferences.mapZoomScaleMeters(
     scaleKey: Preferences.Key<Int>,
@@ -1483,6 +1486,13 @@ class SettingsRepositoryImpl private constructor(
 
     override suspend fun setTerrain3dEnabled(enabled: Boolean) {
         context.dataStore.edit { it[TERRAIN_3D_ENABLED] = enabled }
+    }
+
+    override val terrain3dHikingThemeEnabled: Flow<Boolean> =
+        context.dataStore.data.map { it.terrain3dHikingThemeEnabled() }
+
+    override suspend fun setTerrain3dHikingThemeEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[TERRAIN_3D_HIKING_THEME_ENABLED] = enabled }
     }
 
     override val liveElevation: Flow<Boolean> =

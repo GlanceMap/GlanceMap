@@ -14,6 +14,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.platform.LocalContext
 import com.glancemap.glancemapwearos.core.maps.Dem3CoverageUtils
+import com.glancemap.glancemapwearos.core.maps.theme.defaultRenderThemeMenuCallback
 import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
 import com.glancemap.glancemapwearos.presentation.features.maps.MapHolder
 import com.glancemap.glancemapwearos.presentation.features.maps.buildMapRendererThemeOrNull
@@ -33,6 +34,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.mapsforge.core.model.LatLong
+import org.mapsforge.map.android.rendertheme.AssetsRenderTheme
 import java.util.UUID
 
 internal class WatchWorldWindSession {
@@ -52,6 +54,7 @@ internal class WatchWorldWindSession {
 internal fun rememberWatchWorldWindSession(
     session: WatchWorldWindSession,
     enabled: Boolean,
+    hikingThemeEnabled: Boolean,
     holder: MapHolder?,
     mapPath: String?,
     appearanceInProgress: Boolean,
@@ -62,7 +65,7 @@ internal fun rememberWatchWorldWindSession(
     val context = LocalContext.current
     val currentInteractive = rememberUpdatedState(interactive)
     val currentBearing = rememberUpdatedState(bearing)
-    LaunchedEffect(enabled, holder, mapPath, appearanceInProgress) {
+    LaunchedEffect(enabled, holder, mapPath, appearanceInProgress, hikingThemeEnabled) {
         if (!enabled || appearanceInProgress) return@LaunchedEffect
         if (holder == null || mapPath.isNullOrEmpty()) {
             return@LaunchedEffect
@@ -76,7 +79,16 @@ internal fun rememberWatchWorldWindSession(
                 }
             },
         ) {
-            runWatchWorldWindSession(session, holder, mapPath, context, angle, currentBearing.value, currentInteractive)
+            runWatchWorldWindSession(
+                session,
+                holder,
+                mapPath,
+                context,
+                angle,
+                currentBearing.value,
+                currentInteractive,
+                hikingThemeEnabled,
+            )
         }
     }
     return session
@@ -91,6 +103,7 @@ private suspend fun runWatchWorldWindSession(
     angle: Int,
     bearing: Float,
     interactive: State<Boolean>,
+    hikingThemeEnabled: Boolean,
 ) {
     val sessionId = UUID.randomUUID().toString()
     val started = SystemClock.elapsedRealtime()
@@ -119,15 +132,24 @@ private suspend fun runWatchWorldWindSession(
         val center = holder.mapView.model.mapViewPosition.center
         withContext(Dispatchers.IO) {
             val theme =
-                checkNotNull(
-                    buildMapRendererThemeOrNull(
-                        context,
-                        currentSource.themeFile,
-                        currentSource.mapsforgeThemeName,
-                        currentSource.bundledThemeId,
-                        currentSource.externalTheme,
-                    ),
-                ) { "Selected theme unavailable" }
+                if (hikingThemeEnabled) {
+                    AssetsRenderTheme(
+                        context.assets,
+                        "theme/hiking-3d/",
+                        "hiking-3d.xml",
+                        defaultRenderThemeMenuCallback(),
+                    )
+                } else {
+                    checkNotNull(
+                        buildMapRendererThemeOrNull(
+                            context,
+                            currentSource.themeFile,
+                            currentSource.mapsforgeThemeName,
+                            currentSource.bundledThemeId,
+                            currentSource.externalTheme,
+                        ),
+                    ) { "Selected theme unavailable" }
+                }
             imagery = WorldWindMapsforge(currentSource, theme)
             val mapBounds = checkNotNull(imagery).bounds
             check(mapBounds.contains(center.latitude, center.longitude)) {

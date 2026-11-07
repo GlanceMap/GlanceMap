@@ -39,6 +39,7 @@ fun MapSettingsScreen(
     val autoRecenterEnabled by viewModel.autoRecenterEnabled.collectAsState()
     val autoRecenterDelay by viewModel.autoRecenterDelay.collectAsState(initial = 5)
     val terrain3dEnabled by viewModel.terrain3dEnabled.collectAsState()
+    val terrain3dHikingThemeEnabled by viewModel.terrain3dHikingThemeEnabled.collectAsState()
     val liveElevation by viewModel.liveElevation.collectAsState()
     val liveDistance by viewModel.liveDistance.collectAsState()
     val navigationMarkerAnchorMode by viewModel.navigationMarkerAnchorMode.collectAsState()
@@ -178,6 +179,15 @@ fun MapSettingsScreen(
                 },
                 label = stringResource(R.string.map_terrain_3d_experimental),
             )
+        }
+        if (terrain3dEnabled) {
+            item {
+                SettingsToggleChip(
+                    checked = terrain3dHikingThemeEnabled,
+                    onCheckedChanged = viewModel::setTerrain3dHikingThemeEnabled,
+                    label = stringResource(R.string.map_terrain_3d_hiking_theme),
+                )
+            }
         }
         item {
             SettingsToggleChip(

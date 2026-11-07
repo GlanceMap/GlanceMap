@@ -2099,6 +2099,7 @@
     <string name="gpx_activity_profile_description_with_gaps">"Profil wysokości, %1$s, od %2$s do %3$s; szare linie oznaczają luki"</string>
     <string name="settings_back_closes_app">"Wstecz zamyka aplikację"</string>
     <string name="settings_close_directly_from_navigate">"Zamknij bezpośrednio z Nawigacji"</string>
-    <string name="map_terrain_3d_experimental">Teren 3D (eksperymentalny)</string>
+    <string name="map_terrain_3d_experimental">3D - Beta</string>
+    <string name="map_terrain_3d_hiking_theme">Turystyczny motyw 3D</string>
     <string name="map_3d_viewing_angle">Kąt widzenia 3D</string>
 </resources>

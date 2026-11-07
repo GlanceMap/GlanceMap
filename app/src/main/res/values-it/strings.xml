@@ -2041,6 +2041,7 @@
     <string name="gpx_activity_profile_description_with_gaps">"Profilo altimetrico, %1$s, da %2$s a %3$s; le linee grigie indicano interruzioni"</string>
     <string name="settings_back_closes_app">"Indietro chiude l’app"</string>
     <string name="settings_close_directly_from_navigate">"Chiudi direttamente da Naviga"</string>
-    <string name="map_terrain_3d_experimental">Terreno 3D (sperimentale)</string>
+    <string name="map_terrain_3d_experimental">3D - Beta</string>
+    <string name="map_terrain_3d_hiking_theme">Tema escursionismo 3D</string>
     <string name="map_3d_viewing_angle">Angolo di visuale 3D</string>
 </resources>
