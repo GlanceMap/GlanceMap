@@ -22,7 +22,9 @@ are retained for up to 30 seconds of screen-off time, then closed when the app
 can run again; leaving the mode closes the session immediately. No wake-up is
 scheduled solely for this timeout. Android is asked to preserve the EGL
 context during a short pause, but it can discard graphics resources, in which
-case tiles must still be rendered again. During standby the existing bounded
+case tiles must still be rendered again. When a longer sleep expires during deep
+sleep, the old view is closed before a new session starts; it is not resumed
+first. During standby the existing bounded
 imagery and DEM caches remain allocated, including the single oversized DEM
 tile exception described below. Progress polling is suspended and in-flight
 imagery requests are cancelled while the screen is off. A synchronous tile
@@ -49,6 +51,12 @@ temporarily overlap the cached tile. These limits do not cap total heap use;
 other relief and recording consumers retain their existing cache policy. A grid
 intentionally omitted by the four-tile safeguard is counted as skipped rather
 than logged as a retrieval failure. Unexpected failures remain logged and counted.
+Completed, fully populated 64×64 elevation grids are retained in a separate
+session-only least-recently-used cache, with sample-array payload capped at 1 MiB,
+so a short wake can reuse the same samples after WorldWind clears its coverage
+cache. The cap excludes object overhead and transient copies. Incomplete grids
+are not cached. A DEM signature invalidation clears both the grid and source
+tile caches; no terrain resolution or interpolation rules change.
 
 WorldWind uses the existing compass orientation, location and GPX inputs.
 Drag pans; long-press and drag temporarily rotates horizontally and tilts vertically
@@ -65,8 +73,9 @@ button cycles session-only 0°, 60°, and 80° viewing-angle presets; from the
 initial 45° view the first tap selects 60°. The loading ring spins until visible
 imagery can be counted, then shows the share of visible imagery tiles with
 textures. It remains below completion while imagery or elevation requests are
-outstanding and disappears after 500 ms without observed pending work. It can
-reappear as panning or zooming requires more tiles. The indicator tracks current
+outstanding and reaches a full ring after 500 ms without observed pending work.
+It can show partial progress again as panning or zooming requires more tiles.
+The indicator tracks current
 renderer observations, not a guarantee that the GPU has presented a complete
 frame or that WorldWind will not discover more work. A failed visible imagery
 tile changes the button to a red 3D! warning instead of leaving progress stuck;
@@ -89,6 +98,9 @@ interval diagnostics identify the renderer; WorldWind reports observed redraw
 and draw callbacks and tile work, including totals at session end for short runs;
 hold outcomes and activation delay are aggregated without touch coordinates.
 Standby diagnostics record pause and resume within the same session.
+`dem_grid_cache_hits`, `dem_grid_cache_misses` and `dem_grid_cache_retained_bytes`
+report reuse and retained samples for the completed-grid cache; its retained size
+before close is logged at session end.
 The decoded DEM cache reports retained and peak retained sample bytes after
 eviction, and its retained size before session teardown; these do not measure
 transient allocations or total process memory. Unavailable internal metrics are

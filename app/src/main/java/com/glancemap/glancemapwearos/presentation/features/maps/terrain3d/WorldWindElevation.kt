@@ -3,6 +3,7 @@ package com.glancemap.glancemapwearos.presentation.features.maps.terrain3d
 import android.content.Context
 import android.os.SystemClock
 import com.glancemap.glancemapwearos.core.maps.Dem3CoverageUtils
+import com.glancemap.glancemapwearos.core.maps.DemSignatureStore
 import com.glancemap.glancemapwearos.presentation.features.maps.DemElevationSample
 import com.glancemap.glancemapwearos.presentation.features.maps.DemTileData
 import com.glancemap.glancemapwearos.presentation.features.maps.ReliefDemCacheStats
@@ -30,6 +31,7 @@ import kotlin.math.roundToInt
 
 private const val WORLDWIND_DEM_CACHE_ENTRIES = 4
 private const val WORLDWIND_DEM_CACHE_BYTES = 16L * 1024 * 1024
+private const val WORLDWIND_GRID_CACHE_BYTES = 1024L * 1024
 
 private interface WorldWindGridFactory : ElevationSource.ElevationDataFactory {
     val skipped: AtomicBoolean
@@ -81,6 +83,8 @@ internal class WorldWindElevation(
 ) : AutoCloseable {
     val cacheStats = ReliefDemCacheStats()
     val cacheRetainedBeforeClose = AtomicLong()
+    val gridCache = WorldWindGridCache(WORLDWIND_GRID_CACHE_BYTES)
+    val gridCacheRetainedBeforeClose = AtomicLong()
     private val repository =
         ReliefDemRepository(
             source.demSource.readFallbackOrder().map { Dem3CoverageUtils.demRootDir(context, it) },
@@ -152,6 +156,11 @@ internal class WorldWindElevation(
                                         }
                                         synchronized(lock) {
                                             if (closed) return@synchronized null
+                                            job.ensureActive()
+                                            val generation = DemSignatureStore.generation()
+                                            if (gridCache.prepareGeneration(generation)) repository.clear()
+                                            val key = tileMatrix.tileKey(row, column)
+                                            gridCache.get(key)?.let { return@synchronized ShortBuffer.wrap(it) }
                                             val started = SystemClock.elapsedRealtime()
                                             val result =
                                                 worldWindElevationGrid(
@@ -165,6 +174,7 @@ internal class WorldWindElevation(
                                             sampleCount.addAndGet(result.size.toLong())
                                             voidCount.addAndGet(result.count { it == Short.MIN_VALUE }.toLong())
                                             sampleMs.addAndGet(SystemClock.elapsedRealtime() - started)
+                                            if (DemSignatureStore.generation() == generation) gridCache.put(key, result)
                                             ShortBuffer.wrap(result)
                                         }
                                     }
@@ -202,8 +212,10 @@ internal class WorldWindElevation(
     override fun close() {
         synchronized(lock) {
             if (!closed) cacheRetainedBeforeClose.set(cacheStats.retainedBytes.get())
+            if (!closed) gridCacheRetainedBeforeClose.set(gridCache.retainedBytes.get())
             closed = true
             coverage.clear()
+            gridCache.clear()
             repository.clear()
         }
     }

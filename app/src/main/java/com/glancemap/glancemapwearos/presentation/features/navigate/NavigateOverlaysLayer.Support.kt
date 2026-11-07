@@ -167,7 +167,7 @@ internal fun BoxScope.SlopeOverlayStatusIndicator(
         exit = fadeOut(tween(180)),
         modifier = slopeIndicatorModifier,
     ) {
-        val progress = (progressPercent ?: 0).coerceIn(0, 100)
+        val progress = if (terrain3d && !processing) 100 else (progressPercent ?: 0).coerceIn(0, 100)
         val sweepDeg by animateFloatAsState(
             targetValue = 360f * (progress / 100f),
             animationSpec = tween(durationMillis = 220),
@@ -204,34 +204,32 @@ internal fun BoxScope.SlopeOverlayStatusIndicator(
                         .background(Color.Black.copy(alpha = 0.7f), CircleShape),
                 contentAlignment = Alignment.Center,
             ) {
-                if (processing || !terrain3d || terrainError) {
-                    Canvas(
-                        modifier =
-                            Modifier
-                                .fillMaxSize()
-                                .padding(1.dp),
-                    ) {
-                        val ringStroke = (size.minDimension * 0.12f).coerceAtLeast(1.5f)
-                        drawArc(
-                            color = Color.White.copy(alpha = 0.25f),
-                            startAngle = -90f,
-                            sweepAngle = 360f,
-                            useCenter = false,
-                            style = Stroke(width = ringStroke),
-                        )
-                        drawArc(
-                            color = if (terrainError) Color(0xFFE53935) else Color(0xFFFFB300),
-                            startAngle = startAngle,
-                            sweepAngle =
-                                when {
-                                    terrainError -> 360f
-                                    terrainWaitingForProgress -> 100f
-                                    else -> sweepDeg
-                                },
-                            useCenter = false,
-                            style = Stroke(width = ringStroke, cap = StrokeCap.Round),
-                        )
-                    }
+                Canvas(
+                    modifier =
+                        Modifier
+                            .fillMaxSize()
+                            .padding(1.dp),
+                ) {
+                    val ringStroke = (size.minDimension * 0.12f).coerceAtLeast(1.5f)
+                    drawArc(
+                        color = Color.White.copy(alpha = 0.25f),
+                        startAngle = -90f,
+                        sweepAngle = 360f,
+                        useCenter = false,
+                        style = Stroke(width = ringStroke),
+                    )
+                    drawArc(
+                        color = if (terrainError) Color(0xFFE53935) else Color(0xFFFFB300),
+                        startAngle = startAngle,
+                        sweepAngle =
+                            when {
+                                terrainError -> 360f
+                                terrainWaitingForProgress -> 100f
+                                else -> sweepDeg
+                            },
+                        useCenter = false,
+                        style = Stroke(width = ringStroke, cap = StrokeCap.Round),
+                    )
                 }
                 if (terrain3d) {
                     val description =

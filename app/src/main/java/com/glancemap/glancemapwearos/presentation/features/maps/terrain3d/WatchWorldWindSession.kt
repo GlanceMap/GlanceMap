@@ -67,13 +67,16 @@ internal fun rememberWatchWorldWindSession(
         if (holder == null || mapPath.isNullOrEmpty()) {
             return@LaunchedEffect
         }
-        runWorldWindWithStandby(snapshotFlow { currentInteractive.value }, WORLDWIND_STANDBY_MILLIS) {
+        runWorldWindWithStandby(
+            snapshotFlow { currentInteractive.value },
+            WORLDWIND_STANDBY_MILLIS,
+            onInteractiveChanged = { awake ->
+                session.view?.let { view ->
+                    if (view.setScreenInteractive(awake)) session.onScreenInteractiveChanged(awake)
+                }
+            },
+        ) {
             runWatchWorldWindSession(session, holder, mapPath, context, angle, currentBearing.value, currentInteractive)
-        }
-    }
-    LaunchedEffect(session.view, interactive) {
-        session.view?.let { view ->
-            if (view.setScreenInteractive(interactive)) session.onScreenInteractiveChanged(interactive)
         }
     }
     return session
@@ -239,6 +242,9 @@ private suspend fun runWatchWorldWindSession(
                     "dem_voids=${elevationProvider.voidCount.get()} dem_ms=${elevationProvider.sampleMs.get()} " +
                     "dem_skipped_grids=${elevationProvider.skippedGridCount.get()} " +
                     "dem_failed_grids=${elevationProvider.failedGridCount.get()} " +
+                    "dem_grid_cache_hits=${elevationProvider.gridCache.hits.get()} " +
+                    "dem_grid_cache_misses=${elevationProvider.gridCache.misses.get()} " +
+                    "dem_grid_cache_retained_bytes=${elevationProvider.gridCache.retainedBytes.get()} " +
                     "dem_cache_hits=${elevationProvider.cacheStats.hits.get()} " +
                     "dem_cache_misses=${elevationProvider.cacheStats.misses.get()} " +
                     "dem_cache_retained_bytes=${elevationProvider.cacheStats.retainedBytes.get()} " +
@@ -364,6 +370,9 @@ private fun worldWindEndMessage(
         "dem_ms=${elevation?.sampleMs?.get() ?: 0} " +
         "dem_skipped_grids=${elevation?.skippedGridCount?.get() ?: 0} " +
         "dem_failed_grids=${elevation?.failedGridCount?.get() ?: 0} " +
+        "dem_grid_cache_hits=${elevation?.gridCache?.hits?.get() ?: 0} " +
+        "dem_grid_cache_misses=${elevation?.gridCache?.misses?.get() ?: 0} " +
+        "dem_grid_cache_retained_before_close_bytes=${elevation?.gridCacheRetainedBeforeClose?.get() ?: 0} " +
         "dem_cache_hits=${elevation?.cacheStats?.hits?.get() ?: 0} " +
         "dem_cache_misses=${elevation?.cacheStats?.misses?.get() ?: 0} " +
         "dem_cache_retained_before_close_bytes=${elevation?.cacheRetainedBeforeClose?.get() ?: "unavailable"} " +

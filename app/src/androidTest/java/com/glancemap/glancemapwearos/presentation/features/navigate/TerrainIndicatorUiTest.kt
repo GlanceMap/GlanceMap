@@ -3,6 +3,7 @@ package com.glancemap.glancemapwearos.presentation.features.navigate
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toPixelMap
@@ -69,26 +70,12 @@ class TerrainIndicatorUiTest {
                 )
             }
         }
-        val image = composeRule.onNodeWithTag("terrain").captureToImage()
-        val pixels = image.toPixelMap()
-        val density = image.width / 120f
-        val centerX = image.width - 24f * density
-        val centerY = image.height / 2f
-        var yellowRingPixels = 0
-        for (y in 0 until image.height) {
-            for (x in 0 until image.width) {
-                val radius = hypot(x - centerX, y - centerY) / density
-                val color = pixels[x, y]
-                if (radius in 9f..12f && color.red > 0.7f && color.green > 0.4f && color.blue < 0.2f) {
-                    yellowRingPixels++
-                }
-            }
-        }
+        val yellowRingPixels = yellowRingPixels()
         assertTrue("Expected a 75% progress arc, found $yellowRingPixels pixels", yellowRingPixels > 330)
     }
 
     @Test
-    fun ready3dButtonDoesNotLookLikeACompletedProgressRing() {
+    fun ready3dButtonShowsACompletedProgressRing() {
         composeRule.setContent {
             Box(Modifier.size(120.dp).background(Color.Black).testTag("terrain")) {
                 SlopeOverlayStatusIndicator(
@@ -104,21 +91,52 @@ class TerrainIndicatorUiTest {
                 )
             }
         }
+        val yellowRingPixels = yellowRingPixels()
+        assertTrue("Expected a full progress ring, found $yellowRingPixels pixels", yellowRingPixels > 500)
+    }
+
+    @Test
+    fun loadingAfterReadyReducesThe3dProgressRing() {
+        val processing = mutableStateOf(false)
+        val progress = mutableStateOf<Int?>(null)
+        composeRule.setContent {
+            Box(Modifier.size(120.dp).background(Color.Black).testTag("terrain")) {
+                SlopeOverlayStatusIndicator(
+                    visible = true,
+                    processing = processing.value,
+                    progressPercent = progress.value,
+                    enabled = true,
+                    screenSize = WearScreenSize.SMALL,
+                    sideButtonEdgePadding = 0.dp,
+                    sideButtonSize = 24.dp,
+                    terrain3d = true,
+                    onClick = {},
+                )
+            }
+        }
+        val before = yellowRingPixels()
+        composeRule.runOnIdle {
+            processing.value = true
+            progress.value = 50
+        }
+        val after = yellowRingPixels()
+        assertTrue("Expected the ring to reduce from $before pixels to $after", before > after && after > 100)
+    }
+
+    private fun yellowRingPixels(): Int {
         val image = composeRule.onNodeWithTag("terrain").captureToImage()
         val pixels = image.toPixelMap()
         val density = image.width / 120f
         val centerX = image.width - 24f * density
         val centerY = image.height / 2f
-        var yellowRingPixels = 0
+        var count = 0
         for (y in 0 until image.height) {
             for (x in 0 until image.width) {
                 val radius = hypot(x - centerX, y - centerY) / density
                 val color = pixels[x, y]
-                if (radius in 9f..12f && color.red > 0.7f && color.green > 0.4f && color.blue < 0.2f) {
-                    yellowRingPixels++
-                }
+                if (radius in 9f..12f && color.red > 0.7f && color.green > 0.4f && color.blue < 0.2f) count++
             }
         }
-        assertEquals(0, yellowRingPixels)
+        return count
     }
 }

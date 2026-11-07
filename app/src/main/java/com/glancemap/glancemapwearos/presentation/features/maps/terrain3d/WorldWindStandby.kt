@@ -17,6 +17,7 @@ internal suspend fun runWorldWindWithStandby(
     interactive: Flow<Boolean>,
     standbyMillis: Long,
     elapsedRealtimeMillis: () -> Long = SystemClock::elapsedRealtime,
+    onInteractiveChanged: (Boolean) -> Unit = {},
     runSession: suspend () -> Unit,
 ) {
     while (currentCoroutineContext().isActive) {
@@ -31,6 +32,7 @@ internal suspend fun runWorldWindWithStandby(
                         interactive.collectLatest { awake ->
                             if (!awake) {
                                 asleepSince = elapsedRealtimeMillis()
+                                onInteractiveChanged(false)
                                 delay(standbyMillis)
                                 timedOut = true
                                 session.cancel()
@@ -40,6 +42,8 @@ internal suspend fun runWorldWindWithStandby(
                                 if (started != null && elapsedRealtimeMillis() - started >= standbyMillis) {
                                     timedOut = true
                                     session.cancel()
+                                } else if (started != null) {
+                                    onInteractiveChanged(true)
                                 }
                             }
                         }

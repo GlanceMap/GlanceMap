@@ -17,6 +17,9 @@ counts. It does not prove that the GPU has presented a complete frame.
 `standby` records screen-off pause and wake within one session; compare session
 IDs, tile work, memory and wake timing on the physical watch. The session closes
 after 30 seconds off-screen, and Android can discard its EGL context earlier.
+`dem_grid_cache_hits`, `dem_grid_cache_misses` and retained-byte counters report
+the bounded cache of completed elevation grids. Compare matched wake and pan
+sequences; these counters alone do not establish a real-world speed improvement.
 
 Use these benchmarks before and after performance changes so improvements are measured on the same device and data set.
 

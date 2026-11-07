@@ -126,4 +126,41 @@ class WorldWindStandbyTest {
             assertEquals(2, starts)
             job.cancelAndJoin()
         }
+
+    @Test
+    fun expiredViewIsClosedBeforeWakeWithoutResumingIt() =
+        runTest {
+            val interactive = MutableStateFlow(true)
+            var elapsed = 1_000L
+            val events = mutableListOf<String>()
+            val job =
+                launch {
+                    runWorldWindWithStandby(
+                        interactive,
+                        30_000,
+                        { elapsed },
+                        onInteractiveChanged = { events += if (it) "resume" else "pause" },
+                    ) {
+                        events += "start"
+                        try {
+                            awaitCancellation()
+                        } finally {
+                            events += "close"
+                        }
+                    }
+                }
+            runCurrent()
+            interactive.value = false
+            runCurrent()
+            elapsed += 10_000
+            interactive.value = true
+            runCurrent()
+            interactive.value = false
+            runCurrent()
+            elapsed += 31_000
+            interactive.value = true
+            runCurrent()
+            assertEquals(listOf("start", "pause", "resume", "pause", "close", "start"), events)
+            job.cancelAndJoin()
+        }
 }
