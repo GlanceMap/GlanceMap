@@ -76,6 +76,7 @@ private data class PhoneMapPoiQueryFilter(
 )
 
 /** Owns cancellable, debounced phone POI viewport queries outside the MapLibre composable. */
+@Suppress("TooManyFunctions") // One entry point per Library/map POI action, sharing the source state.
 internal class PhoneMapPoiViewModel(
     application: Application,
 ) : AndroidViewModel(application) {
@@ -226,7 +227,11 @@ internal class PhoneMapPoiViewModel(
         }
         queryJob =
             viewModelScope.launch {
-                executeQuery(viewport, PhoneMapPoiQueryFilter(enabledSourceFileNames, disabledCategoryIds), expectedRequestId)
+                executeQuery(
+                    viewport,
+                    PhoneMapPoiQueryFilter(enabledSourceFileNames, disabledCategoryIds),
+                    expectedRequestId,
+                )
             }
     }
 

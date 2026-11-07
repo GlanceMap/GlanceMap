@@ -263,44 +263,32 @@ internal fun LazyListScope.libraryEntries(
                 Text(stringResource(section.label), style = MaterialTheme.typography.labelLarge)
             }
         }
-        libraryEntryRows(sectionItems, state, mapState, mapActions, actions, browser)
-    }
-}
-
-private fun LazyListScope.libraryEntryRows(
-    rows: List<PhoneLibraryItem>,
-    state: PhoneLibraryListState,
-    mapState: MapToolsPanelState,
-    mapActions: MapToolsPanelActions,
-    actions: PhoneLibraryActions,
-    browser: PhoneLibraryBrowserPresentation,
-) {
-    val selection = browser.selection
-    items(rows, key = PhoneLibraryItem::key) { item ->
-        libraryItemRow(
-            PhoneLibraryRowState(
-                item = item,
-                // The offline data rescan can take a while; map toggles do not depend on it.
-                enabled = !state.isImporting,
-                organization = state.organization,
-                guidanceEnabled = !actions.guidanceActive && actions.guidanceStartingKey == null,
-                guidanceLoading = actions.guidanceStartingKey == item.key,
-                selected = selection.keys?.let { item.key in it }?.takeIf { item.filter == PhoneLibraryFilter.GPX },
-                onToggleSelected = selection.onToggle,
-                onSelect = actions.onSelectItem,
-                onMoveToFolder = actions.onMoveItem.takeIf { item.filter.hasFolders },
-                watchKnown = actions.watchKnown,
-                routeUri = actions.routeUri,
-                onStartGuidance = actions.onStartGuidance,
-                onSendGpx = actions.onSendGpx,
-                onPreviewGpx = actions.onPreviewGpx,
-                onOpenGpxInNewHikeTab = actions.onOpenGpxInNewHikeTab,
-                onRenameRoute = actions.onRenameRoute,
-                onDeleteRoute = actions.onDeleteRoute,
-            ),
-            mapState,
-            mapActions,
-        ) { browser.navigation.onDetails(item) }
+        items(sectionItems, key = PhoneLibraryItem::key) { item ->
+            libraryItemRow(
+                PhoneLibraryRowState(
+                    item = item,
+                    // The offline data rescan can take a while; map toggles do not depend on it.
+                    enabled = !state.isImporting,
+                    organization = state.organization,
+                    guidanceEnabled = !actions.guidanceActive && actions.guidanceStartingKey == null,
+                    guidanceLoading = actions.guidanceStartingKey == item.key,
+                    selected = selection.keys?.let { item.key in it }?.takeIf { item.filter == PhoneLibraryFilter.GPX },
+                    onToggleSelected = selection.onToggle,
+                    onSelect = actions.onSelectItem,
+                    onMoveToFolder = actions.onMoveItem.takeIf { item.filter.hasFolders },
+                    watchKnown = actions.watchKnown,
+                    routeUri = actions.routeUri,
+                    onStartGuidance = actions.onStartGuidance,
+                    onSendGpx = actions.onSendGpx,
+                    onPreviewGpx = actions.onPreviewGpx,
+                    onOpenGpxInNewHikeTab = actions.onOpenGpxInNewHikeTab,
+                    onRenameRoute = actions.onRenameRoute,
+                    onDeleteRoute = actions.onDeleteRoute,
+                ),
+                mapState,
+                mapActions,
+            ) { browser.navigation.onDetails(item) }
+        }
     }
 }
 

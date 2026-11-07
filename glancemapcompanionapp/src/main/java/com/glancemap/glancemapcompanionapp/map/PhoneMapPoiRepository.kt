@@ -90,7 +90,11 @@ internal class PhoneMapPoiRepository(
                     isEnabled = file.name !in disabledSourceFileNames,
                     poiCount = file.takeIf { isReadable }?.let(::readPoiPointCount),
                     categories =
-                        if (isReadable) runCatching { readPoiSqliteCategories(file) }.getOrDefault(emptyList()) else emptyList(),
+                        if (isReadable) {
+                            runCatching { readPoiSqliteCategories(file) }.getOrDefault(emptyList())
+                        } else {
+                            emptyList()
+                        },
                     disabledCategoryIds = disabledCategoryIds[file.name].orEmpty(),
                 )
             }

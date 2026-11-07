@@ -34,7 +34,9 @@ class PhoneLibraryPoiBrowserTest {
 
     @Test
     fun aSyntheticRootIsDroppedSoItsChildrenBecomeTheTopLevel() {
-        val withRoot = listOf(PoiSqliteCategory(1, "root", null, 0)) + categories.map { if (it.parentId == null) it.copy(parentId = 1) else it }
+        val withRoot =
+            listOf(PoiSqliteCategory(1, "root", null, 0)) +
+                categories.map { if (it.parentId == null) it.copy(parentId = 1) else it }
         assertEquals(categories, withoutSyntheticRoot(withRoot))
         assertEquals(categories, withoutSyntheticRoot(categories))
     }

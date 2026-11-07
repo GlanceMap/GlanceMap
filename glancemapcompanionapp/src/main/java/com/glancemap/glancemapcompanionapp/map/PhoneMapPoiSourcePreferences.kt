@@ -96,7 +96,6 @@ private fun categoryEntry(
 
 private fun parseCategoryEntry(entry: String): Pair<String, Int>? {
     val separator = entry.lastIndexOf('#')
-    if (separator <= 0) return null
-    val id = entry.substring(separator + 1).toIntOrNull() ?: return null
-    return entry.substring(0, separator) to id
+    val id = entry.substring(separator + 1).toIntOrNull()
+    return if (separator > 0 && id != null) entry.substring(0, separator) to id else null
 }
