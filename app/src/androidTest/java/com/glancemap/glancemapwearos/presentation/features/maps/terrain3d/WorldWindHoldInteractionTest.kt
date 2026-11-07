@@ -161,16 +161,77 @@ class WorldWindHoldInteractionTest {
         SystemClock.sleep(ViewConfiguration.getLongPressTimeout().toLong() + 150L)
         composeRule.runOnIdle { assertTrue(window.longPressOrbit) }
         val heading = window.lookAt.heading.inDegrees
-        send(downTime, MotionEvent.ACTION_MOVE, 60f, 80f)
+        send(downTime, MotionEvent.ACTION_MOVE, 60f, 60f)
         composeRule.runOnIdle { assertTrue(abs(window.lookAt.heading.inDegrees - heading) > 0.1) }
-        send(downTime, MotionEvent.ACTION_UP, 60f, 80f)
+        send(downTime, MotionEvent.ACTION_UP, 60f, 60f)
 
+        val rangeAfterTilt = window.lookAt.range
+        val tiltAfterTilt = window.lookAt.tilt.inDegrees
         downTime = SystemClock.uptimeMillis()
         send(downTime, MotionEvent.ACTION_DOWN, 40f, 80f)
         send(downTime, MotionEvent.ACTION_MOVE, 40f + distance, 80f)
         composeRule.runOnIdle {
             assertFalse(window.longPressOrbit)
             assertEquals(2L, window.panCount.get())
+            assertEquals(rangeAfterTilt, window.lookAt.range, 1.0)
+            assertEquals(tiltAfterTilt, window.lookAt.tilt.inDegrees, 0.1)
+        }
+        send(downTime, MotionEvent.ACTION_CANCEL, 40f + distance, 80f)
+    }
+
+    @Test
+    fun movementAfterHoldTimeoutTiltsEvenIfHoldCallbackIsDelayed() {
+        launchWindow()
+        composeRule.waitUntil(15_000) { window.engine.viewport.width > 0 && window.engine.viewport.height > 0 }
+        composeRule.runOnIdle { window.initialize(LatLong(45.0, 6.0), 45, 0f) }
+        val timeout = ViewConfiguration.getLongPressTimeout().toLong()
+        val downTime = SystemClock.uptimeMillis() - timeout - 1
+        val distance = ViewConfiguration.get(window.context).scaledTouchSlop * 2f + 5f
+        send(downTime, MotionEvent.ACTION_DOWN, 40f, 100f, eventTime = downTime)
+        send(downTime, MotionEvent.ACTION_MOVE, 40f, 100f - distance)
+        composeRule.runOnIdle {
+            assertTrue(window.longPressOrbit)
+            assertEquals(0L, window.panCount.get())
+            assertTrue(window.lookAt.tilt.inDegrees > 45.0)
+        }
+        send(downTime, MotionEvent.ACTION_UP, 40f, 100f - distance)
+        val nextDown = SystemClock.uptimeMillis()
+        send(nextDown, MotionEvent.ACTION_DOWN, 40f, 80f)
+        send(nextDown, MotionEvent.ACTION_MOVE, 40f + distance, 80f)
+        composeRule.runOnIdle {
+            assertFalse(window.longPressOrbit)
+            assertEquals(1L, window.panCount.get())
+        }
+        send(nextDown, MotionEvent.ACTION_CANCEL, 40f + distance, 80f)
+    }
+
+    @Test
+    fun batchedMovementBeforeHoldTimeoutStillStartsPan() {
+        launchWindow()
+        composeRule.waitUntil(15_000) { window.engine.viewport.width > 0 && window.engine.viewport.height > 0 }
+        composeRule.runOnIdle { window.initialize(LatLong(45.0, 6.0), 45, 0f) }
+        val timeout = ViewConfiguration.getLongPressTimeout().toLong()
+        val downTime = SystemClock.uptimeMillis() - timeout - 50
+        val distance = ViewConfiguration.get(window.context).scaledTouchSlop * 2f + 5f
+        send(downTime, MotionEvent.ACTION_DOWN, 40f, 80f, eventTime = downTime)
+        composeRule.runOnIdle {
+            val move =
+                MotionEvent.obtain(
+                    downTime,
+                    downTime + timeout - 10,
+                    MotionEvent.ACTION_MOVE,
+                    40f + distance,
+                    80f,
+                    0,
+                )
+            try {
+                move.addBatch(downTime + timeout + 10, 40f + distance + 1, 80f, 1f, 1f, 0)
+                window.onTouchEvent(move)
+            } finally {
+                move.recycle()
+            }
+            assertFalse(window.longPressOrbit)
+            assertEquals(1L, window.panCount.get())
         }
         send(downTime, MotionEvent.ACTION_CANCEL, 40f + distance, 80f)
     }
@@ -190,9 +251,10 @@ class WorldWindHoldInteractionTest {
         action: Int,
         x: Float,
         y: Float,
+        eventTime: Long = SystemClock.uptimeMillis(),
     ) {
         composeRule.runOnIdle {
-            val event = MotionEvent.obtain(downTime, SystemClock.uptimeMillis(), action, x, y, 0)
+            val event = MotionEvent.obtain(downTime, eventTime, action, x, y, 0)
             try {
                 window.onTouchEvent(event)
             } finally {

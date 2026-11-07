@@ -104,6 +104,7 @@ internal class WatchWorldWindWindow(
         private set
     private var externalBearing: Float? = null
     private val panInterpretDistance = ViewConfiguration.get(context).scaledTouchSlop * 2f
+    private val holdTimeoutMillis = ViewConfiguration.getLongPressTimeout().toLong()
     private val holdGesture = WorldWindHoldGesture(panInterpretDistance)
     val holdMetrics: WorldWindHoldMetrics get() = holdGesture.metrics
     private var holdDownTime = 0L
@@ -150,6 +151,14 @@ internal class WatchWorldWindWindow(
             object : BasicWorldWindowController(this) {
                 init {
                     (panRecognizer as PanRecognizer).interpretDistance = panInterpretDistance
+                }
+
+                override fun gestureDidBegin() {
+                    super.gestureDidBegin()
+                    if (activeGestures == 1) {
+                        beginLookAt.copy(this@WatchWorldWindWindow.lookAt)
+                        lookAt.copy(beginLookAt)
+                    }
                 }
 
                 override fun applyChanges() {
@@ -306,6 +315,37 @@ internal class WatchWorldWindWindow(
 
     private fun superTouch(event: MotionEvent): Boolean = super.onTouchEvent(event)
 
+    private fun processPendingHoldMove(
+        x: Float,
+        y: Float,
+        eventTime: Long,
+    ): Boolean =
+        if (holdGesture.isReadyAt(eventTime - holdDownTime, holdTimeoutMillis)) {
+            removeCallbacks(startOrbit)
+            startOrbit.run()
+            true
+        } else if (!holdGesture.move(x, y)) {
+            removeCallbacks(startOrbit)
+            true
+        } else {
+            false
+        }
+
+    private fun processPendingHoldMotionEvent(event: MotionEvent) {
+        for (index in 0 until event.historySize) {
+            if (
+                processPendingHoldMove(
+                    event.getHistoricalX(index),
+                    event.getHistoricalY(index),
+                    event.getHistoricalEventTime(index),
+                )
+            ) {
+                break
+            }
+        }
+        if (!longPressOrbit) processPendingHoldMove(event.x, event.y, event.eventTime)
+    }
+
     fun setScreenInteractive(interactive: Boolean): Boolean {
         if (screenPaused == !interactive) return false
         screenPaused = !interactive
@@ -335,9 +375,9 @@ internal class WatchWorldWindWindow(
                     panStartY = event.y
                     panStartValid = true
                     holdGesture.begin(event.x, event.y)
-                    postDelayed(startOrbit, ViewConfiguration.getLongPressTimeout().toLong())
+                    postDelayed(startOrbit, holdTimeoutMillis)
                 }
-                MotionEvent.ACTION_MOVE -> if (!holdGesture.move(event.x, event.y)) removeCallbacks(startOrbit)
+                MotionEvent.ACTION_MOVE -> processPendingHoldMotionEvent(event)
                 MotionEvent.ACTION_POINTER_DOWN, MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                     panStartValid = false
                     val reason =
@@ -350,7 +390,7 @@ internal class WatchWorldWindWindow(
                     removeCallbacks(startOrbit)
                 }
             }
-            return super.onTouchEvent(event)
+            if (!longPressOrbit) return super.onTouchEvent(event)
         }
         when (event.actionMasked) {
             MotionEvent.ACTION_MOVE -> {

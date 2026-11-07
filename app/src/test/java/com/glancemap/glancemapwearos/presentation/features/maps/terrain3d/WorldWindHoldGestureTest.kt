@@ -7,6 +7,20 @@ import org.junit.Test
 
 class WorldWindHoldGestureTest {
     @Test
+    fun `movement after the hold timeout can activate orbit before a delayed callback`() {
+        val hold = WorldWindHoldGesture(20f)
+        hold.begin(100f, 200f)
+        assertFalse(hold.isReadyAt(399, 400))
+        assertTrue(hold.isReadyAt(400, 400))
+        assertTrue(hold.activate(400))
+        assertFalse(hold.isReadyAt(500, 400))
+
+        hold.begin(100f, 200f)
+        hold.move(121f, 200f)
+        assertFalse(hold.isReadyAt(500, 400))
+    }
+
+    @Test
     fun `small movement keeps hold armed and uses latest position`() {
         val hold = WorldWindHoldGesture(20f)
         hold.begin(100f, 200f)

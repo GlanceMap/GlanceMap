@@ -70,8 +70,11 @@ returns to straight down, leaving the selected tilt available when zooming back 
 The hold uses Android's configured long-press duration and accepts movement up to
 twice the device touch slop before cancelling; a second finger cancels a pending
 hold. Rotation starts from the finger's latest position when the hold activates.
+If the callback is delayed, movement timestamped after the hold duration enters
+orbit instead of cancelling it. Orbit remains active until the finger is lifted.
 Panning starts when movement passes the same threshold and applies the initial
-drag rather than discarding it.
+drag rather than discarding it. Each new gesture uses the current 3D look-at
+position as its anchor, including after orbit or a pan fling.
 The tools shortcut remains available in 3D; actions that start recording, guidance,
 or route tools retain the existing switch to 2D. The 3D indicator below the tools
 button cycles session-only 0°, 60°, and 80° viewing-angle presets; from the

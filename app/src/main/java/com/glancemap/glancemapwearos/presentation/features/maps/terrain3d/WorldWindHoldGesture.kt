@@ -71,6 +71,11 @@ internal class WorldWindHoldGesture(
         }.incrementAndGet()
     }
 
+    fun isReadyAt(
+        elapsedMs: Long,
+        timeoutMs: Long,
+    ): Boolean = pending && elapsedMs >= timeoutMs
+
     fun activate(delayMs: Long): Boolean {
         if (!pending) return false
         pending = false
