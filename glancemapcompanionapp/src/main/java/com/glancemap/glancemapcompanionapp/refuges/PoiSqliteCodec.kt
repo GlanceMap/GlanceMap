@@ -277,21 +277,24 @@ internal fun readPoiSqliteViewport(
     file: File,
     viewport: PoiSqliteViewport,
     limit: Int,
+    excludedCategoryIds: Set<Int> = emptySet(),
 ): List<PoiSqlitePoint> {
     if (!file.isReadablePoiFile() || limit <= 0 || !viewport.hasOrderedBounds()) {
         return emptyList()
     }
+    val excluded = excludedCategoryIds.sorted()
     return readPoiSqlitePoints(
         file = file,
-        sql = VIEWPORT_POI_SQL,
+        sql = viewportPoiSql(excluded.size),
         selectionArgs =
-            arrayOf(
-                viewport.minLat.toString(),
-                viewport.maxLat.toString(),
-                viewport.minLon.toString(),
-                viewport.maxLon.toString(),
-                limit.toString(),
-            ),
+            (
+                listOf(
+                    viewport.minLat.toString(),
+                    viewport.maxLat.toString(),
+                    viewport.minLon.toString(),
+                    viewport.maxLon.toString(),
+                ) + excluded.map(Int::toString) + limit.toString()
+            ).toTypedArray(),
     )
 }
 
@@ -321,7 +324,7 @@ internal fun isReadablePoiSqliteFile(file: File): Boolean {
     }.getOrDefault(false)
 }
 
-private fun readPoiSqlitePoints(
+internal fun readPoiSqlitePoints(
     file: File,
     sql: String,
     selectionArgs: Array<String>,
@@ -472,9 +475,23 @@ private val VIEWPORT_POI_SQL =
     JOIN poi_data pd ON pd.id = pi.id
     WHERE pi.lat BETWEEN ? AND ?
       AND pi.lon BETWEEN ? AND ?
+    %s
     ORDER BY pi.id
     LIMIT ?
     """.trimIndent()
+
+/** Hidden categories are excluded in SQL, so they never use up the per-source viewport limit. */
+private fun viewportPoiSql(excludedCategoryCount: Int): String {
+    val exclusion =
+        if (excludedCategoryCount == 0) {
+            ""
+        } else {
+            val placeholders = List(excludedCategoryCount) { "?" }.joinToString(", ")
+            "AND NOT EXISTS (SELECT 1 FROM poi_category_map hidden " +
+                "WHERE hidden.id = pi.id AND hidden.category IN ($placeholders))"
+        }
+    return VIEWPORT_POI_SQL.format(exclusion)
+}
 
 internal class PoiSqliteStreamingWriter(
     file: File,

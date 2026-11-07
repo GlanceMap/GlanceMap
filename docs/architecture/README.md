@@ -29,6 +29,9 @@ This folder documents the watch-side architecture and major runtime flows.
 - `watch-route-sync.md`
   - Phone side of watch GPX transfers: checksum-based import into Routes.
 
+- `phone-poi-library.md`
+  - POI sections, category drill-down and per-category visibility on the phone.
+
 ## Location Contributor Docs
 
 - `docs/location/ARCHITECTURE.md`

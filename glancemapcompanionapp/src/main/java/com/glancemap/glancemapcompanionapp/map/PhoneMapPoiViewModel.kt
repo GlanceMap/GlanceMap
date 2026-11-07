@@ -5,12 +5,14 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.glancemap.glancemapcompanionapp.diagnostics.PhoneDebugCapture
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 internal data class PhoneMapPoiUiState(
     val pois: List<PhoneMapPoi> = emptyList(),
@@ -68,12 +70,18 @@ private fun recordPhoneMapPoiQuery(
     PhoneDebugCapture.log("PhoneMapPoi", category?.let { "$line category=$it" } ?: line)
 }
 
+private data class PhoneMapPoiQueryFilter(
+    val enabledSourceFileNames: Set<String>,
+    val disabledCategoryIds: Map<String, Set<Int>>,
+)
+
 /** Owns cancellable, debounced phone POI viewport queries outside the MapLibre composable. */
 internal class PhoneMapPoiViewModel(
     application: Application,
 ) : AndroidViewModel(application) {
     private val repository = PhoneMapPoiRepository(application)
     private val sourceVisibility = PhoneMapPoiSourceVisibilityPreferences(application)
+    private val userPoiStore = PhoneMapUserPoiStore(application)
     private val _uiState = MutableStateFlow(PhoneMapPoiUiState())
     val uiState: StateFlow<PhoneMapPoiUiState> = _uiState.asStateFlow()
 
@@ -123,6 +131,50 @@ internal class PhoneMapPoiViewModel(
         if (poiVisible) currentViewport?.let(::query)
     }
 
+    /** Hides or shows categories of one POI file, including their sub-categories. */
+    fun setCategoriesVisible(
+        fileName: String,
+        categoryIds: Set<Int>,
+        visible: Boolean,
+    ) {
+        sourceVisibility.setCategoriesEnabled(fileName, categoryIds, visible)
+        _uiState.value =
+            _uiState.value.copy(
+                pois = emptyList(),
+                sources =
+                    _uiState.value.sources.map { source ->
+                        if (source.fileName != fileName) {
+                            source
+                        } else if (visible) {
+                            source.copy(disabledCategoryIds = source.disabledCategoryIds - categoryIds)
+                        } else {
+                            source.copy(disabledCategoryIds = source.disabledCategoryIds + categoryIds)
+                        }
+                    },
+            )
+        if (poiVisible) currentViewport?.let(::query)
+    }
+
+    suspend fun categoryPois(
+        fileName: String,
+        categoryIds: Set<Int>,
+    ): List<PhoneMapPoi> = repository.categoryPois(fileName, categoryIds, MAXIMUM_CATEGORY_POIS)
+
+    suspend fun renameUserPoi(
+        poi: PhoneMapPoi,
+        name: String,
+    ) {
+        val id = poi.storedId() ?: return
+        withContext(Dispatchers.IO) { userPoiStore.rename(id, name) }
+        refreshSourcesNow()
+    }
+
+    suspend fun deleteUserPoi(poi: PhoneMapPoi) {
+        val id = poi.storedId() ?: return
+        withContext(Dispatchers.IO) { userPoiStore.delete(id) }
+        refreshSourcesNow()
+    }
+
     suspend fun renameSource(
         fileName: String,
         newName: String,
@@ -151,7 +203,11 @@ internal class PhoneMapPoiViewModel(
         _uiState.value =
             _uiState.value.copy(
                 pois = emptyList(),
-                sources = repository.sources(sourceVisibility.disabledFileNames()),
+                sources =
+                    repository.sources(
+                        sourceVisibility.disabledFileNames(),
+                        sourceVisibility.disabledCategoryIds(),
+                    ),
             )
         if (poiVisible) currentViewport?.let(::query)
     }
@@ -160,19 +216,23 @@ internal class PhoneMapPoiViewModel(
         queryJob?.cancel()
         val expectedRequestId = ++requestId
         val enabledSourceFileNames = _uiState.value.sources.enabledFileNames()
+        val disabledCategoryIds =
+            _uiState.value.sources
+                .filter { it.disabledCategoryIds.isNotEmpty() }
+                .associate { it.fileName to it.disabledCategoryIds }
         if (enabledSourceFileNames.isEmpty()) {
             _uiState.value = _uiState.value.copy(pois = emptyList())
             return
         }
         queryJob =
             viewModelScope.launch {
-                executeQuery(viewport, enabledSourceFileNames, expectedRequestId)
+                executeQuery(viewport, PhoneMapPoiQueryFilter(enabledSourceFileNames, disabledCategoryIds), expectedRequestId)
             }
     }
 
     private suspend fun executeQuery(
         viewport: PhoneMapViewport,
-        enabledSourceFileNames: Set<String>,
+        filter: PhoneMapPoiQueryFilter,
         expectedRequestId: Long,
     ) {
         delay(QUERY_DEBOUNCE_MILLIS)
@@ -182,7 +242,8 @@ internal class PhoneMapPoiViewModel(
                 repository.queryViewport(
                     viewport = viewport,
                     limit = MAXIMUM_POI_RESULTS,
-                    enabledSourceFileNames = enabledSourceFileNames,
+                    enabledSourceFileNames = filter.enabledSourceFileNames,
+                    disabledCategoryIds = filter.disabledCategoryIds,
                 )
             }
         val result =
@@ -218,6 +279,7 @@ internal class PhoneMapPoiViewModel(
 
     private companion object {
         private const val MAXIMUM_POI_RESULTS = 180
+        private const val MAXIMUM_CATEGORY_POIS = 300
         private const val QUERY_DEBOUNCE_MILLIS = 200L
     }
 }

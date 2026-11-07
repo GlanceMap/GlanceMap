@@ -4,6 +4,8 @@ import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import com.glancemap.glancemapcompanionapp.refuges.PoiSqliteViewport
 import com.glancemap.glancemapcompanionapp.refuges.isReadablePoiSqliteFile
+import com.glancemap.glancemapcompanionapp.refuges.readPoiSqliteCategories
+import com.glancemap.glancemapcompanionapp.refuges.readPoiSqliteCategoryPoints
 import com.glancemap.glancemapcompanionapp.refuges.readPoiSqliteViewport
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -31,6 +33,7 @@ internal class PhoneMapPoiRepository(
         viewport: PhoneMapViewport,
         limit: Int,
         enabledSourceFileNames: Set<String>? = null,
+        disabledCategoryIds: Map<String, Set<Int>> = emptyMap(),
     ): PhoneMapPoiQueryResult =
         withContext(Dispatchers.IO) {
             if (viewport.zoom < MINIMUM_POI_ZOOM || limit <= 0) return@withContext PhoneMapPoiQueryResult()
@@ -60,6 +63,7 @@ internal class PhoneMapPoiRepository(
                                     maxLon = viewport.maxLon,
                                 ),
                             limit = min(perSourceLimit, remaining),
+                            excludedCategoryIds = disabledCategoryIds[source.name].orEmpty(),
                         )
                     }.getOrElse { failure ->
                         if (failure is CancellationException) throw failure
@@ -73,7 +77,10 @@ internal class PhoneMapPoiRepository(
             PhoneMapPoiQueryResult(pois, queriedSources, failedSources)
         }
 
-    suspend fun sources(disabledSourceFileNames: Set<String> = emptySet()): List<PhoneMapPoiSource> =
+    suspend fun sources(
+        disabledSourceFileNames: Set<String> = emptySet(),
+        disabledCategoryIds: Map<String, Set<Int>> = emptyMap(),
+    ): List<PhoneMapPoiSource> =
         withContext(Dispatchers.IO) {
             poiSourceFiles().map { file ->
                 val isReadable = isPhoneMapPoiFileValid(file)
@@ -82,8 +89,22 @@ internal class PhoneMapPoiRepository(
                     isReadable = isReadable,
                     isEnabled = file.name !in disabledSourceFileNames,
                     poiCount = file.takeIf { isReadable }?.let(::readPoiPointCount),
+                    categories =
+                        if (isReadable) runCatching { readPoiSqliteCategories(file) }.getOrDefault(emptyList()) else emptyList(),
+                    disabledCategoryIds = disabledCategoryIds[file.name].orEmpty(),
                 )
             }
+        }
+
+    /** POIs in a category and its sub-categories, for the Library's category list. */
+    suspend fun categoryPois(
+        fileName: String,
+        categoryIds: Set<Int>,
+        limit: Int,
+    ): List<PhoneMapPoi> =
+        withContext(Dispatchers.IO) {
+            val file = managedPoiFile(fileName)
+            readPoiSqliteCategoryPoints(file, categoryIds, limit).mapNotNull { it.toPhoneMapPoi(file.name) }
         }
 
     suspend fun renameSource(

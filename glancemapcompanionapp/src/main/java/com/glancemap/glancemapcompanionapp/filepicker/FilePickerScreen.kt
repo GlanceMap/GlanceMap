@@ -957,6 +957,12 @@ internal fun FilePickerScreen(
                                         searchOpen = librarySearchOpen,
                                         actions =
                                             PhoneLibraryActions(
+                                                onPoiCategoriesVisible = phoneMapPoiViewModel::setCategoriesVisible,
+                                                loadCategoryPois = phoneMapPoiViewModel::categoryPois,
+                                                onRenameUserPoi = { poi, name ->
+                                                    phoneMapPoiViewModel.renameUserPoi(poi, name)
+                                                },
+                                                onDeleteUserPoi = { poi -> phoneMapPoiViewModel.deleteUserPoi(poi) },
                                                 onPreviewGpx = { item ->
                                                     hikeController.preview(item)
                                                     mapActions.onOpenTool(MapTool.HIKE)

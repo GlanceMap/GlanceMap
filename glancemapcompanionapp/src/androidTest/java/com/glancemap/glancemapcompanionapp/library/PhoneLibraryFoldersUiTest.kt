@@ -40,8 +40,8 @@ class PhoneLibraryFoldersUiTest {
         createFolder("Day 1")
         composeRule.runOnUiThread { composeRule.activity.onBackPressedDispatcher.onBackPressed() }
         composeRule.onNodeWithTag("library-list").performScrollToNode(hasText("Forest loop"))
-        composeRule.onNodeWithText("Forest loop").performClick()
-        composeRule.onNodeWithText(label(R.string.library_move_to_folder)).performScrollTo().performClick()
+        composeRule.onNodeWithTag("library-gpx-overflow-gpx/route").performClick()
+        composeRule.onNodeWithTag("library-gpx-move").performClick()
         composeRule.onNodeWithText("Alps / Day 1").performClick()
         assertEquals("folder-2", organization.value.entry(PhoneLibraryItem.Gpx(libraryTestRoute())).folderId)
         composeRule.onNodeWithTag("library-list").performScrollToNode(hasTestTag("library-folder-folder-1"))
@@ -143,10 +143,33 @@ class PhoneLibraryFoldersUiTest {
         composeRule.onNodeWithText("Pyrenees").assertDoesNotExist()
     }
 
+    @Test
+    fun selectedRoutesMoveTogetherAndFoldersCountWhatIsOnTheMap() {
+        val route = PhoneLibraryItem.Gpx(libraryTestRoute())
+        val recording =
+            PhoneLibraryItem.Gpx(
+                libraryTestRoute().copy(id = "recording", displayName = "Coast ride", isRecording = true),
+            )
+        setContent(listOf(route, recording))
+        createFolder("Alps")
+        composeRule.onNodeWithTag("library-gpx-overflow-${route.key}").performClick()
+        composeRule.onNodeWithTag("library-gpx-select").performClick()
+        composeRule.onNodeWithTag("library-selection-header").assertIsDisplayed()
+        composeRule.onNodeWithTag("library-item-${recording.key}").performClick()
+        composeRule.onNodeWithTag("library-selection-move").performClick()
+        composeRule.onNodeWithTag("library-move-to-folder-1").performClick()
+        composeRule.runOnIdle {
+            assertEquals("folder-1", organization.value.entry(route).folderId)
+            assertEquals("folder-1", organization.value.entry(recording).folderId)
+        }
+        composeRule.onNodeWithTag("library-selection-header").assertDoesNotExist()
+        composeRule.onNodeWithTag("library-folder-count-folder-1").assertTextEquals("0/1")
+        composeRule.onNodeWithTag("library-folder-folder-1").performClick()
+        composeRule.onNodeWithTag("library-folder-show-all").assertIsDisplayed()
+    }
+
     private fun createFolder(name: String) {
-        val description = label(R.string.library_create_folder)
-        composeRule.onNodeWithTag("library-list").performScrollToNode(hasContentDescription(description))
-        composeRule.onNodeWithContentDescription(description).performClick()
+        composeRule.onNodeWithTag("library-new-folder").performClick()
         composeRule.onNodeWithTag("library-folder-name").performTextInput(name)
         composeRule.onNodeWithText(label(R.string.library_folder_create)).performClick()
     }

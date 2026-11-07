@@ -6,60 +6,20 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.glancemap.glancemapcompanionapp.R
 
 @Composable
-internal fun libraryFolderNavigation(
-    organization: PhoneLibraryOrganization,
-    browse: PhoneLibraryBrowseState,
-    category: PhoneLibraryFilter,
-    actions: PhoneLibraryOrganizationActions,
-    onParent: () -> Unit,
-) {
-    var creating by rememberSaveable { mutableStateOf(false) }
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        if (browse.folderId != null) {
-            IconButton(onClick = onParent) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.library_folder_parent))
-            }
-            Text(
-                stringResource(R.string.library_title) + " > " + organization.folderPath(browse.folderId),
-                Modifier.weight(1f),
-                style = MaterialTheme.typography.labelLarge,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-        IconButton(onClick = { creating = true }, enabled = actions.enabled) {
-            Icon(Icons.Filled.CreateNewFolder, stringResource(R.string.library_create_folder))
-        }
-    }
-    if (creating) {
-        libraryCreateFolderDialog(
-            onCreate = { name ->
-                actions.onCreateFolder(browse.folderId, name, category)
-                creating = false
-            },
-            onDismiss = { creating = false },
-        )
-    }
-}
-
-@Composable
-private fun libraryCreateFolderDialog(
+internal fun libraryCreateFolderDialog(
     onCreate: (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -154,28 +114,38 @@ internal fun libraryActivitySetting(
 
 @Composable
 internal fun libraryMoveDialog(
-    item: PhoneLibraryItem,
+    items: List<PhoneLibraryItem>,
     organization: PhoneLibraryOrganization,
     actions: PhoneLibraryOrganizationActions,
     onDismiss: () -> Unit,
 ) {
+    val category = items.firstOrNull()?.filter ?: return
+    val move: (String?) -> Unit = { folderId ->
+        items.forEach { actions.onMoveItem(it, folderId) }
+        onDismiss()
+    }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.library_move_item, item.title)) },
+        title = {
+            Text(
+                items.singleOrNull()?.let { stringResource(R.string.library_move_item, it.title) }
+                    ?: pluralStringResource(R.plurals.library_move_items, items.size, items.size),
+            )
+        },
         text = {
             LazyColumn(Modifier.heightIn(max = 320.dp)) {
                 item {
-                    TextButton(onClick = {
-                        actions.onMoveItem(item, null)
-                        onDismiss()
-                    }, enabled = actions.enabled) { Text(stringResource(R.string.library_folder_root)) }
+                    TextButton(onClick = { move(null) }, enabled = actions.enabled) {
+                        Text(stringResource(R.string.library_folder_root))
+                    }
                 }
-                val folders = organization.folders.filter { it.category == item.filter }
+                val folders = organization.folders.filter { it.category == category }
                 items(folders.sortedBy { organization.folderPath(it.id) }, key = { it.id }) { folder ->
-                    TextButton(onClick = {
-                        actions.onMoveItem(item, folder.id)
-                        onDismiss()
-                    }, enabled = actions.enabled) { Text(organization.folderPath(folder.id)) }
+                    TextButton(
+                        onClick = { move(folder.id) },
+                        enabled = actions.enabled,
+                        modifier = Modifier.testTag("library-move-to-${folder.id}"),
+                    ) { Text(organization.folderPath(folder.id)) }
                 }
             }
         },

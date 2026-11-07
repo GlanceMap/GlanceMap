@@ -52,6 +52,7 @@ internal fun libraryGpxOverflowMenu(
         Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.hike_route_details))
     }
     DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+        libraryRouteOrganizeItems(row) { expanded = false }
         libraryRouteShareItems(sharing) { expanded = false }
         if (item is PhoneLibraryItem.Gpx && row.watchKnown) {
             DropdownMenuItem(

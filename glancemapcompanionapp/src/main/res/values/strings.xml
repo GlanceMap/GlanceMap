@@ -3,7 +3,6 @@
     <string name="library_filter_bundles">Offline data</string>
     <string name="library_more_options">Library options</string>
     <string name="library_filter_planned">Planned</string>
-    <string name="library_on_map">On map</string>
     <string name="library_route_details_title">Route details</string>
     <string name="library_estimated_time">Estimated time</string>
     <string name="library_share_route">Share</string>
@@ -17,7 +16,6 @@
     <string name="library_online_maps">Online maps</string>
     <string name="library_online_maps_hint">Needs a connection</string>
     <string name="library_offline_maps_hint">Works without signal</string>
-    <string name="library_start_route">Start</string>
     <string name="library_route_summary">%1$.1f km · ↑ %2$d m ↓ %3$d m</string>
     <string name="library_kind_summary">%1$s · %2$s</string>
     <string name="library_route_estimated_time">~%1$s</string>
@@ -91,6 +89,23 @@
     <string name="library_folder_parent">Parent folder</string>
     <string name="library_move_to_folder">Move to folder</string>
     <string name="library_move_item">Move %1$s</string>
+    <string name="library_select">Select</string>
+    <string name="library_select_all">Select all</string>
+    <string name="library_folder_show_all">Show all on map</string>
+    <string name="library_poi_section_my_creation">My creation</string>
+    <string name="library_poi_section_waypoints">GPX waypoints</string>
+    <string name="library_poi_section_files">POI files</string>
+    <string name="library_poi_none_here">No POIs here</string>
+    <string name="library_poi_unnamed">Unnamed place</string>
+    <string name="library_folder_count">%1$d/%2$d</string>
+    <plurals name="library_selected_count">
+        <item quantity="one">%1$d selected</item>
+        <item quantity="other">%1$d selected</item>
+    </plurals>
+    <plurals name="library_move_items">
+        <item quantity="one">Move %1$d route</item>
+        <item quantity="other">Move %1$d routes</item>
+    </plurals>
     <string name="library_folder_invalid">Use a unique folder name (up to 80 characters) within this folder.</string>
     <string name="library_organization_load_error">Could not load Library folders. Your files are still available; folder changes are paused.</string>
     <string name="library_organization_save_error">Could not save this Library change. Your files have not been moved or deleted.</string>
@@ -123,13 +138,10 @@
     <string name="library_empty_description">"Try another filter or add files using + or map tools."</string>
     <string name="library_received_summary">"Received GPX · %1$s"</string>
     <string name="library_received_description">"This GPX is already stored on the phone. Add it to your library as a route, then organize it into a folder if needed."</string>
-    <string name="library_poi_count">"POI collection · %1$d places"</string>
-    <string name="library_poi_collection">"POI collection"</string>
     <string name="library_poi_unreadable">"POI collection · Could not read this file"</string>
     <string name="library_offline_summary">"Offline map · %1$s"</string>
     <string name="library_use_for_hike">"Use for today’s hike"</string>
     <string name="library_open_gpx_tools">"Open GPX tools"</string>
-    <string name="library_open_poi_tools">"Open POI tools"</string>
     <string name="library_open_map">"Open offline map"</string>
     <string name="library_load_error">"Could not load local library files. Try refreshing."</string>
     <string name="library_map_open_error">"Could not open this offline map. Check that the file is still available and valid."</string>

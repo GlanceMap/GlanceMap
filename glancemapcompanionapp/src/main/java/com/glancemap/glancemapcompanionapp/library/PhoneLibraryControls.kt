@@ -66,7 +66,6 @@ private fun libraryAddButton(
     Button(
         onClick = onClick,
         enabled = enabled,
-        elevation = ButtonDefaults.elevatedButtonElevation(),
         modifier = modifier,
     ) {
         Icon(Icons.Filled.Add, contentDescription = null)

@@ -145,6 +145,9 @@ internal data class PhoneLibraryBrowseState(
     val kind: PhoneLibraryGpxKind? = null,
     val activity: PhoneLibraryActivity? = null,
     val offlineSection: PhoneLibraryOfflineSection = PhoneLibraryOfflineSection.AREAS,
+    /** The POI file and category opened on the POIs tab, like a folder. */
+    val poiFile: String? = null,
+    val poiCategoryId: Int? = null,
 )
 
 internal data class PhoneLibraryOrganizationActions(

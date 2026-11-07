@@ -1,5 +1,6 @@
 package com.glancemap.glancemapcompanionapp.map
 
+import com.glancemap.glancemapcompanionapp.refuges.PoiSqliteCategory
 import com.glancemap.glancemapcompanionapp.refuges.PoiSqlitePoint
 import com.glancemap.trailcore.geo.GeoPoint
 import com.glancemap.trailcore.poi.PoiDetails
@@ -22,6 +23,8 @@ internal data class PhoneMapPoiSource(
     val isReadable: Boolean,
     val isEnabled: Boolean = true,
     val poiCount: Int? = null,
+    val categories: List<PoiSqliteCategory> = emptyList(),
+    val disabledCategoryIds: Set<Int> = emptySet(),
 )
 
 internal fun List<PhoneMapPoiSource>.enabledFileNames(): Set<String> =
@@ -67,3 +70,6 @@ private fun PoiSqlitePoint.hasValidLocation(): Boolean = lat.isValidLatitude() &
 private fun Double.isValidLatitude(): Boolean = isFinite() && this in -90.0..90.0
 
 private fun Double.isValidLongitude(): Boolean = isFinite() && this in -180.0..180.0
+
+/** The id stored in the POI file, taken from the `source#id` map id. */
+internal fun PhoneMapPoi.storedId(): Long? = id.substringAfterLast('#', "").toLongOrNull()

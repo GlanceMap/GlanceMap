@@ -4967,6 +4967,11 @@ internal fun CompanionMapScreen(
                                 )
                         },
                         onPoiSourceVisibilityChanged = onPoiSourceVisibilityChanged,
+                        onShowPoi = { poi ->
+                            selectedPoi = poi
+                            val target = PhoneMapCoordinate(poi.location.latitude, poi.location.longitude)
+                            mapUiState = mapUiState.requestSearchTarget(target, mapCamera.bearingDegrees)
+                        },
                         onRenamePoiSource = { source -> openContentRename(PhoneMapManagedContent.Poi(source)) },
                         onDeletePoiSource = { source -> openContentDelete(PhoneMapManagedContent.Poi(source)) },
                         onDeletePoiSourceNow = { source -> deleteContent(PhoneMapManagedContent.Poi(source)) },

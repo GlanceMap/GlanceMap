@@ -70,7 +70,18 @@ internal fun libraryFolderRow(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Icon(Icons.Filled.Folder, contentDescription = null)
-            Text(folder.name, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+            Column(Modifier.weight(1f)) {
+                Text(folder.name, style = MaterialTheme.typography.titleMedium)
+                val shown = libraryFolderVisibilityTargets(row.items, state).map { it.second }
+                val count = phoneLibraryFolderVisibilityCount(shown)
+                if (count.total > 0) {
+                    Text(
+                        stringResource(R.string.library_folder_count, count.shown, count.total),
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.testTag("library-folder-count-${folder.id}"),
+                    )
+                }
+            }
             libraryFolderVisibility(row, state, mapActions)
             libraryFolderMenu(row, actions, { renaming = true }, { deleting = true })
         }
@@ -87,23 +98,13 @@ private fun libraryFolderVisibility(
     state: MapToolsPanelState,
     actions: MapToolsPanelActions,
 ) {
-    val targets =
-        row.items.mapNotNull { item ->
-            phoneLibraryVisibility(item, state.gpx.items, state.gpx.globalVisible, state.poi.globalVisible)
-                ?.takeIf { it.available }
-                ?.let { item to it.checked }
-        }
+    val targets = libraryFolderVisibilityTargets(row.items, state)
     val toggle = phoneLibraryFolderToggleState(targets.map { it.second }) ?: return
     val description = stringResource(R.string.library_show_on_map, row.folder.name)
     TriStateCheckbox(
         state = toggle,
         enabled = !state.gpx.isLoading,
-        onClick = {
-            val visible = toggle != ToggleableState.On
-            targets
-                .filter { it.second != visible }
-                .forEach { (item, _) -> setLibraryItemVisible(item, visible, actions) }
-        },
+        onClick = { setLibraryFolderVisible(targets, toggle != ToggleableState.On, actions) },
         modifier =
             Modifier
                 .testTag("library-folder-visibility-${row.folder.id}")

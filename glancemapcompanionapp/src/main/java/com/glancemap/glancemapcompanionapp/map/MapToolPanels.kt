@@ -239,6 +239,7 @@ internal data class MapToolsPanelActions(
     val onGpxAppearanceAppliedToAll: (PhoneMapGpxSettings) -> Unit = {},
     val onDeleteGpxItemNow: suspend (PhoneMapGpxItem) -> Unit = {},
     val onDeletePoiSourceNow: suspend (PhoneMapPoiSource) -> Unit = {},
+    val onShowPoi: (PhoneMapPoi) -> Unit = {},
 )
 
 @Composable

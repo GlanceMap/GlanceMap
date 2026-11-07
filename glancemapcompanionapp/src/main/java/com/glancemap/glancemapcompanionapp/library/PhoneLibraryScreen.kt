@@ -105,7 +105,8 @@ internal fun libraryPanelContent(
     var browse by rememberSaveable(stateSaver = phoneLibraryBrowseSaver) { mutableStateOf(PhoneLibraryBrowseState()) }
     var checkpointsOpen by rememberSaveable { mutableStateOf(false) }
     var selectedKey by rememberSaveable { mutableStateOf<String?>(null) }
-    var moveKey by rememberSaveable { mutableStateOf<String?>(null) }
+    var moveKeys by rememberSaveable { mutableStateOf<List<String>?>(null) }
+    var selectedKeys by rememberSaveable { mutableStateOf<List<String>?>(null) }
     var appearanceTarget by remember { mutableStateOf<PhoneLibraryGpxAppearanceTarget?>(null) }
     val appearanceActions =
         actions.copy(
@@ -130,6 +131,13 @@ internal fun libraryPanelContent(
             browse = browse.copy(folderId = null)
         }
     }
+    val openPoiSource = mapState.poi.sources.firstOrNull { it.fileName == browse.poiFile }
+    LaunchedEffect(state.filter, openPoiSource == null) {
+        if (state.filter != PhoneLibraryFilter.POIS || openPoiSource == null) {
+            browse = browse.copy(poiFile = null, poiCategoryId = null)
+        }
+    }
+    BackHandler(enabled = browse.poiFile != null) { browse = browse.poiParent(openPoiSource) }
     LaunchedEffect(state.searchOpen) {
         if (!state.searchOpen) browse = browse.copy(query = "")
     }
@@ -138,6 +146,24 @@ internal fun libraryPanelContent(
     }
     BackHandler(enabled = browse.folderId != null) { browse = state.organization.parentBrowse(browse) }
     BackHandler(enabled = checkpointsOpen && state.filter == PhoneLibraryFilter.POIS) { checkpointsOpen = false }
+    BackHandler(enabled = selectedKeys != null) { selectedKeys = null }
+    LaunchedEffect(state.filter) { selectedKeys = null }
+    val selection =
+        PhoneLibrarySelection(
+            keys = selectedKeys?.toSet(),
+            onToggle = { item -> selectedKeys = selectedKeys?.toSet().toggled(item.key).toList() },
+            onSelectAll = { items -> selectedKeys = items.map(PhoneLibraryItem::key) },
+            onClear = { selectedKeys = null },
+            onMove = {
+                moveKeys = selectedKeys
+                selectedKeys = null
+            },
+        )
+    val rowActions =
+        addingActions.copy(
+            onMoveItem = { item -> moveKeys = listOf(item.key) },
+            onSelectItem = { item -> selectedKeys = listOf(item.key) },
+        )
     Column(Modifier.fillMaxSize().padding(horizontal = 12.dp)) {
         if (checkpointsOpen && state.filter == PhoneLibraryFilter.POIS) {
             libraryPoiGrouping(checkpoints = true, Modifier.padding(vertical = 8.dp)) { checkpointsOpen = false }
@@ -147,11 +173,19 @@ internal fun libraryPanelContent(
                 state.copy(items = visible),
                 mapState,
                 mapActions,
-                addingActions,
+                rowActions,
                 PhoneLibraryBrowserPresentation(
                     browse,
-                    PhoneLibraryBrowserActions({ browse = it }, { checkpointsOpen = true }, { selectedKey = it.key }),
+                    PhoneLibraryBrowserActions({ browse = it }, { checkpointsOpen = true }) { item ->
+                        // A POI file opens like a folder, onto its categories.
+                        if (item is PhoneLibraryItem.Pois) {
+                            browse = browse.copy(poiFile = item.source.fileName, poiCategoryId = null, query = "")
+                        } else {
+                            selectedKey = item.key
+                        }
+                    },
                     state.items,
+                    selection = selection,
                 ),
             )
         }
@@ -162,15 +196,16 @@ internal fun libraryPanelContent(
             actions =
                 appearanceActions.copy(onMoveItem = { selected ->
                     selectedKey = null
-                    moveKey = selected.key
+                    moveKeys = listOf(selected.key)
                 }),
             onOpenOfflineMap = mapActions.maps.onSelectOffline,
             onDismiss = { selectedKey = null },
             organization = state.organization,
         )
     }
-    state.items.firstOrNull { it.key == moveKey }?.let { item ->
-        libraryMoveDialog(item, state.organization, actions.organization) { moveKey = null }
+    moveKeys?.let { keys ->
+        val moving = state.items.filter { it.key in keys }
+        if (moving.isNotEmpty()) libraryMoveDialog(moving, state.organization, actions.organization) { moveKeys = null }
     }
     appearanceTarget?.let { target ->
         libraryGpxAppearanceDialog(target, state.organization, mapState.gpx, mapActions) { appearanceTarget = null }
@@ -201,8 +236,9 @@ internal fun LazyListScope.libraryEntries(
     mapState: MapToolsPanelState,
     mapActions: MapToolsPanelActions,
     actions: PhoneLibraryActions,
-    onDetails: (PhoneLibraryItem) -> Unit,
+    browser: PhoneLibraryBrowserPresentation,
 ) {
+    val selection = browser.selection
     if (state.items.isEmpty()) {
         item(key = "empty") {
             if (state.isLoading || (state.filter == PhoneLibraryFilter.GPX && mapState.gpx.isLoading)) {
@@ -213,7 +249,34 @@ internal fun LazyListScope.libraryEntries(
             }
         }
     }
-    items(state.items, key = PhoneLibraryItem::key) { item ->
+    val sections =
+        if (state.filter == PhoneLibraryFilter.POIS) {
+            state.items
+                .groupBy { (it as? PhoneLibraryItem.Pois)?.source?.section() ?: PhoneLibraryPoiSection.FILES }
+                .toSortedMap(compareBy(PhoneLibraryPoiSection::ordinal))
+        } else {
+            sortedMapOf(compareBy(PhoneLibraryPoiSection::ordinal), PhoneLibraryPoiSection.FILES to state.items)
+        }
+    sections.forEach { (section, sectionItems) ->
+        if (state.filter == PhoneLibraryFilter.POIS) {
+            item(key = "poi-section/${section.name}") {
+                Text(stringResource(section.label), style = MaterialTheme.typography.labelLarge)
+            }
+        }
+        libraryEntryRows(sectionItems, state, mapState, mapActions, actions, browser)
+    }
+}
+
+private fun LazyListScope.libraryEntryRows(
+    rows: List<PhoneLibraryItem>,
+    state: PhoneLibraryListState,
+    mapState: MapToolsPanelState,
+    mapActions: MapToolsPanelActions,
+    actions: PhoneLibraryActions,
+    browser: PhoneLibraryBrowserPresentation,
+) {
+    val selection = browser.selection
+    items(rows, key = PhoneLibraryItem::key) { item ->
         libraryItemRow(
             PhoneLibraryRowState(
                 item = item,
@@ -222,6 +285,10 @@ internal fun LazyListScope.libraryEntries(
                 organization = state.organization,
                 guidanceEnabled = !actions.guidanceActive && actions.guidanceStartingKey == null,
                 guidanceLoading = actions.guidanceStartingKey == item.key,
+                selected = selection.keys?.let { item.key in it }?.takeIf { item.filter == PhoneLibraryFilter.GPX },
+                onToggleSelected = selection.onToggle,
+                onSelect = actions.onSelectItem,
+                onMoveToFolder = actions.onMoveItem.takeIf { item.filter.hasFolders },
                 watchKnown = actions.watchKnown,
                 routeUri = actions.routeUri,
                 onStartGuidance = actions.onStartGuidance,
@@ -233,7 +300,7 @@ internal fun LazyListScope.libraryEntries(
             ),
             mapState,
             mapActions,
-        ) { onDetails(item) }
+        ) { browser.navigation.onDetails(item) }
     }
 }
 
@@ -245,12 +312,13 @@ internal fun libraryMessage(state: PhoneLibraryListState) {
 @Composable
 internal fun librarySearch(
     query: String,
+    modifier: Modifier = Modifier,
     onQuery: (String) -> Unit,
 ) {
     OutlinedTextField(
         value = query,
         onValueChange = onQuery,
-        modifier = Modifier.fillMaxWidth().testTag("library-search"),
+        modifier = modifier.fillMaxWidth().testTag("library-search"),
         placeholder = { Text(stringResource(R.string.library_search)) },
         trailingIcon = {
             if (query.isNotEmpty()) {
@@ -276,8 +344,8 @@ internal fun libraryItemSummary(item: PhoneLibraryItem): String =
             )
         is PhoneLibraryItem.Pois ->
             if (item.source.isReadable) {
-                item.source.poiCount?.let { stringResource(R.string.library_poi_count, it) }
-                    ?: stringResource(R.string.library_poi_collection)
+                val count = item.source.visibilityCount(null)
+                stringResource(R.string.library_folder_count, count.shown, count.total)
             } else {
                 stringResource(R.string.library_poi_unreadable)
             }

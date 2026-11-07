@@ -39,13 +39,43 @@ internal class PhoneMapUserPoiStore(
                         ),
                 )
 
-        // Write a complete replacement first so a codec failure leaves the installed file untouched.
+        writeAll(directory, updatedPoints)
+        return normalizedName
+    }
+
+    fun rename(
+        sourceId: Long,
+        name: String,
+    ) {
+        val normalizedName = normalizePhoneUserPoiName(name)
+        update { points ->
+            points.map { if (it.sourceId == sourceId) it.copy(tags = it.tags + ("name" to normalizedName)) else it }
+        }
+    }
+
+    fun delete(sourceId: Long) {
+        update { points -> points.filterNot { it.sourceId == sourceId } }
+    }
+
+    private fun update(change: (List<PoiSqlitePoint>) -> List<PoiSqlitePoint>) {
+        val directory = poiDirectoryProvider()
+        val file = File(directory, USER_POI_FILE_NAME)
+        require(file.isFile) { "Your saved places could not be found." }
+        writeAll(directory, change(PoiSqliteCodec.read(file)))
+    }
+
+    // Write a complete replacement first so a codec failure leaves the installed file untouched.
+    private fun writeAll(
+        directory: File,
+        points: List<PoiSqlitePoint>,
+    ) {
+        val file = File(directory, USER_POI_FILE_NAME)
         val temporaryFile = File(directory, ".$USER_POI_FILE_NAME.part")
         if (temporaryFile.exists()) temporaryFile.delete()
         try {
             PoiSqliteCodec.write(
                 file = temporaryFile,
-                points = updatedPoints,
+                points = points,
                 options =
                     PoiSqliteWriteOptions(
                         comment = "Phone-created POIs",
@@ -57,12 +87,11 @@ internal class PhoneMapUserPoiStore(
         } finally {
             temporaryFile.delete()
         }
-        return normalizedName
     }
 
-    private companion object {
+    internal companion object {
         const val USER_POI_FILE_NAME = "my-places.poi"
-        const val USER_POI_CATEGORY = "Saved places"
+        private const val USER_POI_CATEGORY = "Saved places"
     }
 }
 

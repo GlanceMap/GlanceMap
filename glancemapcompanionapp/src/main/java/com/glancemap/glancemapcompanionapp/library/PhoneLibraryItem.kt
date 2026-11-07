@@ -7,6 +7,7 @@ import com.glancemap.glancemapcompanionapp.map.MapLibraryAction
 import com.glancemap.glancemapcompanionapp.map.MapTool
 import com.glancemap.glancemapcompanionapp.map.PhoneInstalledBundle
 import com.glancemap.glancemapcompanionapp.map.PhoneMapGpxItem
+import com.glancemap.glancemapcompanionapp.map.PhoneMapPoi
 import com.glancemap.glancemapcompanionapp.map.PhoneMapPoiSource
 import com.glancemap.glancemapcompanionapp.map.PhoneOfflineBundleHealth
 import com.glancemap.glancemapcompanionapp.map.PhoneOfflineMap
@@ -110,6 +111,11 @@ internal data class PhoneLibraryRowState(
     val organization: PhoneLibraryOrganization = PhoneLibraryOrganization(),
     val guidanceEnabled: Boolean = false,
     val guidanceLoading: Boolean = false,
+    /** Null outside selection mode; otherwise whether this row is ticked. */
+    val selected: Boolean? = null,
+    val onToggleSelected: (PhoneLibraryItem) -> Unit = {},
+    val onSelect: ((PhoneLibraryItem) -> Unit)? = null,
+    val onMoveToFolder: ((PhoneLibraryItem) -> Unit)? = null,
     val watchKnown: Boolean = true,
     val routeUri: suspend (String) -> Uri? = { null },
     val onStartGuidance: (PhoneLibraryItem) -> Unit = {},
@@ -147,6 +153,11 @@ internal data class PhoneLibraryActions(
     val onFilterChanged: (PhoneLibraryFilter) -> Unit,
     val organization: PhoneLibraryOrganizationActions = PhoneLibraryOrganizationActions(),
     val onMoveItem: (PhoneLibraryItem) -> Unit = {},
+    val onSelectItem: (PhoneLibraryItem) -> Unit = {},
+    val onPoiCategoriesVisible: (String, Set<Int>, Boolean) -> Unit = { _, _, _ -> },
+    val loadCategoryPois: suspend (String, Set<Int>) -> List<PhoneMapPoi> = { _, _ -> emptyList() },
+    val onRenameUserPoi: suspend (PhoneMapPoi, String) -> Unit = { _, _ -> },
+    val onDeleteUserPoi: suspend (PhoneMapPoi) -> Unit = {},
     val onGpxAppearance: (PhoneLibraryItem) -> Unit = {},
     val onFolderGpxAppearance: (PhoneLibraryFolder) -> Unit = {},
     val onImportOfflineFiles: (List<Uri>, PhoneLibraryOfflineSection) -> Unit = { _, _ -> },

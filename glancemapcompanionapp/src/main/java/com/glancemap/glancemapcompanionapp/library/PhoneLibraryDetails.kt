@@ -47,7 +47,7 @@ internal fun libraryItemDetails(
                 }
                 libraryDetailActions(item, actions, onOpenOfflineMap, onDismiss)
                 libraryActivitySetting(item, organization, actions.organization)
-                if (item.filter.hasFolders) {
+                if (item.filter == PhoneLibraryFilter.POIS) {
                     OutlinedButton(
                         onClick = { actions.onMoveItem(item) },
                         enabled = actions.organization.enabled,
@@ -87,14 +87,7 @@ private fun libraryDetailActions(
                 Text(stringResource(R.string.library_import_route))
             }
         }
-        is PhoneLibraryItem.Pois ->
-            OutlinedButton(
-                onClick = {
-                    onDismiss()
-                    actions.onOpenMapTools(MapTool.POI)
-                },
-                modifier = Modifier.fillMaxWidth(),
-            ) { Text(stringResource(R.string.library_open_poi_tools)) }
+        is PhoneLibraryItem.Pois -> Unit
         is PhoneLibraryItem.OfflineMap ->
             OutlinedButton(
                 onClick = {

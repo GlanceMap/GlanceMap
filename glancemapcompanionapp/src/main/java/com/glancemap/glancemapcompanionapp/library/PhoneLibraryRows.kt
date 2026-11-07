@@ -32,13 +32,21 @@ internal fun libraryItemRow(
     val item = row.item
     val visibility = phoneLibraryVisibility(item, state.gpx.items, state.gpx.globalVisible, state.poi.globalVisible)
     Card(
+        colors =
+            if (row.selected == true) {
+                CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
+            } else {
+                CardDefaults.cardColors()
+            },
         modifier =
             Modifier
                 .fillMaxWidth()
                 .combinedClickable(
                     enabled = row.enabled,
                     onClick = {
-                        if (item is PhoneLibraryItem.OfflineMap) {
+                        if (row.selected != null) {
+                            row.onToggleSelected(item)
+                        } else if (item is PhoneLibraryItem.OfflineMap) {
                             if (!state.maps.isLoading) actions.maps.onSelectOffline(item.map)
                         } else {
                             onDetails()
@@ -46,23 +54,29 @@ internal fun libraryItemRow(
                     },
                     onLongClick =
                         row.onOpenGpxInNewHikeTab
-                            ?.takeIf { item.isNavigableGpx() }
+                            ?.takeIf { item.isNavigableGpx() && row.selected == null }
                             ?.let { openInNewHikeTab -> { openInNewHikeTab(item) } },
                 ).testTag("library-item-${item.key}"),
     ) {
-        // Compact rows: the trailing buttons keep their 48 dp touch targets, so only padding shrinks.
-        Column(Modifier.fillMaxWidth().padding(start = 12.dp, end = 4.dp, top = 8.dp, bottom = 4.dp)) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                Icon(item.icon(row.organization), contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                libraryRowText(row, visibility, Modifier.weight(1f))
-                libraryRowTrailing(row, visibility, state, actions, onDetails)
-            }
-            libraryRowActions(row, visibility, state, actions)
-            if (item is PhoneLibraryItem.OfflineMap) {
-                libraryMapDataActions(item, row.enabled, state.maps, actions.maps)
+        if (item.isNavigableGpx() || item is PhoneLibraryItem.Pois) {
+            libraryCompactRow(row, visibility, state, actions, onDetails)
+        } else {
+            Column(Modifier.fillMaxWidth().padding(start = 12.dp, end = 4.dp, top = 8.dp, bottom = 4.dp)) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Icon(
+                        item.icon(row.organization),
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                    )
+                    libraryRowText(row, visibility, Modifier.weight(1f))
+                    libraryRowTrailing(row, visibility, state, actions, onDetails)
+                }
+                if (item is PhoneLibraryItem.OfflineMap) {
+                    libraryMapDataActions(item, row.enabled, state.maps, actions.maps)
+                }
             }
         }
     }
@@ -107,7 +121,7 @@ internal fun libraryItemStatus(
     }
 
 @Composable
-private fun libraryRowTrailing(
+internal fun libraryRowTrailing(
     row: PhoneLibraryRowState,
     visibility: PhoneLibraryVisibility?,
     state: MapToolsPanelState,
@@ -118,7 +132,8 @@ private fun libraryRowTrailing(
     when {
         item is PhoneLibraryItem.Gpx || item is PhoneLibraryItem.FolderGpx ->
             libraryGpxOverflowMenu(row, actions)
-        item is PhoneLibraryItem.Pois || item is PhoneLibraryItem.ReceivedGpx ->
+        item is PhoneLibraryItem.Pois -> libraryPoiFileMenu(row, item.source, actions)
+        item is PhoneLibraryItem.ReceivedGpx ->
             IconButton(onClick = onDetails, enabled = row.enabled) {
                 Icon(Icons.Default.MoreVert, stringResource(R.string.hike_route_details))
             }
@@ -164,7 +179,7 @@ private fun libraryMapControl(
     }
 }
 
-private fun PhoneLibraryItem.icon(organization: PhoneLibraryOrganization): ImageVector =
+internal fun PhoneLibraryItem.icon(organization: PhoneLibraryOrganization): ImageVector =
     if (filter == PhoneLibraryFilter.GPX && organization.entry(this).activity == PhoneLibraryActivity.BIKE) {
         Icons.Filled.DirectionsBike
     } else if (filter == PhoneLibraryFilter.GPX && organization.entry(this).activity == PhoneLibraryActivity.HIKE) {
