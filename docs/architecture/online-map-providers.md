@@ -16,8 +16,17 @@ remain unchanged. Utility pickers continue to use standard OpenStreetMap.
 | USGS Topo | US detailed mapping | National Map `USGSTopo` ArcGIS tiles |
 | USGS imagery | US orthoimagery | National Map `USGSImageryOnly` ArcGIS tiles |
 | Esri World Imagery | Global, variable imagery detail | Public World Imagery ArcGIS tiles |
+| BKG TopPlusOpen | Germany detailed; Europe and world coarser | `wmts_topplus_open`, `web_scale`, `WEBMERCATOR` (`{z}/{y}/{x}`) |
 
 Plan IGN V2, CyclOSM, OpenTopoMap and standard OSM were already configured.
+
+The enum declaration order is the default picker order: OpenTopoMap,
+OpenStreetMap, OpenFreeMap, CyclOSM, Esri World Imagery, TopPlusOpen, then the
+regional and key-configured providers. Saved orders store source names and
+keep the user's arrangement; providers missing from a saved order are appended.
+
+TopPlusOpen uses the `web_scale` layer because the plain `web` layer returns
+blank tiles above its native detail outside Germany.
 MapTiler satellite and Tracestrack remain optional, key-configured providers.
 No credentials or paid subscriptions are introduced by these additions.
 
@@ -64,6 +73,10 @@ or prefetch feature.
 - [swisstopo](https://www.swisstopo.admin.ch/en/faq-free-geodata) permits commercial
   use of its open data, subject to attribution and service fair use.
 - [USGS](https://apps.nationalmap.gov/services/) lists the National Map services.
+- [BKG TopPlusOpen](https://gdz.bkg.bund.de/) is free under
+  [dl-de/by-2-0](https://www.govdata.de/dl-de/by-2-0) with no access
+  restrictions. Attribution must name BKG with the year of last retrieval, the
+  licence and the linked data-source list.
 - Esri's public URL responds without a key, but its
   [linked licensing summary](https://goto.arcgis.com/termsofuse/viewsummary)
   conditions use on Esri software/subscriptions. Adding the requested source is

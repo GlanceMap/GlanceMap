@@ -8,20 +8,22 @@ internal const val OPEN_STREET_MAP_ATTRIBUTION =
     "<a href=\"https://www.openstreetmap.org/copyright\">© OpenStreetMap contributors</a>"
 
 /** The supported internet map datasets, separate from the online/offline renderer choice. */
+/** Declaration order is the default picker order; saved preferences store names, not ordinals. */
 internal enum class PhoneOnlineMapSource {
     OPEN_TOPO,
-    PLAN_IGN_V2,
     OPEN_STREET_MAP,
+    OPEN_FREE_MAP,
     CYCLOSM,
+    ESRI_WORLD_IMAGERY,
+    BKG_TOPPLUS_OPEN,
+    PLAN_IGN_V2,
     TRACESTRACK_TOPO,
     SATELLITE,
-    OPEN_FREE_MAP,
     IGN_ORTHOPHOTO,
     SWISS_TOPO,
     SWISS_IMAGE,
     USGS_TOPO,
     USGS_IMAGERY,
-    ESRI_WORLD_IMAGERY,
 
     ;
 
@@ -244,6 +246,26 @@ internal object PhoneMapRendererCatalog {
                 "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
         )
 
+    /**
+     * BKG TopPlusOpen: detailed in Germany, coarser across Europe and the world. The `web_scale`
+     * layer upscales smaller-scale imagery where detailed tiles are missing instead of returning
+     * blank tiles. Licence dl-de/by-2-0 requires the year of the last data retrieval.
+     */
+    private val bkgTopPlusOpenProvider =
+        OnlineMapProvider(
+            id = "bkg_topplus_open",
+            displayName = "TopPlusOpen (BKG)",
+            attribution =
+                "<a href=\"https://gdz.bkg.bund.de/\">© BKG (${java.time.Year.now()})</a> " +
+                    "<a href=\"https://www.govdata.de/dl-de/by-2-0\">dl-de/by-2-0</a> | " +
+                    "<a href=\"https://sgx.geodatenzentrum.de/web_public/gdz/datenquellen/" +
+                    "datenquellen_topplusopen.html\">Data sources</a>",
+            rasterTileUrlTemplate =
+                "https://sgx.geodatenzentrum.de/wmts_topplus_open/tile/1.0.0/web_scale/" +
+                    "default/WEBMERCATOR/{z}/{y}/{x}.png",
+            maximumZoom = 18,
+        )
+
     private val tracestrackTopoProvider = tracestrackTopoProvider(BuildConfig.TRACESTRACK_API_KEY)
     private val mapTilerSatelliteProvider = mapTilerSatelliteProvider(BuildConfig.MAPTILER_API_KEY)
 
@@ -289,6 +311,7 @@ internal object PhoneMapRendererCatalog {
             PhoneOnlineMapSource.USGS_TOPO to usgsTopoProvider,
             PhoneOnlineMapSource.USGS_IMAGERY to usgsImageryProvider,
             PhoneOnlineMapSource.ESRI_WORLD_IMAGERY to esriWorldImageryProvider,
+            PhoneOnlineMapSource.BKG_TOPPLUS_OPEN to bkgTopPlusOpenProvider,
         )
 
     fun providerForOnlineSource(source: PhoneOnlineMapSource): OnlineMapProvider? = onlineProviders[source]

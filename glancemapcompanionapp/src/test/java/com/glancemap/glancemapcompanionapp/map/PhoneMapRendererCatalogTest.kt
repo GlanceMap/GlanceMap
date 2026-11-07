@@ -80,18 +80,19 @@ class PhoneMapRendererCatalogTest {
         assertEquals(
             listOf(
                 PhoneOnlineMapSource.OPEN_TOPO,
-                PhoneOnlineMapSource.PLAN_IGN_V2,
                 PhoneOnlineMapSource.OPEN_STREET_MAP,
+                PhoneOnlineMapSource.OPEN_FREE_MAP,
                 PhoneOnlineMapSource.CYCLOSM,
+                PhoneOnlineMapSource.ESRI_WORLD_IMAGERY,
+                PhoneOnlineMapSource.BKG_TOPPLUS_OPEN,
+                PhoneOnlineMapSource.PLAN_IGN_V2,
                 PhoneOnlineMapSource.TRACESTRACK_TOPO,
                 PhoneOnlineMapSource.SATELLITE,
-                PhoneOnlineMapSource.OPEN_FREE_MAP,
                 PhoneOnlineMapSource.IGN_ORTHOPHOTO,
                 PhoneOnlineMapSource.SWISS_TOPO,
                 PhoneOnlineMapSource.SWISS_IMAGE,
                 PhoneOnlineMapSource.USGS_TOPO,
                 PhoneOnlineMapSource.USGS_IMAGERY,
-                PhoneOnlineMapSource.ESRI_WORLD_IMAGERY,
             ),
             PhoneMapRendererCatalog.supportedOnlineSources(),
         )
@@ -178,6 +179,7 @@ class PhoneMapRendererCatalogTest {
                 PhoneOnlineMapSource.USGS_TOPO,
                 PhoneOnlineMapSource.USGS_IMAGERY,
                 PhoneOnlineMapSource.ESRI_WORLD_IMAGERY,
+                PhoneOnlineMapSource.BKG_TOPPLUS_OPEN,
             )
         sources.forEach { source ->
             val provider = requireNotNull(PhoneMapRendererCatalog.providerForOnlineSource(source))
@@ -192,6 +194,10 @@ class PhoneMapRendererCatalogTest {
         val esri =
             requireNotNull(PhoneMapRendererCatalog.providerForOnlineSource(PhoneOnlineMapSource.ESRI_WORLD_IMAGERY))
         assertTrue(esri.rasterTileUrlTemplate.endsWith("/tile/{z}/{y}/{x}"))
+        val bkg = requireNotNull(PhoneMapRendererCatalog.providerForOnlineSource(PhoneOnlineMapSource.BKG_TOPPLUS_OPEN))
+        assertTrue(bkg.rasterTileUrlTemplate.contains("/web_scale/default/WEBMERCATOR/{z}/{y}/{x}.png"))
+        assertTrue(bkg.attribution.contains("dl-de/by-2-0"))
+        assertEquals(18, bkg.maximumZoom)
     }
 
     @Test
