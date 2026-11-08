@@ -1,7 +1,9 @@
 package com.glancemap.glancemapwearos.presentation.features.maps.terrain3d
 
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.os.SystemClock
+import com.glancemap.glancemapwearos.BuildConfig
 import com.glancemap.glancemapwearos.presentation.features.maps.TerrainSource
 import earth.worldwind.layer.mercator.MercatorTileFactory
 import earth.worldwind.layer.mercator.MercatorTiledImageLayer
@@ -12,11 +14,14 @@ import earth.worldwind.render.image.ImageSource
 import earth.worldwind.render.image.ImageTile
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.mapsforge.core.model.Tile
 import org.mapsforge.map.android.graphics.AndroidGraphicFactory
 import org.mapsforge.map.layer.cache.InMemoryTileCache
@@ -27,6 +32,7 @@ import org.mapsforge.map.model.DisplayModel
 import org.mapsforge.map.reader.MapFile
 import org.mapsforge.map.rendertheme.XmlRenderTheme
 import org.mapsforge.map.rendertheme.rule.RenderThemeFuture
+import java.io.ByteArrayOutputStream
 import java.io.Closeable
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicLong
@@ -34,13 +40,22 @@ import java.util.concurrent.atomic.AtomicReference
 
 private const val TILE_SIZE = 256
 
-/** Session-owned, single-worker Mapsforge tile provider; no disk cache. */
+/**
+ * Session-owned, single-worker Mapsforge tile provider. With [diskCache], drawn images are saved
+ * as PNG and later requests load them instead of drawing again; [themeVariant] names the theme
+ * choice that the source's theme fields do not describe (the dedicated 3D hiking theme).
+ */
 internal class WorldWindMapsforge(
     source: TerrainSource,
     theme: XmlRenderTheme,
+    private val diskCache: WorldWindTileDiskCache? = null,
+    themeVariant: String = "selected",
 ) : Closeable {
     private val worker = Executors.newSingleThreadExecutor().asCoroutineDispatcher()
     private val scope = CoroutineScope(SupervisorJob() + worker)
+
+    /** Saves finish after the session closes; they only use already drawn pixels. */
+    private val saveScope = CoroutineScope(SupervisorJob() + Dispatchers.IO.limitedParallelism(1))
     val tileRequests = AtomicLong()
     val tileRenders = AtomicLong()
     val tileImagesAvailable = AtomicLong()
@@ -49,6 +64,9 @@ internal class WorldWindMapsforge(
     val tileCoalesced = AtomicLong()
     val tileCancelled = AtomicLong()
     val tileSkipped = AtomicLong()
+    val tileDiskHits = AtomicLong()
+    val tileDiskWrites = AtomicLong()
+    val tileDiskWriteBytes = AtomicLong()
     val visibleTiles = AtomicReference<WorldWindVisibleTiles?>(null)
 
     /** Tiles WorldWind asked for in its latest frame; null until the first frame. */
@@ -75,7 +93,8 @@ internal class WorldWindMapsforge(
         "${source.mapFile.absolutePath}:${source.mapFile.lastModified()}:${source.mapFile.length()}"
     private val themeIdentity =
         "${source.themeFile}:${source.themeFile?.lastModified()}:${source.mapsforgeThemeName}:" +
-            "${source.bundledThemeId}:${source.externalTheme}"
+            "${source.bundledThemeId}:${source.externalTheme}:$themeVariant:" +
+            "${BuildConfig.VERSION_CODE}:${BuildConfig.GIT_SHA}"
     private val textScale = source.textScale
 
     @Volatile private var closed = false
@@ -143,17 +162,22 @@ internal class WorldWindMapsforge(
                 override val key = key
 
                 override suspend fun createBitmap(): Bitmap? {
-                    val view = viewGeneration.get()
-                    val pixels =
-                        coalescer.get(key) { renderGate.withPermit(view) { renderIfWanted(key) } } ?: return null
-                    currentCoroutineContext().ensureActive()
-                    val decoded = worldWindBitmap(pixels)
-                    return if (closed) {
-                        decoded.recycle()
+                    val bitmap =
+                        readSavedTile(key) ?: run {
+                            val view = viewGeneration.get()
+                            coalescer
+                                .get(key) { renderGate.withPermit(view) { renderIfWanted(key) } }
+                                ?.let { pixels ->
+                                    currentCoroutineContext().ensureActive()
+                                    worldWindBitmap(pixels)
+                                }
+                        }
+                    return if (bitmap == null || closed) {
+                        bitmap?.recycle()
                         null
                     } else {
                         tileImagesAvailable.incrementAndGet()
-                        decoded
+                        bitmap
                     }
                 }
             },
@@ -168,7 +192,52 @@ internal class WorldWindMapsforge(
             tileSkipped.incrementAndGet()
             throw CancellationException("Tile left the view")
         }
-        return render(key)
+        return render(key)?.also { pixels -> save(key, pixels) }
+    }
+
+    private suspend fun readSavedTile(key: WorldWindTileKey): Bitmap? {
+        val cache = diskCache ?: return null
+        return withContext(Dispatchers.IO) {
+            val bytes = cache.read(key)
+            val decoded =
+                bytes?.let {
+                    BitmapFactory.decodeByteArray(
+                        it,
+                        0,
+                        it.size,
+                        BitmapFactory.Options().apply { inPreferredConfig = Bitmap.Config.ARGB_8888 },
+                    )
+                }
+            val usable = decoded?.takeIf { it.width == key.resolution && it.height == key.resolution }
+            if (usable != null) {
+                tileDiskHits.incrementAndGet()
+            } else if (bytes != null) {
+                decoded?.recycle()
+                cache.delete(key)
+            }
+            usable
+        }
+    }
+
+    private fun save(
+        key: WorldWindTileKey,
+        pixels: IntArray,
+    ) {
+        val cache = diskCache ?: return
+        saveScope.launch {
+            val bitmap = worldWindBitmap(pixels)
+            val bytes =
+                try {
+                    ByteArrayOutputStream().also { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }.toByteArray()
+                } finally {
+                    bitmap.recycle()
+                }
+            val written = cache.write(key, bytes)
+            if (written > 0) {
+                tileDiskWrites.incrementAndGet()
+                tileDiskWriteBytes.addAndGet(written)
+            }
+        }
     }
 
     @Suppress("TooGenericExceptionCaught")

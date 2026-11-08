@@ -55,7 +55,16 @@ features depend on the map data and labels are draped onto terrain. The selected
 pixels are shared for coalescing, and each WorldWind request receives its own
 bitmap because WorldWind may recycle it. The
 existing selected-first local DEM repository supplies tiled elevations; no
-WorldWind online provider or persistent rendered imagery cache is configured.
+WorldWind online provider is configured. Drawn images are saved as PNG in the
+app cache folder (`worldwind-tiles`) and loaded before drawing on later requests,
+including after a session restart. Saved images are grouped by map file
+(path, size and modification time), theme fields and whether the 3D hiking
+theme is used, text scale, tile size, and app version and build, so a change to
+any of them draws new images. Saving runs off the drawing worker. The folder is
+capped at 50 MiB, removing the least recently used images, and images unused for
+14 days are deleted; it is trimmed when a session starts and every 32 saves.
+Session diagnostics report `disk_hits`, `disk_writes` and `disk_write_bytes`,
+and the export's Cache Summary reports `worldWindTileCacheSizeMb`.
 WorldWind's atmosphere supplies the sky and horizon; its ground scattering is
 disabled to preserve the offline map's colors and avoid the extra ground pass.
 The initial elevation coverage is limited to approximately three arc-seconds,

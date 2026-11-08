@@ -830,6 +830,7 @@ object DiagnosticsExporter {
                     "copyMb=${formatBytesToMb(demDisk.copyBytes)} copyMs=${demDisk.copyMs} " +
                     "hits=${demDisk.hits} fallbackTiles=${demDisk.fallbackTiles}",
             )
+            writer.appendLine("worldWindTileCacheSizeMb=${formatBytesToMb(cacheSnapshot.worldWindTileCacheSizeBytes)}")
             if (cacheSnapshot.tileCacheBuckets.isEmpty()) {
                 writer.appendLine("tileCacheBuckets=none")
             } else {

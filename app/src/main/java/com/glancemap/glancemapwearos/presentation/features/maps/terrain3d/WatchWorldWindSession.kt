@@ -153,7 +153,14 @@ private suspend fun runWatchWorldWindSession(
                         ),
                     ) { "Selected theme unavailable" }
                 }
-            imagery = WorldWindMapsforge(currentSource, theme)
+            val tileDiskCache = WorldWindTileDiskCache.shared(context).also { it.trim() }
+            imagery =
+                WorldWindMapsforge(
+                    currentSource,
+                    theme,
+                    tileDiskCache,
+                    themeVariant = worldWindThemeVariant(hikingThemeEnabled),
+                )
             val mapBounds = checkNotNull(imagery).bounds
             check(mapBounds.contains(center.latitude, center.longitude)) {
                 "Current location is outside the selected map"
@@ -274,6 +281,9 @@ private suspend fun runWatchWorldWindSession(
                     "resource_cache_capacity=${worldWindCacheBudget(runtime.maxMemory())} " +
                     "resolution=256 coalesced=${imageryProvider.tileCoalesced.get()} " +
                     "cancelled=${imageryProvider.tileCancelled.get()} skipped=${imageryProvider.tileSkipped.get()} " +
+                    "disk_hits=${imageryProvider.tileDiskHits.get()} " +
+                    "disk_writes=${imageryProvider.tileDiskWrites.get()} " +
+                    "disk_write_bytes=${imageryProvider.tileDiskWriteBytes.get()} " +
                     "failed=${imageryProvider.tileFailures.get()} " +
                     "outstanding=${imageryProvider.outstandingRequests()} " +
                     "dem_grids=${elevationProvider.gridCount.get()} " +
@@ -397,6 +407,13 @@ private fun worldWindRenderActivityFields(
         "progress_percent=${percent ?: "unavailable"}" +
         (busyMs?.let { " busy_ms=$it" } ?: "")
 
+/** Names the theme choice in saved 3D image keys; [TerrainSource] does not describe the hiking theme. */
+internal fun worldWindThemeVariant(hikingThemeEnabled: Boolean): String =
+    when (hikingThemeEnabled) {
+        true -> "hiking-3d"
+        false -> "selected"
+    }
+
 internal suspend fun finishWorldWindResources(
     close: suspend () -> Unit,
     onFinished: () -> Unit,
@@ -430,7 +447,9 @@ private fun worldWindEndMessage(
         "requests=${imagery?.tileRequests?.get() ?: 0} renders=${imagery?.tileRenders?.get() ?: 0} " +
         "images=${imagery?.tileImagesAvailable?.get() ?: 0} failed=${imagery?.tileFailures?.get() ?: 0} " +
         "coalesced=${imagery?.tileCoalesced?.get() ?: 0} cancelled=${imagery?.tileCancelled?.get() ?: 0} " +
-        "skipped=${imagery?.tileSkipped?.get() ?: 0} " +
+        "skipped=${imagery?.tileSkipped?.get() ?: 0} disk_hits=${imagery?.tileDiskHits?.get() ?: 0} " +
+        "disk_writes=${imagery?.tileDiskWrites?.get() ?: 0} " +
+        "disk_write_bytes=${imagery?.tileDiskWriteBytes?.get() ?: 0} " +
         "render_ms=${imagery?.tileRenderMs?.get() ?: 0} dem_grids=${elevation?.gridCount?.get() ?: 0} " +
         "dem_samples=${elevation?.sampleCount?.get() ?: 0} dem_voids=${elevation?.voidCount?.get() ?: 0} " +
         "dem_ms=${elevation?.sampleMs?.get() ?: 0} " +
