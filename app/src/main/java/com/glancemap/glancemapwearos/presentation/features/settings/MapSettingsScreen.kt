@@ -156,42 +156,6 @@ fun MapSettingsScreen(
         }
         item {
             SettingsToggleChip(
-                checked = terrain3dEnabled,
-                onCheckedChanged = { enabled ->
-                    if (!enabled) {
-                        viewModel.setTerrain3dEnabled(false)
-                    } else {
-                        scope.launch {
-                            val readiness = themeViewModel.demReadinessForMap(selectedMapPath)
-                            if (canEnableTerrain3d(readiness)) {
-                                viewModel.setTerrain3dEnabled(true)
-                            } else {
-                                viewModel.setTerrain3dEnabled(false)
-                                demSetupReason =
-                                    if (selectedMapPath.isNullOrBlank()) {
-                                        DemSetupReason.HILL_SHADING_MAP_REQUIRED
-                                    } else {
-                                        DemSetupReason.TERRAIN_3D
-                                    }
-                                showDemSetupDialog = true
-                            }
-                        }
-                    }
-                },
-                label = stringResource(R.string.map_terrain_3d_experimental),
-            )
-        }
-        if (terrain3dEnabled) {
-            item {
-                SettingsToggleChip(
-                    checked = terrain3dHikingThemeEnabled,
-                    onCheckedChanged = viewModel::setTerrain3dHikingThemeEnabled,
-                    label = stringResource(R.string.map_terrain_3d_hiking_theme),
-                )
-            }
-        }
-        item {
-            SettingsToggleChip(
                 checked = liveElevation,
                 onCheckedChanged = { enabled ->
                     if (!enabled) {
@@ -288,6 +252,42 @@ fun MapSettingsScreen(
                 label = stringResource(R.string.map_slope_overlay),
                 secondaryLabel = reliefOverlaySecondaryLabel,
             )
+        }
+        item {
+            SettingsToggleChip(
+                checked = terrain3dEnabled,
+                onCheckedChanged = { enabled ->
+                    if (!enabled) {
+                        viewModel.setTerrain3dEnabled(false)
+                    } else {
+                        scope.launch {
+                            val readiness = themeViewModel.demReadinessForMap(selectedMapPath)
+                            if (canEnableTerrain3d(readiness)) {
+                                viewModel.setTerrain3dEnabled(true)
+                            } else {
+                                viewModel.setTerrain3dEnabled(false)
+                                demSetupReason =
+                                    if (selectedMapPath.isNullOrBlank()) {
+                                        DemSetupReason.HILL_SHADING_MAP_REQUIRED
+                                    } else {
+                                        DemSetupReason.TERRAIN_3D
+                                    }
+                                showDemSetupDialog = true
+                            }
+                        }
+                    }
+                },
+                label = stringResource(R.string.map_terrain_3d_experimental),
+            )
+        }
+        if (terrain3dEnabled) {
+            item {
+                SettingsToggleChip(
+                    checked = terrain3dHikingThemeEnabled,
+                    onCheckedChanged = viewModel::setTerrain3dHikingThemeEnabled,
+                    label = stringResource(R.string.map_terrain_3d_hiking_theme),
+                )
+            }
         }
         item {
             SettingsSectionChip(
