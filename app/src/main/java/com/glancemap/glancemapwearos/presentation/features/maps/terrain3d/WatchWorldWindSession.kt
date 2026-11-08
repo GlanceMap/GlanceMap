@@ -284,6 +284,8 @@ private suspend fun runWatchWorldWindSession(
                     "heap_used=${runtime.totalMemory() - runtime.freeMemory()} " +
                     "heap_max=${runtime.maxMemory()} " +
                     "resource_cache_capacity=${worldWindCacheBudget(runtime.maxMemory())} " +
+                    "${currentWindow.textureCache.logFields()} " +
+                    "visible_tiles_max=${imageryProvider.visibleTilesMax.get()} " +
                     "resolution=256 coalesced=${imageryProvider.tileCoalesced.get()} " +
                     "cancelled=${imageryProvider.tileCancelled.get()} skipped=${imageryProvider.tileSkipped.get()} " +
                     "disk_hits=${imageryProvider.tileDiskHits.get()} " +
@@ -473,6 +475,8 @@ private fun worldWindEndMessage(
         "images=${imagery?.tileImagesAvailable?.get() ?: 0} failed=${imagery?.tileFailures?.get() ?: 0} " +
         "coalesced=${imagery?.tileCoalesced?.get() ?: 0} cancelled=${imagery?.tileCancelled?.get() ?: 0} " +
         "skipped=${imagery?.tileSkipped?.get() ?: 0} disk_hits=${imagery?.tileDiskHits?.get() ?: 0} " +
+        "${window?.textureCache?.logFields() ?: "texture_cache=unavailable"} " +
+        "visible_tiles_max=${imagery?.visibleTilesMax?.get() ?: 0} " +
         "disk_writes=${imagery?.tileDiskWrites?.get() ?: 0} " +
         "disk_write_bytes=${imagery?.tileDiskWriteBytes?.get() ?: 0} " +
         "render_ms=${imagery?.tileRenderMs?.get() ?: 0} dem_grids=${elevation?.gridCount?.get() ?: 0} " +

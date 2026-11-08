@@ -74,8 +74,12 @@ The initial elevation coverage is limited to approximately three arc-seconds,
 including where Detailed terrain is present, to avoid claiming uniform 1-second
 resolution across fallback boundaries. Coarse elevation grids spanning more than
 four HGT files are omitted. The WorldWind resource-cache capacity is one eighth
-of maximum heap, capped at 16 MiB and floored at 1 MiB; it is a cache capacity,
-not a measured GPU allocation. DEM heights come from the shared DEM repository,
+of maximum heap, capped at 32 MiB and floored at 1 MiB; it is a cache capacity,
+not a measured GPU allocation. The earlier 16 MiB cap held about 64 256-pixel
+images, fewer than a tilted horizon view and its fallbacks need, so with saved
+images loading quickly they were evicted and reloaded continuously and the map
+flickered. Diagnostics report `texture_cache_capacity`,
+`texture_cache_peak_bytes`, `texture_evictions` and `visible_tiles_max`. DEM heights come from the shared DEM repository,
 which reads uncompressed copies of the selected-first tiles in the app cache
 folder (`dem-uncompressed`), memory-mapped rather than decoded onto the heap, so
 a view spanning two 1-arc-second tiles no longer reloads them in turn. The same

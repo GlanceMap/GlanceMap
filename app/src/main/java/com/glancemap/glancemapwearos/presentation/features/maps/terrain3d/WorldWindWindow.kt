@@ -22,6 +22,7 @@ import earth.worldwind.gesture.GestureState
 import earth.worldwind.gesture.PanRecognizer
 import earth.worldwind.layer.BackgroundLayer
 import earth.worldwind.layer.RenderableLayer
+import earth.worldwind.render.RenderResource
 import earth.worldwind.render.RenderResourceCache
 import earth.worldwind.render.Renderable
 import kotlinx.coroutines.cancelChildren
@@ -37,7 +38,40 @@ import kotlin.math.min
 
 private const val MIB = 1024L * 1024L
 
-internal fun worldWindCacheBudget(heapMax: Long): Long = (heapMax / 8).coerceAtMost(16 * MIB).coerceAtLeast(MIB)
+/**
+ * WorldWind texture cache capacity: one eighth of the heap limit, between 1 and 32 MiB. 16 MiB held
+ * only about 64 256-pixel images, fewer than a tilted horizon view and its fallbacks need, so
+ * images were evicted and reloaded continuously, which flickered.
+ */
+internal fun worldWindCacheBudget(heapMax: Long): Long = (heapMax / 8).coerceAtMost(32 * MIB).coerceAtLeast(MIB)
+
+/** Texture cache that reports evictions and the highest observed use, for diagnostics. */
+internal class WorldWindTextureCache(
+    context: Context,
+    capacity: Long,
+) : RenderResourceCache(context, capacity) {
+    val evictions = AtomicLong()
+    val peakUsedBytes = AtomicLong()
+
+    fun recordUsage() {
+        val used = usedCapacity
+        peakUsedBytes.updateAndGet { maxOf(it, used) }
+    }
+
+    override fun entryRemoved(
+        key: Any,
+        oldValue: RenderResource,
+        newValue: RenderResource?,
+        evicted: Boolean,
+    ) {
+        if (evicted) evictions.incrementAndGet()
+        super.entryRemoved(key, oldValue, newValue, evicted)
+    }
+
+    fun logFields(): String =
+        "texture_cache_capacity=$capacity texture_cache_peak_bytes=${peakUsedBytes.get()} " +
+            "texture_evictions=${evictions.get()}"
+}
 
 internal fun worldWindInitialRange(): Double = INITIAL_TERRAIN_CAMERA_DISTANCE.toDouble()
 
@@ -101,8 +135,9 @@ internal class WatchWorldWindWindow(
     private val onPanStarted: () -> Unit,
 ) : WorldWindow(
         context,
-        renderResourceCache = RenderResourceCache(context, worldWindCacheBudget(Runtime.getRuntime().maxMemory())),
+        renderResourceCache = WorldWindTextureCache(context, worldWindCacheBudget(Runtime.getRuntime().maxMemory())),
     ) {
+    val textureCache: WorldWindTextureCache get() = engine.renderResourceCache as WorldWindTextureCache
     val lookAt = LookAt()
     val globeBackground = BackgroundLayer().apply { isEnabled = false }
     val surfaceReadyAt = AtomicLong()
@@ -328,6 +363,7 @@ internal class WatchWorldWindWindow(
 
     override fun renderFrame(frame: Frame) {
         super.renderFrame(frame)
+        textureCache.recordUsage()
         val elevation = engine.globe.getElevation(lookAt.position.latitude, lookAt.position.longitude)
         if (provisionalGround && worldWindTerrainReachedStartGround(lookAt.position.altitude, elevation)) {
             provisionalGround = false

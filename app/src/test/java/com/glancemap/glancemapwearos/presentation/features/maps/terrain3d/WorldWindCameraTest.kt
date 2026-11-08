@@ -44,7 +44,9 @@ class WorldWindCameraTest {
     @Test
     fun `cache budget scales with heap but is capped`() {
         assertEquals(8L * 1024 * 1024, worldWindCacheBudget(64L * 1024 * 1024))
-        assertEquals(16L * 1024 * 1024, worldWindCacheBudget(512L * 1024 * 1024))
+        assertEquals(32L * 1024 * 1024, worldWindCacheBudget(256L * 1024 * 1024))
+        assertEquals(32L * 1024 * 1024, worldWindCacheBudget(512L * 1024 * 1024))
+        assertEquals(16L * 1024 * 1024, worldWindCacheBudget(128L * 1024 * 1024))
         assertTrue(worldWindCacheBudget(32L * 1024 * 1024) <= 4L * 1024 * 1024)
     }
 

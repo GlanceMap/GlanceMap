@@ -37,6 +37,7 @@ import org.mapsforge.map.rendertheme.rule.RenderThemeFuture
 import java.io.ByteArrayOutputStream
 import java.io.Closeable
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 
@@ -80,6 +81,9 @@ internal class WorldWindMapsforge(
     val tileDiskWrites = AtomicLong()
     val tileDiskWriteBytes = AtomicLong()
     val visibleTiles = AtomicReference<WorldWindVisibleTiles?>(null)
+
+    /** Highest number of image tiles a single frame showed. */
+    val visibleTilesMax = AtomicInteger()
 
     /** Tiles WorldWind asked for in its latest frame; null until the first frame. */
     private val wantedTiles = AtomicReference<Set<WorldWindTileKey>?>(null)
@@ -155,6 +159,7 @@ internal class WorldWindMapsforge(
                 visibleTiles,
                 wantedTiles,
                 viewGeneration,
+                visibleTilesMax,
             ),
         )
 
@@ -317,6 +322,7 @@ internal class WorldWindVisibleTileImage(
     private val visibleTiles: AtomicReference<WorldWindVisibleTiles?>,
     private val wantedTiles: AtomicReference<Set<WorldWindTileKey>?>? = null,
     private val viewGeneration: AtomicLong? = null,
+    private val visibleTilesMax: AtomicInteger? = null,
 ) : MercatorTiledSurfaceImage(image.tileFactory, image.levelSet) {
     private var total = 0
     private var ready = 0
@@ -334,6 +340,7 @@ internal class WorldWindVisibleTileImage(
         frameWanted.clear()
         super.assembleTiles(rc)
         if (!rc.isPickMode) {
+            visibleTilesMax?.updateAndGet { maxOf(it, total) }
             if (wantedTiles?.get() != frameWanted) {
                 wantedTiles?.set(frameWanted.toSet())
                 viewGeneration?.incrementAndGet()
