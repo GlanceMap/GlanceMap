@@ -33,7 +33,8 @@ internal val TERRAIN_3D_HIKING_THEME_ENABLED = booleanPreferencesKey("terrain_3d
 
 internal fun Preferences.terrain3dEnabled(): Boolean = this[TERRAIN_3D_ENABLED] ?: false
 
-internal fun Preferences.terrain3dHikingThemeEnabled(): Boolean = this[TERRAIN_3D_HIKING_THEME_ENABLED] ?: true
+/** Off by default: 3D uses the selected 2D theme unless the dedicated 3D hiking theme is chosen. */
+internal fun Preferences.terrain3dHikingThemeEnabled(): Boolean = this[TERRAIN_3D_HIKING_THEME_ENABLED] ?: false
 
 internal fun Preferences.mapZoomScaleMeters(
     scaleKey: Preferences.Key<Int>,

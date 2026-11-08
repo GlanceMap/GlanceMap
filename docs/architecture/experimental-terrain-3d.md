@@ -2,8 +2,10 @@
 
 Map settings expose an opt-in, default-off 3D terrain view powered by WorldWind.
 The retained Mapsforge view owns map selection and the 2D center. The 3D session
-uses the selected map and DEM source, with a dedicated hiking theme by default. A
-setting can instead use the selected 2D theme; it does not change that selection.
+uses the selected map and DEM source with the selected 2D theme by default. The
+optional dedicated 3D hiking theme is a switch in theme settings, also shown as a
+shortcut under the 3D switch in map settings; both change the same setting, which
+is off by default and does not change the 2D theme selection.
 Previous renderer and viewing-angle
 preferences are ignored; enabling 3D starts WorldWind at 45° and a 4,000 m range
 to provide a wider, more overhead initial view in mountainous areas. This does

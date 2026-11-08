@@ -21,11 +21,11 @@ class Terrain3dSettingTest {
     @get:Rule val temporaryFolder = TemporaryFolder()
 
     @Test
-    fun hikingThemeDefaultsOnAndCanBeDisabled() {
+    fun hikingThemeDefaultsOffAndCanBeEnabled() {
         val preferences = mutablePreferencesOf()
-        assertTrue(preferences.terrain3dHikingThemeEnabled())
-        preferences[TERRAIN_3D_HIKING_THEME_ENABLED] = false
         assertFalse(preferences.terrain3dHikingThemeEnabled())
+        preferences[TERRAIN_3D_HIKING_THEME_ENABLED] = true
+        assertTrue(preferences.terrain3dHikingThemeEnabled())
     }
 
     @Test
