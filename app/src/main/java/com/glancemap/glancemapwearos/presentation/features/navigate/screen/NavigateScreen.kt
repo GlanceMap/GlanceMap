@@ -42,6 +42,7 @@ import com.glancemap.glancemapwearos.presentation.features.maps.MapHolder
 import com.glancemap.glancemapwearos.presentation.features.maps.MapRenderer
 import com.glancemap.glancemapwearos.presentation.features.maps.MapViewModel
 import com.glancemap.glancemapwearos.presentation.features.maps.MapZoomChangeAttribution
+import com.glancemap.glancemapwearos.presentation.features.maps.terrain3d.WatchWorldWindRuntime
 import com.glancemap.glancemapwearos.presentation.features.navigate.effects.NavigateCalibrationEffects
 import com.glancemap.glancemapwearos.presentation.features.navigate.effects.NavigateCompassEffects
 import com.glancemap.glancemapwearos.presentation.features.navigate.effects.NavigateCompassWakeTelemetry
@@ -94,6 +95,7 @@ fun NavigateScreen(
     onCloseApp: () -> Unit,
     onOpenGpxToolsSettings: () -> Unit = {},
     onOpenMapBundles: (LatLong) -> Unit = {},
+    terrainRuntime: WatchWorldWindRuntime? = null,
     compassViewModel: CompassViewModel = viewModel(),
     navigateViewModel: NavigateViewModel = viewModel(),
 ) {
@@ -1070,6 +1072,7 @@ fun NavigateScreen(
             }
 
         NavigateContent(
+            hostedTerrainRuntime = terrainRuntime,
             mapFocusState = mapFocusState,
             mapFocusVisibleControls = mapFocusVisibleControls,
             onEnterMapFocus = ::enterMapFocus,

@@ -34,7 +34,13 @@ restored; a center still outside the map then fails startup as before.
 A WorldWind startup failure returns to 2D without changing the saved 3D setting.
 The renderer pauses when the screen is not interactive. Its session and camera
 are retained for up to 30 seconds of screen-off time, then closed when the app
-can run again; leaving the mode closes the session immediately. No wake-up is
+can run again; leaving the mode closes the session immediately. The session is
+owned by the activity, above the navigation routes, so leaving the map screen for
+the menu, settings or ambient mode is treated like screen-off: the view pauses,
+its last inputs, camera and angle preset are kept, and it resumes on return or
+closes after the same 30 seconds. The 3D view is re-attached to the map screen
+on return; its graphics context may be rebuilt, in which case images reload
+from the saved image folder. No wake-up is
 scheduled solely for this timeout. Android is asked to preserve the EGL
 context during a short pause, but it can discard graphics resources, in which
 case tiles must still be rendered again. When a longer sleep expires during deep

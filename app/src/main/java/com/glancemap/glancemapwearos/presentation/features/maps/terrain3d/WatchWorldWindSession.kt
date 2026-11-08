@@ -8,11 +8,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.platform.LocalContext
+import com.glancemap.glancemapwearos.core.maps.DEFAULT_TERRAIN_3D_VIEWING_ANGLE
 import com.glancemap.glancemapwearos.core.maps.Dem3CoverageUtils
 import com.glancemap.glancemapwearos.core.maps.theme.defaultRenderThemeMenuCallback
 import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
@@ -46,6 +48,9 @@ internal class WatchWorldWindSession {
     var renderError by mutableStateOf(false)
     var renderProgress by mutableStateOf<Int?>(null)
     var failed by mutableStateOf(false)
+
+    /** Last 3D angle preset chosen with the indicator; kept with the session across screen visits. */
+    var presetAngle by mutableIntStateOf(DEFAULT_TERRAIN_3D_VIEWING_ANGLE)
     var onUserPanStarted: () -> Unit = {}
     var onScreenInteractiveChanged: (Boolean) -> Unit = {}
 }

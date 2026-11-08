@@ -83,12 +83,13 @@ import com.glancemap.glancemapwearos.presentation.features.maps.MapHolder
 import com.glancemap.glancemapwearos.presentation.features.maps.MapLayerMutationCoordinator
 import com.glancemap.glancemapwearos.presentation.features.maps.MapZoomChangeAttribution
 import com.glancemap.glancemapwearos.presentation.features.maps.RotatableMarker
+import com.glancemap.glancemapwearos.presentation.features.maps.terrain3d.RunWatchWorldWind
 import com.glancemap.glancemapwearos.presentation.features.maps.terrain3d.TERRAIN_LOG_TAG
 import com.glancemap.glancemapwearos.presentation.features.maps.terrain3d.TerrainGpxOverlay
 import com.glancemap.glancemapwearos.presentation.features.maps.terrain3d.TerrainZoomControls
-import com.glancemap.glancemapwearos.presentation.features.maps.terrain3d.WatchWorldWindSession
+import com.glancemap.glancemapwearos.presentation.features.maps.terrain3d.WatchWorldWindInputs
+import com.glancemap.glancemapwearos.presentation.features.maps.terrain3d.WatchWorldWindRuntime
 import com.glancemap.glancemapwearos.presentation.features.maps.terrain3d.nextTerrainAnglePreset
-import com.glancemap.glancemapwearos.presentation.features.maps.terrain3d.rememberWatchWorldWindSession
 import com.glancemap.glancemapwearos.presentation.features.maps.terrain3d.worldWindApproximateZoom
 import com.glancemap.glancemapwearos.presentation.features.navigate.guidance.TurnByTurnGuidanceState
 import com.glancemap.glancemapwearos.presentation.features.poi.PoiNavigateTarget
@@ -117,6 +118,7 @@ import kotlin.math.log2
 )
 @Composable
 internal fun NavigateContent(
+    hostedTerrainRuntime: WatchWorldWindRuntime?,
     mapFocusState: NavigateMapFocusState,
     mapFocusVisibleControls: Set<MapFocusControl>,
     onEnterMapFocus: () -> Unit,
@@ -630,19 +632,27 @@ internal fun NavigateContent(
             !turnByTurnGuidancePaused &&
             !traceRecordingState.active &&
             !traceRecordingState.saving
-    val worldWindSession = remember(mapHolder, terrainMapPath) { WatchWorldWindSession() }
-    rememberWatchWorldWindSession(
-        session = worldWindSession,
-        enabled = terrainEligible,
-        hikingThemeEnabled = terrain3dHikingThemeEnabled,
-        holder = mapHolder,
-        mapPath = terrainMapPath,
-        appearanceInProgress = mapAppearanceApplyInProgress,
-        interactive = terrainInteractive,
-        angle = DEFAULT_TERRAIN_3D_VIEWING_ANGLE,
-        bearing = -mapRotationDeg,
-    )
-    var terrainPresetAngle by remember(worldWindSession) { mutableIntStateOf(DEFAULT_TERRAIN_3D_VIEWING_ANGLE) }
+    // The activity hosts the 3D runtime so leaving this screen pauses the session instead of closing it.
+    val terrainRuntime = hostedTerrainRuntime ?: remember { WatchWorldWindRuntime() }
+    if (hostedTerrainRuntime == null) RunWatchWorldWind(terrainRuntime)
+    SideEffect {
+        terrainRuntime.publish(
+            WatchWorldWindInputs(
+                enabled = terrainEligible,
+                hikingThemeEnabled = terrain3dHikingThemeEnabled,
+                holder = mapHolder,
+                mapPath = terrainMapPath,
+                appearanceInProgress = mapAppearanceApplyInProgress,
+            ),
+            screenInteractive = terrainInteractive,
+            bearing = -mapRotationDeg,
+        )
+    }
+    DisposableEffect(terrainRuntime) {
+        terrainRuntime.routeVisible = true
+        onDispose { terrainRuntime.routeVisible = false }
+    }
+    val worldWindSession = terrainRuntime.session
     val worldWindLongPressOrbit = worldWindSession.view?.longPressOrbit == true
     SideEffect {
         worldWindSession.onUserPanStarted = onUserPanStarted
@@ -665,7 +675,7 @@ internal fun NavigateContent(
     LaunchedEffect(terrainVisible) {
         rotaryScrollAccumulator = 0f
         if (!terrainVisible) {
-            terrainPresetAngle = DEFAULT_TERRAIN_3D_VIEWING_ANGLE
+            worldWindSession.presetAngle = DEFAULT_TERRAIN_3D_VIEWING_ANGLE
         }
     }
     LaunchedEffect(terrainVisible, navMode, lastKnownLocation) {
@@ -966,7 +976,16 @@ internal fun NavigateContent(
                 val terrainView = worldWindSession.view
                 terrainView?.let { terrainView ->
                     key(terrainView) {
-                        AndroidView(factory = { terrainView }, modifier = Modifier.fillMaxSize())
+                        // The view outlives this screen, so detach it from the previous container first.
+                        AndroidView(
+                            factory = { viewContext ->
+                                FrameLayout(viewContext).apply {
+                                    (terrainView.parent as? ViewGroup)?.removeView(terrainView)
+                                    addView(terrainView)
+                                }
+                            },
+                            modifier = Modifier.fillMaxSize(),
+                        )
                     }
                 }
             } else if (suppressMapRenderingForGuidance) {
@@ -1480,8 +1499,8 @@ internal fun NavigateContent(
                     onClick =
                         if (terrainVisible) {
                             {
-                                terrainPresetAngle = nextTerrainAnglePreset(terrainPresetAngle)
-                                worldWindSession.view?.setPresetViewingAngle(terrainPresetAngle)
+                                worldWindSession.presetAngle = nextTerrainAnglePreset(worldWindSession.presetAngle)
+                                worldWindSession.view?.setPresetViewingAngle(worldWindSession.presetAngle)
                                 triggerHaptic()
                             }
                         } else {
