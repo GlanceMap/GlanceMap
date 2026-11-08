@@ -1,28 +1,32 @@
-package com.glancemap.glancemapwearos.presentation.features.maps.terrain3d
+package com.glancemap.glancemapwearos.presentation.features.maps
 
-import com.glancemap.glancemapwearos.presentation.features.maps.DemTileData
-import com.glancemap.glancemapwearos.presentation.features.maps.interpolateDemElevationOrNaN
-import com.glancemap.glancemapwearos.presentation.features.maps.interpolateDemSamplesOrNaN
+import android.content.Context
 import java.io.File
 import java.io.IOException
 import java.io.InputStream
 import java.io.RandomAccessFile
 import java.nio.ShortBuffer
 import java.nio.channels.FileChannel
-import java.util.concurrent.atomic.AtomicLong
 import java.util.zip.GZIPInputStream
 import java.util.zip.ZipInputStream
 import kotlin.math.sqrt
 
-internal const val WORLDWIND_DEM_DISK_DIR = "worldwind-dem"
+private const val DEM_DISK_DIR = "dem-uncompressed"
+
+/** Directory used by the first, 3D-only version of the disk cache; removed on first use. */
+private const val LEGACY_DEM_DISK_DIR = "worldwind-dem"
 
 /** About six uncompressed 1-arc-second tiles (3601 × 3601 × 2 bytes each). */
-internal const val WORLDWIND_DEM_DISK_BYTES = 160L * 1024 * 1024
+internal const val DEM_DISK_BYTES = 160L * 1024 * 1024
 
 private const val HGT_SAMPLE_BYTES = 2L
 
-internal sealed interface WorldWindDemTile {
+/** Elevation tile that can be sampled with the shared bilinear HGT interpolation. */
+internal interface DemTile {
     val axisLen: Int
+
+    /** Decoded sample bytes held on the heap; zero for a memory-mapped tile. */
+    val heapBytes: Long
 
     fun elevationOrNaN(
         tileLat: Int,
@@ -32,26 +36,14 @@ internal sealed interface WorldWindDemTile {
     ): Double
 }
 
-/** In-memory fallback for a tile whose uncompressed copy cannot be written or mapped. */
-internal class DecodedWorldWindDemTile(
-    private val data: DemTileData,
-) : WorldWindDemTile {
-    override val axisLen: Int get() = data.axisLen
-
-    override fun elevationOrNaN(
-        tileLat: Int,
-        tileLon: Int,
-        lat: Double,
-        lon: Double,
-    ): Double = interpolateDemElevationOrNaN(data, tileLat, tileLon, lat, lon)
-}
-
 /** Raw big-endian HGT samples read from a memory-mapped file; no heap copy of the tile is kept. */
 internal class MappedDemTile(
     override val axisLen: Int,
     val rowLen: Int,
     private val samples: ShortBuffer,
-) : WorldWindDemTile {
+) : DemTile {
+    override val heapBytes: Long get() = 0L
+
     override fun elevationOrNaN(
         tileLat: Int,
         tileLon: Int,
@@ -79,38 +71,61 @@ internal fun mapRawDemTile(file: File): MappedDemTile? =
     }
 
 /**
- * Uncompressed copies of DEM tiles, written once and then read in place by the 3D view.
+ * Uncompressed copies of DEM tiles, written once and then read in place by every DEM consumer.
  *
  * Every source, including a raw `.hgt`, is copied so that a mapped file is only ever replaced
  * by an atomic rename or deleted, never rewritten in place. Copies are keyed by source path,
  * size and modification time, and the least recently used copies are removed above [maxBytes];
- * the most recent copy is always kept.
+ * the most recent copy is always kept. Use [shared] so all consumers coordinate on one lock.
  */
-internal class WorldWindDemDiskCache(
+internal class DemDiskCache(
     private val dir: File,
     private val maxBytes: Long,
 ) {
-    val diskHits = AtomicLong()
-    val copies = AtomicLong()
-    val copiedBytes = AtomicLong()
-    val copyNanos = AtomicLong()
+    companion object {
+        @Volatile private var shared: DemDiskCache? = null
 
-    /** Returns the uncompressed copy of [source], or null when a ZIP holds no HGT entry. */
+        fun shared(context: Context): DemDiskCache =
+            shared ?: synchronized(this) {
+                shared ?: run {
+                    val cacheDir = context.applicationContext.cacheDir
+                    File(cacheDir, LEGACY_DEM_DISK_DIR).deleteRecursively()
+                    DemDiskCache(File(cacheDir, DEM_DISK_DIR), DEM_DISK_BYTES).also { shared = it }
+                }
+            }
+    }
+
+    /** Maps the uncompressed copy of [source]; null when a ZIP has no HGT entry or the grid is not square. */
     @Synchronized
-    fun rawFileFor(source: File): File? {
-        val target = File(dir, worldWindDemCacheName(source))
+    fun map(
+        source: File,
+        stats: ReliefDemCacheStats? = null,
+    ): MappedDemTile? = rawFileFor(source, stats)?.let(::mapRawDemTile)
+
+    @Synchronized
+    fun rawFileFor(
+        source: File,
+        stats: ReliefDemCacheStats? = null,
+    ): File? {
+        val target = File(dir, demDiskCacheName(source))
         if (target.isFile) {
             target.setLastModified(System.currentTimeMillis())
-            diskHits.incrementAndGet()
-        } else if (!copy(source, target)) {
+            stats?.diskHits?.incrementAndGet()
+        } else if (!copy(source, target, stats)) {
             return null
         }
         return target
     }
 
+    @Synchronized
+    fun clear() {
+        dir.listFiles()?.forEach(File::delete)
+    }
+
     private fun copy(
         source: File,
         target: File,
+        stats: ReliefDemCacheStats?,
     ): Boolean {
         if (!dir.isDirectory && !dir.mkdirs()) throw IOException("Cannot create $dir")
         val temp = File(dir, "${target.name}.tmp")
@@ -124,17 +139,12 @@ internal class WorldWindDemDiskCache(
                 temp.delete()
             }
         if (written != null) {
-            copies.incrementAndGet()
-            copiedBytes.addAndGet(written)
-            copyNanos.addAndGet(System.nanoTime() - started)
+            stats?.diskCopies?.incrementAndGet()
+            stats?.diskCopyBytes?.addAndGet(written)
+            stats?.diskCopyNanos?.addAndGet(System.nanoTime() - started)
             trim(target)
         }
         return written != null
-    }
-
-    @Synchronized
-    fun clear() {
-        dir.listFiles()?.forEach(File::delete)
     }
 
     private fun trim(keep: File) {
@@ -148,7 +158,7 @@ internal class WorldWindDemDiskCache(
     }
 }
 
-internal fun worldWindDemCacheName(source: File): String {
+internal fun demDiskCacheName(source: File): String {
     val tileId = source.name.substringBefore('.')
     val path =
         source.absolutePath

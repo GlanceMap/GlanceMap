@@ -4,6 +4,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertSame
 import org.junit.Test
+import java.nio.ShortBuffer
 
 class ReliefDemCacheTest {
     @Test
@@ -44,6 +45,22 @@ class ReliefDemCacheTest {
         cache["missing"] = null
         cache.trimToBytes(16)
         assertEquals(setOf("large", "missing"), cache.keys)
+    }
+
+    @Test
+    fun `byte limit evicts decoded tiles but keeps mapped tiles that hold no heap`() {
+        val cache = ReliefDemTileCache(4)
+        val mapped = MappedDemTile(1, 2, ShortBuffer.wrap(ShortArray(4)))
+        val decoded = DemTileData(1, 2, ShortArray(16))
+        cache["mapped"] = mapped
+        cache["first"] = decoded
+        cache["second"] = decoded
+        assertEquals(64L, cache.retainedBytes())
+
+        cache.trimToBytes(32)
+
+        assertEquals(setOf("mapped", "second"), cache.keys)
+        assertEquals(32L, cache.retainedBytes())
     }
 
     @Test

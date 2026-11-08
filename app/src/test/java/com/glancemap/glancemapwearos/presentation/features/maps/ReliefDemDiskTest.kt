@@ -1,8 +1,5 @@
-package com.glancemap.glancemapwearos.presentation.features.maps.terrain3d
+package com.glancemap.glancemapwearos.presentation.features.maps
 
-import com.glancemap.glancemapwearos.presentation.features.maps.DEM_VOID_SAMPLE
-import com.glancemap.glancemapwearos.presentation.features.maps.decodeReliefDemStream
-import com.glancemap.glancemapwearos.presentation.features.maps.interpolateDemElevationOrNaN
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -16,8 +13,9 @@ import java.util.zip.GZIPOutputStream
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
-class WorldWindDemDiskTest {
+class ReliefDemDiskTest {
     @get:Rule val temp = TemporaryFolder()
+    private val stats = ReliefDemCacheStats()
 
     private val rowLen = 7
     private val samples =
@@ -35,7 +33,7 @@ class WorldWindDemDiskTest {
     @Test
     fun `mapped tile heights match the in-memory decoder for raw gzip and zip sources`() {
         val decoded = checkNotNull(decodeReliefDemStream(hgtBytes.inputStream(), hgtBytes.size.toLong()))
-        val cache = WorldWindDemDiskCache(temp.newFolder("cache"), Long.MAX_VALUE)
+        val cache = DemDiskCache(temp.newFolder("cache"), Long.MAX_VALUE)
         val sources =
             listOf(
                 temp.newFile("N45E006.hgt").apply { writeBytes(hgtBytes) },
@@ -48,46 +46,46 @@ class WorldWindDemDiskTest {
             }
         val expected = points.map { (lat, lon) -> interpolateDemElevationOrNaN(decoded, 45, 6, lat, lon) }
         for (source in sources) {
-            val tile = checkNotNull(mapRawDemTile(checkNotNull(cache.rawFileFor(source))))
+            val tile = checkNotNull(mapRawDemTile(checkNotNull(cache.rawFileFor(source, stats))))
             assertEquals(decoded.axisLen, tile.axisLen)
             val actual = points.map { (lat, lon) -> tile.elevationOrNaN(45, 6, lat, lon) }
             // Compared as lists so NaN (void) results also have to match exactly.
             assertEquals(expected, actual)
         }
-        assertEquals(3L, cache.copies.get())
-        assertEquals(3L * hgtBytes.size, cache.copiedBytes.get())
+        assertEquals(3L, stats.diskCopies.get())
+        assertEquals(3L * hgtBytes.size, stats.diskCopyBytes.get())
     }
 
     @Test
     fun `a tile is uncompressed once and then reused from disk`() {
-        val cache = WorldWindDemDiskCache(temp.newFolder("cache"), Long.MAX_VALUE)
+        val cache = DemDiskCache(temp.newFolder("cache"), Long.MAX_VALUE)
         val source = temp.newFile("N45E006.hgt.gz").apply { writeBytes(gzip(hgtBytes)) }
 
-        val first = cache.rawFileFor(source)
-        val second = cache.rawFileFor(source)
+        val first = cache.rawFileFor(source, stats)
+        val second = cache.rawFileFor(source, stats)
 
         assertEquals(first, second)
-        assertEquals(1L, cache.copies.get())
-        assertEquals(1L, cache.diskHits.get())
+        assertEquals(1L, stats.diskCopies.get())
+        assertEquals(1L, stats.diskHits.get())
     }
 
     @Test
     fun `a changed source gets a fresh copy`() {
-        val cache = WorldWindDemDiskCache(temp.newFolder("cache"), Long.MAX_VALUE)
+        val cache = DemDiskCache(temp.newFolder("cache"), Long.MAX_VALUE)
         val source = temp.newFile("N45E006.hgt").apply { writeBytes(hgtBytes) }
-        val first = cache.rawFileFor(source)
+        val first = cache.rawFileFor(source, stats)
         source.writeBytes(hgtBytes + hgtBytes.copyOf(2 * (2 * rowLen + 1)))
 
-        val second = cache.rawFileFor(source)
+        val second = cache.rawFileFor(source, stats)
 
         assertFalse(first == second)
-        assertEquals(2L, cache.copies.get())
+        assertEquals(2L, stats.diskCopies.get())
     }
 
     @Test
     fun `least recently used copies are removed above the byte limit but the newest stays`() {
         val dir = temp.newFolder("cache")
-        val cache = WorldWindDemDiskCache(dir, hgtBytes.size * 2L)
+        val cache = DemDiskCache(dir, hgtBytes.size * 2L)
         val copies =
             listOf("N45E006", "N45E007").map { id ->
                 checkNotNull(cache.rawFileFor(temp.newFile("$id.hgt").apply { writeBytes(hgtBytes) }))
@@ -102,13 +100,13 @@ class WorldWindDemDiskTest {
         assertTrue(newest.exists())
 
         val lastSource = temp.newFile("N47E006.hgt").apply { writeBytes(hgtBytes) }
-        val kept = checkNotNull(WorldWindDemDiskCache(dir, 1L).rawFileFor(lastSource))
+        val kept = checkNotNull(DemDiskCache(dir, 1L).rawFileFor(lastSource))
         assertEquals(listOf(kept), dir.listFiles()!!.toList())
     }
 
     @Test
     fun `a zip without an hgt entry or a non-square file cannot be mapped`() {
-        val cache = WorldWindDemDiskCache(temp.newFolder("cache"), Long.MAX_VALUE)
+        val cache = DemDiskCache(temp.newFolder("cache"), Long.MAX_VALUE)
         val emptyZip = temp.newFile("N45E006.hgt.zip").apply { writeBytes(zip("readme.txt", ByteArray(4))) }
         assertNull(cache.rawFileFor(emptyZip))
 
@@ -121,7 +119,7 @@ class WorldWindDemDiskTest {
     @Test
     fun `clear removes all copies`() {
         val dir = temp.newFolder("cache")
-        val cache = WorldWindDemDiskCache(dir, Long.MAX_VALUE)
+        val cache = DemDiskCache(dir, Long.MAX_VALUE)
         cache.rawFileFor(temp.newFile("N45E006.hgt").apply { writeBytes(hgtBytes) })
 
         cache.clear()

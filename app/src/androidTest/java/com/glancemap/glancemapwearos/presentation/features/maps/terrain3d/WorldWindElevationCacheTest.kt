@@ -32,8 +32,6 @@ class WorldWindElevationCacheTest {
 
                     override fun getExternalFilesDir(type: String?): File = File(root, type ?: "files")
 
-                    override fun getCacheDir(): File = File(root, "cache")
-
                     override fun getSharedPreferences(
                         name: String?,
                         mode: Int,
@@ -65,19 +63,19 @@ class WorldWindElevationCacheTest {
                     return ShortArray(buffer.remaining()).also { buffer.get(it) }
                 }
                 val first = fetch()
-                assertEquals(1L, elevation.diskCache.copies.get())
+                assertEquals(1L, elevation.cacheStats.diskCopies.get())
                 elevation.coverage.clear()
                 val second = fetch()
                 assertArrayEquals(first, second)
                 assertEquals(1L, elevation.gridCache.hits.get())
-                assertEquals(1L, elevation.diskCache.copies.get())
+                assertEquals(1L, elevation.cacheStats.diskCopies.get())
                 assertEquals(0L, elevation.cacheStats.loads.get())
                 demFile.writeBytes(byteArrayOf(0, 100, 0, 100, 0, 100, 0, 100))
                 DemSignatureStore.markDirty(isolated)
                 val refreshed = fetch()
                 assertEquals(100.toShort(), refreshed.first())
-                assertEquals(2L, elevation.diskCache.copies.get())
-                assertEquals(0L, elevation.fallbackTileCount.get())
+                assertEquals(2L, elevation.cacheStats.diskCopies.get())
+                assertEquals(0L, elevation.cacheStats.fallbackTiles.get())
             } finally {
                 elevation.close()
                 context.deleteSharedPreferences(prefsName)

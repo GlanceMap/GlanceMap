@@ -5,6 +5,7 @@ package com.glancemap.glancemapwearos.presentation.features.maps
 import android.util.Log
 import com.glancemap.glancemapwearos.core.service.diagnostics.BenchmarkTrace
 import java.io.File
+import java.io.IOException
 import java.util.LinkedHashMap
 import java.util.Locale
 import java.util.concurrent.atomic.AtomicLong
@@ -18,6 +19,7 @@ internal class ReliefDemRepository(
     private val cacheEntryLimit: Int? = null,
     private val cacheStats: ReliefDemCacheStats? = null,
     private val cacheByteLimit: Long? = null,
+    private val diskCache: DemDiskCache? = null,
 ) {
     constructor(
         demRootDir: File,
@@ -37,7 +39,7 @@ internal class ReliefDemRepository(
     fun loadDemTileFor(
         lat: Double,
         lon: Double,
-    ): DemTileData? = loadDemTile(floor(lat).toInt(), floor(lon).toInt())
+    ): DemTile? = loadDemTile(floor(lat).toInt(), floor(lon).toInt())
 
     fun elevationAt(
         lat: Double,
@@ -51,7 +53,7 @@ internal class ReliefDemRepository(
         val latTile = floor(lat).toInt()
         val lonTile = floor(lon).toInt()
         return loadDemTile(latTile, lonTile)?.let { tile ->
-            interpolateDemElevation(tile, latTile, lonTile, lat, lon)?.let { elevationMeters ->
+            tile.elevationOrNaN(latTile, lonTile, lat, lon).takeUnless { it.isNaN() }?.let { elevationMeters ->
                 DemElevationSample(
                     elevationMeters = elevationMeters,
                     tileId = tileId(latTile, lonTile),
@@ -63,7 +65,7 @@ internal class ReliefDemRepository(
     }
 
     fun elevationAtUsingTile(
-        tile: DemTileData,
+        tile: DemTile,
         tileLat: Int,
         tileLon: Int,
         lat: Double,
@@ -72,11 +74,11 @@ internal class ReliefDemRepository(
         if (floor(lat).toInt() != tileLat || floor(lon).toInt() != tileLon) {
             return elevationAt(lat, lon)
         }
-        return interpolateDemElevation(tile, tileLat, tileLon, lat, lon)
+        return tile.elevationOrNaN(tileLat, tileLon, lat, lon).takeUnless { it.isNaN() }
     }
 
     fun elevationAtUsingTileOrNaN(
-        tile: DemTileData,
+        tile: DemTile,
         tileLat: Int,
         tileLon: Int,
         lat: Double,
@@ -85,7 +87,7 @@ internal class ReliefDemRepository(
         if (floor(lat).toInt() != tileLat || floor(lon).toInt() != tileLon) {
             return elevationAt(lat, lon) ?: Double.NaN
         }
-        return interpolateDemElevationOrNaN(tile, tileLat, tileLon, lat, lon)
+        return tile.elevationOrNaN(tileLat, tileLon, lat, lon)
     }
 
     fun clear() {
@@ -98,7 +100,7 @@ internal class ReliefDemRepository(
     private fun loadDemTile(
         latTile: Int,
         lonTile: Int,
-    ): DemTileData? {
+    ): DemTile? {
         val tileId = tileId(latTile, lonTile)
         synchronized(demTileCache) {
             if (demTileCache.containsKey(tileId)) {
@@ -111,14 +113,7 @@ internal class ReliefDemRepository(
         val loaded =
             runCatching {
                 val file = resolveDemFile(demRootDirs, tileId) ?: return@runCatching null
-                val started = if (cacheStats != null) System.nanoTime() else 0L
-                val tile = BenchmarkTrace.section("relief.demReadDecode") { readReliefDemTile(file) }
-                if (tile != null && cacheStats != null) {
-                    cacheStats.loads.incrementAndGet()
-                    cacheStats.decodedBytes.addAndGet(tile.samples.size.toLong() * Short.SIZE_BYTES)
-                    cacheStats.loadNanos.addAndGet(System.nanoTime() - started)
-                }
-                tile
+                mapFromDisk(file, tileId) ?: decode(file)
             }.onFailure { error ->
                 Log.w(tag, "Failed to load DEM tile $tileId", error)
             }.getOrNull()
@@ -129,6 +124,34 @@ internal class ReliefDemRepository(
             cacheStats?.recordRetained(demTileCache.retainedBytes())
         }
         return loaded
+    }
+
+    /** Reads the shared uncompressed copy in place; null falls back to decoding onto the heap. */
+    private fun mapFromDisk(
+        file: File,
+        tileId: String,
+    ): DemTile? {
+        val cache = diskCache ?: return null
+        val mapped =
+            try {
+                BenchmarkTrace.section("relief.demDiskMap") { cache.map(file, cacheStats) }
+            } catch (error: IOException) {
+                Log.w(tag, "Decoding DEM tile $tileId in memory", error)
+                null
+            }
+        if (mapped == null) cacheStats?.fallbackTiles?.incrementAndGet()
+        return mapped
+    }
+
+    private fun decode(file: File): DemTileData? {
+        val started = if (cacheStats != null) System.nanoTime() else 0L
+        val tile = BenchmarkTrace.section("relief.demReadDecode") { readReliefDemTile(file) }
+        if (tile != null && cacheStats != null) {
+            cacheStats.loads.incrementAndGet()
+            cacheStats.decodedBytes.addAndGet(tile.heapBytes)
+            cacheStats.loadNanos.addAndGet(System.nanoTime() - started)
+        }
+        return tile
     }
 
     private fun tileId(
@@ -284,6 +307,11 @@ internal class ReliefDemCacheStats {
     val loadNanos = AtomicLong()
     val retainedBytes = AtomicLong()
     val peakRetainedBytes = AtomicLong()
+    val diskHits = AtomicLong()
+    val diskCopies = AtomicLong()
+    val diskCopyBytes = AtomicLong()
+    val diskCopyNanos = AtomicLong()
+    val fallbackTiles = AtomicLong()
 
     fun recordRetained(bytes: Long) {
         retainedBytes.set(bytes)
@@ -293,19 +321,21 @@ internal class ReliefDemCacheStats {
 
 internal class ReliefDemTileCache(
     private val maxEntries: Int,
-) : LinkedHashMap<String, DemTileData?>(16, 0.75f, true) {
-    override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, DemTileData?>?): Boolean = size > maxEntries
+) : LinkedHashMap<String, DemTile?>(16, 0.75f, true) {
+    override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, DemTile?>?): Boolean = size > maxEntries
 
-    fun retainedBytes(): Long = values.sumOf { (it?.samples?.size?.toLong() ?: 0L) * Short.SIZE_BYTES }
+    fun retainedBytes(): Long = values.sumOf { it?.heapBytes ?: 0L }
 
+    /** Evicts decoded tiles above [maxBytes]; mapped tiles hold no heap and stay cached. */
     fun trimToBytes(maxBytes: Long) {
         var bytes = retainedBytes()
-        var populatedTiles = values.count { it != null }
+        var populatedTiles = values.count { it != null && it.heapBytes > 0L }
         val iterator = entries.iterator()
         while (bytes > maxBytes && populatedTiles > 1 && iterator.hasNext()) {
             val tile = iterator.next().value
+            if (tile != null && tile.heapBytes == 0L) continue
             if (tile != null) populatedTiles--
-            bytes -= (tile?.samples?.size?.toLong() ?: 0L) * Short.SIZE_BYTES
+            bytes -= tile?.heapBytes ?: 0L
             iterator.remove()
         }
     }

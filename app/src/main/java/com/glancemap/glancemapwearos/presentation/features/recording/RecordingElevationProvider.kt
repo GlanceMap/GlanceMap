@@ -4,6 +4,7 @@ import android.content.Context
 import com.glancemap.glancemapwearos.core.maps.Dem3CoverageUtils
 import com.glancemap.glancemapwearos.core.maps.DemSource
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
+import com.glancemap.glancemapwearos.presentation.features.maps.DemDiskCache
 import com.glancemap.glancemapwearos.presentation.features.maps.ReliefDemRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -14,8 +15,9 @@ class RecordingElevationProvider(
     private val demRepositories =
         DemSource.entries.associateWith { demSource ->
             ReliefDemRepository(
-                demRootDir = Dem3CoverageUtils.demRootDir(context.applicationContext, demSource),
+                demRootDirs = listOf(Dem3CoverageUtils.demRootDir(context.applicationContext, demSource)),
                 tag = "TraceRecordingDem-${demSource.telemetryLabel}",
+                diskCache = DemDiskCache.shared(context),
             )
         }
 

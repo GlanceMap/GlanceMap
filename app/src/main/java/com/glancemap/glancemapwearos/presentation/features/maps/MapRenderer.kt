@@ -2102,6 +2102,7 @@ class MapRenderer(
                     demRootDirs = demRootDirs,
                     diskCacheRootDir = reliefOverlayCacheRootDir,
                     cacheNamespace = cacheNamespace,
+                    demDiskCache = DemDiskCache.shared(context),
                     onProcessingStateChanged = { publishReliefOverlayState() },
                 ).also { layer ->
                     // Keep above rendered map but below interactive overlays.
@@ -2131,7 +2132,12 @@ class MapRenderer(
 
     private fun getOrCreateLiveElevationSampler(): ReliefOverlayLayer? {
         if (liveElevationSampler == null) {
-            liveElevationSampler = ReliefOverlayLayer(demRootDir = demRootDir, demRootDirs = demRootDirs)
+            liveElevationSampler =
+                ReliefOverlayLayer(
+                    demRootDir = demRootDir,
+                    demRootDirs = demRootDirs,
+                    demDiskCache = DemDiskCache.shared(context),
+                )
         }
         return liveElevationSampler
     }

@@ -82,7 +82,7 @@ Run only the relief memory/DEM baseline:
 
 - Navigation: `navigateScreenRecomposeCount`, `navigateContentRecomposeCount`, heap/RSS memory. Run `navigateFrameTiming` separately if the device reports RenderThread slices.
 - Map load: startup timing plus `mapLayerUpdateSumMs`, `mapFileOpenSumMs`, `renderThemeBuildSumMs`, `themeSelectionApplySumMs`, `dynamicThemeCreateSumMs`.
-- Relief: `reliefDemReadDecodeSumMs`, `reliefTileBuildSumMs`, `reliefTileBuildCount`, heap/RSS memory. DEM input and sample decoding now stream together; the combined metric replaces the separate read/decode timings.
+- Relief: `reliefDemDiskMapSumMs`, `reliefDemReadDecodeSumMs`, `reliefTileBuildSumMs`, `reliefTileBuildCount`, heap/RSS memory. DEM tiles are normally read from shared uncompressed copies in the app cache (`relief.demDiskMap`, which includes the one-time copy); `relief.demReadDecode` runs only when a copy cannot be written or mapped. Clear app cache before a cold-run comparison, and compare RSS file as well as heap because mapped samples count as file-backed memory.
 
 Watch benchmark JSON and trace artifacts are written under:
 
@@ -132,7 +132,7 @@ materially affect tile generation. The release Git SHA does not identify uncommi
   appearance timeout remains bounded and reports `theme_viewport_timeout` if tiles are still absent;
   it is not proof of successful rendering. Rapid theme changes must cancel the previous wait.
 - Enable relief with known DEM files and repeat pan/zoom. Download completion alone does not
-  establish that `relief.demReadDecode` ran. Check terrain appearance and the retained elevation
+  establish that `relief.demDiskMap` or `relief.demReadDecode` ran. Check terrain appearance and the retained elevation
   behavior before merging the streaming decoder changes.
 
 Do not infer battery savings from these diagnostic captures. Compare battery separately with the
