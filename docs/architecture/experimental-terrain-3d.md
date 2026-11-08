@@ -72,6 +72,9 @@ twice the device touch slop before cancelling; a second finger cancels a pending
 hold. Rotation starts from the finger's latest position when the hold activates.
 If the callback is delayed, movement timestamped after the hold duration enters
 orbit instead of cancelling it. Orbit remains active until the finger is lifted.
+The 3D view asks its parents not to intercept from touch-down until release or
+cancel, as the 2D map does while panning, so Wear's window swipe-to-dismiss does
+not take over rightward drags during pan or orbit.
 Panning starts when movement passes the same threshold and applies the initial
 drag rather than discarding it. Each new gesture uses the current 3D look-at
 position as its anchor, including after orbit or a pan fling. A ground-clamped
@@ -109,7 +112,9 @@ marker without rebuilding unchanged GPX paths. Hill shading enables normal-based
 shadow maps. Recenter and return to 2D use the 3D ground center. Session and
 interval diagnostics identify the renderer; WorldWind reports observed redraw
 and draw callbacks and tile work, including totals at session end for short runs;
-hold outcomes and activation delay are aggregated without touch coordinates.
+hold outcomes and activation delay are aggregated without touch coordinates;
+`orbit_end_release` and `orbit_end_cancel` separate orbits ended by lifting the
+finger from orbits cancelled by the system or a parent.
 Standby diagnostics record pause and resume within the same session.
 `dem_grid_cache_hits`, `dem_grid_cache_misses` and `dem_grid_cache_retained_bytes`
 report reuse and retained samples for the completed-grid cache; its retained size

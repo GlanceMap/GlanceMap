@@ -75,4 +75,16 @@ class WorldWindHoldGestureTest {
         assertTrue(metrics.logFields().contains("hold_cancel_movement=1"))
         assertTrue(metrics.logFields().contains("hold_activation_ms_total=910"))
     }
+
+    @Test
+    fun `orbit end telemetry separates finger release from interception`() {
+        val metrics = WorldWindHoldMetrics()
+        metrics.recordOrbitEnd(cancelled = false)
+        metrics.recordOrbitEnd(cancelled = false)
+        metrics.recordOrbitEnd(cancelled = true)
+
+        assertEquals(2, metrics.orbitEndReleases.get())
+        assertEquals(1, metrics.orbitEndCancellations.get())
+        assertTrue(metrics.logFields().contains("orbit_end_release=2 orbit_end_cancel=1"))
+    }
 }

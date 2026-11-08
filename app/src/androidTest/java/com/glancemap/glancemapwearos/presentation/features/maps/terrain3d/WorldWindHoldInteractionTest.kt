@@ -3,6 +3,7 @@ package com.glancemap.glancemapwearos.presentation.features.maps.terrain3d
 import android.os.SystemClock
 import android.view.MotionEvent
 import android.view.ViewConfiguration
+import android.widget.FrameLayout
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.junit4.v2.createComposeRule
@@ -72,6 +73,40 @@ class WorldWindHoldInteractionTest {
         composeRule.runOnIdle {
             assertFalse(window.longPressOrbit)
             assertEquals(0L, window.holdMetrics.releaseCancellations.get())
+        }
+    }
+
+    @Test
+    fun touchStreamIsClaimedFromParentUntilReleaseSoRightwardOrbitIsNotIntercepted() {
+        val requests = mutableListOf<Boolean>()
+        composeRule.setContent {
+            AndroidView(
+                factory = { context ->
+                    object : FrameLayout(context) {
+                        override fun requestDisallowInterceptTouchEvent(disallowIntercept: Boolean) {
+                            requests += disallowIntercept
+                            super.requestDisallowInterceptTouchEvent(disallowIntercept)
+                        }
+                    }.also { parent ->
+                        window = WatchWorldWindWindow(context, {}, {})
+                        parent.addView(window)
+                    }
+                },
+                modifier = Modifier.size(200.dp),
+            )
+        }
+        composeRule.waitForIdle()
+        val downTime = SystemClock.uptimeMillis()
+        send(downTime, MotionEvent.ACTION_DOWN, 60f, 80f)
+        composeRule.runOnIdle { assertEquals(listOf(true), requests) }
+        SystemClock.sleep(ViewConfiguration.getLongPressTimeout().toLong() + 150L)
+        composeRule.runOnIdle { assertTrue(window.longPressOrbit) }
+        send(downTime, MotionEvent.ACTION_MOVE, 140f, 80f)
+        send(downTime, MotionEvent.ACTION_UP, 140f, 80f)
+        composeRule.runOnIdle {
+            assertEquals(listOf(true, false), requests)
+            assertEquals(1L, window.holdMetrics.orbitEndReleases.get())
+            assertEquals(0L, window.holdMetrics.orbitEndCancellations.get())
         }
     }
 

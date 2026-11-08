@@ -13,6 +13,12 @@ internal class WorldWindHoldMetrics {
     val interruptedCancellations = AtomicLong()
     val activationDelayTotalMs = AtomicLong()
     val activationDelayMaxMs = AtomicLong()
+    val orbitEndReleases = AtomicLong()
+    val orbitEndCancellations = AtomicLong()
+
+    fun recordOrbitEnd(cancelled: Boolean) {
+        (if (cancelled) orbitEndCancellations else orbitEndReleases).incrementAndGet()
+    }
 
     fun logFields(): String =
         "hold_starts=${starts.get()} hold_activations=${activations.get()} " +
@@ -20,7 +26,8 @@ internal class WorldWindHoldMetrics {
             "hold_cancel_multitouch=${multitouchCancellations.get()} " +
             "hold_cancel_interrupted=${interruptedCancellations.get()} " +
             "hold_activation_ms_total=${activationDelayTotalMs.get()} " +
-            "hold_activation_ms_max=${activationDelayMaxMs.get()}"
+            "hold_activation_ms_max=${activationDelayMaxMs.get()} " +
+            "orbit_end_release=${orbitEndReleases.get()} orbit_end_cancel=${orbitEndCancellations.get()}"
 }
 
 internal class WorldWindHoldGesture(

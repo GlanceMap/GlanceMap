@@ -385,6 +385,7 @@ internal class WatchWorldWindWindow(
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
         lastInteractionMs.set(SystemClock.elapsedRealtime())
+        claimTouchStream(event)
         if (!longPressOrbit) {
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
@@ -422,9 +423,21 @@ internal class WatchWorldWindWindow(
             }
         }
         if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) {
+            holdGesture.metrics.recordOrbitEnd(cancelled = event.actionMasked == MotionEvent.ACTION_CANCEL)
             longPressOrbit = false
         }
         return true
+    }
+
+    /**
+     * Wear's window-level swipe-to-dismiss intercepts rightward drags unless the touched view
+     * claims the stream, matching what the 2D map does while panning.
+     */
+    private fun claimTouchStream(event: MotionEvent) {
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> parent?.requestDisallowInterceptTouchEvent(true)
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> parent?.requestDisallowInterceptTouchEvent(false)
+        }
     }
 
     override fun onDetachedFromWindow() {
