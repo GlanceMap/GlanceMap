@@ -1,6 +1,8 @@
 package com.glancemap.glancemapwearos.presentation.features.maps.terrain3d
 
 import android.content.Context
+import com.glancemap.glancemapwearos.presentation.features.maps.CacheFileSnapshot
+import com.glancemap.glancemapwearos.presentation.features.maps.oldestFirst
 import java.io.File
 import java.io.IOException
 import java.security.MessageDigest
@@ -85,17 +87,12 @@ internal class WorldWindTileDiskCache(
         writesSinceTrim = 0
         val cutoff = now() - maxAgeMs
         val images =
-            dir
-                .walkTopDown()
-                .filter { it.isFile && it.name.endsWith(".png") }
-                .filterNot { it.lastModified() < cutoff && it.delete() }
-                .sortedBy(File::lastModified)
-                .toList()
-        var total = images.sumOf(File::length)
+            oldestFirst(dir.walkTopDown().filter { it.isFile && it.name.endsWith(".png") }.toList())
+                .filterNot { it.lastModified < cutoff && it.file.delete() }
+        var total = images.sumOf(CacheFileSnapshot::length)
         for (image in images) {
             if (total <= maxBytes) break
-            val length = image.length()
-            if (image.delete()) total -= length
+            if (image.file.delete()) total -= image.length
         }
         dir.listFiles()?.filter { it.isDirectory && it.list().isNullOrEmpty() }?.forEach(File::delete)
     }

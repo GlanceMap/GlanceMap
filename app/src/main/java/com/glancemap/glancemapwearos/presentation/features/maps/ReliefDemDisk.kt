@@ -175,12 +175,11 @@ internal class DemDiskCache(
     }
 
     private fun trim(keep: File) {
-        val files = dir.listFiles { file -> file.isFile && file.name.endsWith(".hgt") }.orEmpty()
-        var total = files.sumOf(File::length)
-        for (file in files.sortedBy(File::lastModified)) {
+        val files = oldestFirst(dir.listFiles { file -> file.isFile && file.name.endsWith(".hgt") }.orEmpty().asList())
+        var total = files.sumOf(CacheFileSnapshot::length)
+        for (entry in files) {
             if (total <= maxBytes) break
-            val length = file.length()
-            if (file != keep && file.delete()) total -= length
+            if (entry.file != keep && entry.file.delete()) total -= entry.length
         }
     }
 }
@@ -196,6 +195,26 @@ data class DemDiskDiagnostics(
     val hits: Long,
     val fallbackTiles: Long,
 )
+
+/** A cache file's age and size, read once so that a concurrent touch cannot reorder a sort. */
+internal data class CacheFileSnapshot(
+    val file: File,
+    val lastModified: Long,
+    val length: Long,
+)
+
+/**
+ * Sorts cache files oldest first using one reading of each file's time. Comparing live
+ * [File.lastModified] values breaks the sort's contract when another thread touches a file
+ * mid-sort, which crashed the app.
+ */
+internal fun oldestFirst(
+    files: List<File>,
+    lastModified: (File) -> Long = File::lastModified,
+): List<CacheFileSnapshot> =
+    files
+        .map { CacheFileSnapshot(it, lastModified(it), it.length()) }
+        .sortedBy(CacheFileSnapshot::lastModified)
 
 internal fun demDiskCacheName(source: File): String {
     val tileId = source.name.substringBefore('.')

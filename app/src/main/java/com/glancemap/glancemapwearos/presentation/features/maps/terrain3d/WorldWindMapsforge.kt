@@ -3,6 +3,7 @@ package com.glancemap.glancemapwearos.presentation.features.maps.terrain3d
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.os.SystemClock
+import android.util.Log
 import com.glancemap.glancemapwearos.BuildConfig
 import com.glancemap.glancemapwearos.presentation.features.maps.TerrainSource
 import earth.worldwind.layer.mercator.MercatorTileFactory
@@ -13,6 +14,7 @@ import earth.worldwind.render.Texture
 import earth.worldwind.render.image.ImageSource
 import earth.worldwind.render.image.ImageTile
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -54,8 +56,18 @@ internal class WorldWindMapsforge(
     private val worker = Executors.newSingleThreadExecutor().asCoroutineDispatcher()
     private val scope = CoroutineScope(SupervisorJob() + worker)
 
-    /** Saves finish after the session closes; they only use already drawn pixels. */
-    private val saveScope = CoroutineScope(SupervisorJob() + Dispatchers.IO.limitedParallelism(1))
+    /**
+     * Saves finish after the session closes; they only use already drawn pixels. Saving is a
+     * best-effort cache, so a failure is logged and never crashes the app.
+     */
+    private val saveScope =
+        CoroutineScope(
+            SupervisorJob() +
+                Dispatchers.IO.limitedParallelism(1) +
+                CoroutineExceptionHandler { _, error ->
+                    Log.w(TERRAIN_LOG_TAG, "Saving a 3D map image failed", error)
+                },
+        )
     val tileRequests = AtomicLong()
     val tileRenders = AtomicLong()
     val tileImagesAvailable = AtomicLong()

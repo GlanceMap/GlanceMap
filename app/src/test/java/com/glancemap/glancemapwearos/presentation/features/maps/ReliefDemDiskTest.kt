@@ -9,6 +9,8 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import java.io.ByteArrayOutputStream
+import java.io.File
+import java.util.Random
 import java.util.zip.GZIPOutputStream
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
@@ -136,6 +138,24 @@ class ReliefDemDiskTest {
         assertEquals(2L, diagnostics.hits)
         assertEquals(1L, diagnostics.fallbackTiles)
         assertEquals(1L, otherConsumer.diskHits.get())
+    }
+
+    @Test
+    fun `cache files are ordered by one reading of their time even if it changes meanwhile`() {
+        val files = (0 until 200).map { temp.newFile("tile$it.png") }
+        val reads = mutableMapOf<File, Int>()
+        val drift = Random(7)
+
+        val ordered =
+            oldestFirst(files) { file ->
+                reads[file] = (reads[file] ?: 0) + 1
+                // A live time read can differ on every call while another thread touches the file.
+                drift.nextInt(1_000).toLong()
+            }
+
+        assertEquals(files.size, ordered.size)
+        assertTrue(reads.values.all { it == 1 })
+        assertEquals(ordered.map { it.lastModified }.sorted(), ordered.map { it.lastModified })
     }
 
     @Test
