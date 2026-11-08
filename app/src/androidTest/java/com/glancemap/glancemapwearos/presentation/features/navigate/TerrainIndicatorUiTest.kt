@@ -115,6 +115,23 @@ class TerrainIndicatorUiTest {
         assertTrue("Expected the ring to reduce from $before pixels to $after", before > after && after > 100)
     }
 
+    @Test
+    fun slopeProgressRingSitsWhereThe3dRingDoes() {
+        composeRule.setContent {
+            Box(Modifier.size(120.dp).background(Color.Black).testTag("terrain")) {
+                SlopeOverlayStatusIndicator(
+                    visible = true,
+                    processing = true,
+                    progressPercent = 75,
+                    enabled = true,
+                    screenSize = WearScreenSize.SMALL,
+                )
+            }
+        }
+        val yellowRingPixels = yellowRingPixels()
+        assertTrue("Expected the slope ring at the 3D ring position, found $yellowRingPixels pixels", yellowRingPixels > 330)
+    }
+
     private fun yellowRingPixels(): Int {
         val image = composeRule.onNodeWithTag("terrain").captureToImage()
         val pixels = image.toPixelMap()

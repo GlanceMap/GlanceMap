@@ -195,13 +195,12 @@ internal fun BoxScope.SlopeOverlayStatusIndicator(
             }
 
         val angleLabel = stringResource(R.string.map_3d_viewing_angle)
+        // The slope and 3D indicators share one 48 dp box so their rings land on the same spot.
         val target =
             if (onClick != null) {
                 Modifier.size(48.dp).clickable(role = Role.Button, onClickLabel = angleLabel, onClick = onClick)
-            } else if (terrain3d) {
-                Modifier.size(48.dp)
             } else {
-                Modifier.size(slopeIndicatorButtonSize)
+                Modifier.size(48.dp)
             }
         Box(modifier = target, contentAlignment = Alignment.Center) {
             Box(
