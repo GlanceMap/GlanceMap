@@ -40,8 +40,6 @@ class TerrainIndicatorUiTest {
                     progressPercent = 50,
                     enabled = true,
                     screenSize = WearScreenSize.SMALL,
-                    sideButtonEdgePadding = 0.dp,
-                    sideButtonSize = 24.dp,
                     terrain3d = true,
                     renderError = true,
                     onClick = { clicks++ },
@@ -63,8 +61,6 @@ class TerrainIndicatorUiTest {
                     progressPercent = 75,
                     enabled = true,
                     screenSize = WearScreenSize.SMALL,
-                    sideButtonEdgePadding = 0.dp,
-                    sideButtonSize = 24.dp,
                     terrain3d = true,
                     onClick = {},
                 )
@@ -84,8 +80,6 @@ class TerrainIndicatorUiTest {
                     progressPercent = null,
                     enabled = true,
                     screenSize = WearScreenSize.SMALL,
-                    sideButtonEdgePadding = 0.dp,
-                    sideButtonSize = 24.dp,
                     terrain3d = true,
                     onClick = {},
                 )
@@ -107,8 +101,6 @@ class TerrainIndicatorUiTest {
                     progressPercent = progress.value,
                     enabled = true,
                     screenSize = WearScreenSize.SMALL,
-                    sideButtonEdgePadding = 0.dp,
-                    sideButtonSize = 24.dp,
                     terrain3d = true,
                     onClick = {},
                 )

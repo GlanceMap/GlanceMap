@@ -117,6 +117,28 @@ internal fun BoxScope.PanningDistanceGuide(
 }
 
 // Reuse the slope indicator layout and preserve its existing rendering behavior.
+
+/** Radius of the ring through the side control buttons, used to place the terrain indicator. */
+internal fun terrainIndicatorControlRadius(
+    maxWidth: Dp,
+    maxHeight: Dp,
+    sideButtonEdgePadding: Dp,
+    sideButtonSize: Dp,
+): Dp = minOf(maxWidth, maxHeight) / 2 - sideButtonEdgePadding - sideButtonSize / 2 - 1.dp
+
+/**
+ * Places the 3D and slope indicators at the same spot on the control ring, 30° below the tools
+ * button, when applied to an indicator aligned to the end of a full-size box.
+ */
+internal fun Modifier.terrainIndicatorRingOffset(
+    maxWidth: Dp,
+    controlRadius: Dp,
+): Modifier =
+    offset(
+        x = -(maxWidth / 2 - controlRadius * 0.8660254f - 24.dp),
+        y = controlRadius / 2,
+    )
+
 @Suppress("CyclomaticComplexMethod", "FunctionNaming", "LongMethod", "LongParameterList")
 @Composable
 internal fun BoxScope.SlopeOverlayStatusIndicator(
@@ -125,8 +147,6 @@ internal fun BoxScope.SlopeOverlayStatusIndicator(
     progressPercent: Int?,
     enabled: Boolean,
     screenSize: WearScreenSize,
-    sideButtonEdgePadding: Dp,
-    sideButtonSize: Dp,
     modifier: Modifier = Modifier,
     terrain3d: Boolean = false,
     renderError: Boolean = false,
@@ -146,20 +166,7 @@ internal fun BoxScope.SlopeOverlayStatusIndicator(
             WearScreenSize.MEDIUM -> 15.dp
             WearScreenSize.SMALL -> 14.dp
         }
-    val slopeIndicatorToolGap =
-        when (screenSize) {
-            WearScreenSize.LARGE -> 5.dp
-            WearScreenSize.MEDIUM -> 4.dp
-            WearScreenSize.SMALL -> 3.dp
-        }
-    val slopeIndicatorModifier =
-        if (terrain3d) {
-            modifier.align(Alignment.CenterEnd)
-        } else {
-            modifier
-                .align(Alignment.CenterEnd)
-                .padding(end = sideButtonEdgePadding + sideButtonSize + slopeIndicatorToolGap)
-        }
+    val slopeIndicatorModifier = modifier.align(Alignment.CenterEnd)
 
     AnimatedVisibility(
         visible = visible && enabled && (processing || terrain3d),

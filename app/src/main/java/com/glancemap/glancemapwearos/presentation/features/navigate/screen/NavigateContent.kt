@@ -21,7 +21,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -1457,7 +1456,8 @@ internal fun NavigateContent(
                 }
             }
             BoxWithConstraints(Modifier.fillMaxSize()) {
-                val controlRadius = minOf(maxWidth, maxHeight) / 2 - sideButtonEdgePadding - sideButtonSize / 2 - 1.dp
+                val controlRadius =
+                    terrainIndicatorControlRadius(maxWidth, maxHeight, sideButtonEdgePadding, sideButtonSize)
                 SlopeOverlayStatusIndicator(
                     visible =
                         terrainVisible ||
@@ -1474,13 +1474,7 @@ internal fun NavigateContent(
                         },
                     enabled = true,
                     screenSize = screenSize,
-                    sideButtonEdgePadding = sideButtonEdgePadding,
-                    sideButtonSize = sideButtonSize,
-                    modifier =
-                        Modifier.offset(
-                            x = -(maxWidth / 2 - controlRadius * 0.8660254f - 24.dp),
-                            y = controlRadius / 2,
-                        ),
+                    modifier = Modifier.terrainIndicatorRingOffset(maxWidth, controlRadius),
                     terrain3d = true,
                     renderError = worldWindSession.renderError,
                     onClick =
