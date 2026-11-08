@@ -65,6 +65,11 @@ object BundledRenderThemeAssetLocator {
                     generatedRoot = "theme/os-map",
                     xmlFileName = "OS Map V4 Night.xml",
                 ),
+            MapsforgeThemeCatalog.HIKING_3D_THEME_ID to
+                ThemeSpec(
+                    generatedRoot = "theme/hiking-3d",
+                    xmlFileName = "hiking-3d.xml",
+                ),
         )
 
     fun isThemeAvailable(
@@ -125,6 +130,7 @@ object BundledRenderThemeAssetLocator {
             MapsforgeThemeCatalog.VOLUNTARY_THEME_ID -> MapsforgeThemeCatalog.VOLUNTARY_THEME_ID
             MapsforgeThemeCatalog.OS_MAP_DAY_THEME_ID -> MapsforgeThemeCatalog.OS_MAP_DAY_THEME_ID
             MapsforgeThemeCatalog.OS_MAP_NIGHT_THEME_ID -> MapsforgeThemeCatalog.OS_MAP_NIGHT_THEME_ID
+            MapsforgeThemeCatalog.HIKING_3D_THEME_ID -> MapsforgeThemeCatalog.HIKING_3D_THEME_ID
             else -> null
         }
 

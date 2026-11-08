@@ -1095,7 +1095,6 @@ class MainActivity : ComponentActivity() {
                                 ThemeSettingsScreen(
                                     themeViewModel = appContainer.themeViewModel,
                                     mapViewModel = appContainer.mapViewModel,
-                                    settingsViewModel = appContainer.settingsViewModel,
                                     onOpenMaps = {
                                         navController.navigate(WatchRoutes.MAPS) {
                                             launchSingleTop = true

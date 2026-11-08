@@ -16,7 +16,6 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.platform.LocalContext
 import com.glancemap.glancemapwearos.core.maps.DEFAULT_TERRAIN_3D_VIEWING_ANGLE
 import com.glancemap.glancemapwearos.core.maps.Dem3CoverageUtils
-import com.glancemap.glancemapwearos.core.maps.theme.defaultRenderThemeMenuCallback
 import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
 import com.glancemap.glancemapwearos.presentation.features.maps.MapHolder
 import com.glancemap.glancemapwearos.presentation.features.maps.buildMapRendererThemeOrNull
@@ -37,7 +36,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.mapsforge.core.model.BoundingBox
 import org.mapsforge.core.model.LatLong
-import org.mapsforge.map.android.rendertheme.AssetsRenderTheme
 import java.util.UUID
 
 internal class WatchWorldWindSession {
@@ -60,7 +58,6 @@ internal class WatchWorldWindSession {
 internal fun rememberWatchWorldWindSession(
     session: WatchWorldWindSession,
     enabled: Boolean,
-    hikingThemeEnabled: Boolean,
     holder: MapHolder?,
     mapPath: String?,
     appearanceInProgress: Boolean,
@@ -71,7 +68,7 @@ internal fun rememberWatchWorldWindSession(
     val context = LocalContext.current
     val currentInteractive = rememberUpdatedState(interactive)
     val currentBearing = rememberUpdatedState(bearing)
-    LaunchedEffect(enabled, holder, mapPath, appearanceInProgress, hikingThemeEnabled) {
+    LaunchedEffect(enabled, holder, mapPath, appearanceInProgress) {
         if (!enabled || appearanceInProgress) return@LaunchedEffect
         if (holder == null || mapPath.isNullOrEmpty()) {
             return@LaunchedEffect
@@ -93,7 +90,6 @@ internal fun rememberWatchWorldWindSession(
                 angle,
                 currentBearing.value,
                 currentInteractive,
-                hikingThemeEnabled,
             )
         }
     }
@@ -109,7 +105,6 @@ private suspend fun runWatchWorldWindSession(
     angle: Int,
     bearing: Float,
     interactive: State<Boolean>,
-    hikingThemeEnabled: Boolean,
 ) {
     val sessionId = UUID.randomUUID().toString()
     val started = SystemClock.elapsedRealtime()
@@ -140,32 +135,23 @@ private suspend fun runWatchWorldWindSession(
             checkNotNull(source?.takeIf { it.mapFile.absolutePath == mapPath }) { "Selected map is not ready" }
         var center = holder.mapView.model.mapViewPosition.center
         withContext(Dispatchers.IO) {
+            // 3D draws with the selected map theme, which can be the bundled 3D hiking theme.
             val theme =
-                if (hikingThemeEnabled) {
-                    AssetsRenderTheme(
-                        context.assets,
-                        "theme/hiking-3d/",
-                        "hiking-3d.xml",
-                        defaultRenderThemeMenuCallback(),
-                    )
-                } else {
-                    checkNotNull(
-                        buildMapRendererThemeOrNull(
-                            context,
-                            currentSource.themeFile,
-                            currentSource.mapsforgeThemeName,
-                            currentSource.bundledThemeId,
-                            currentSource.externalTheme,
-                        ),
-                    ) { "Selected theme unavailable" }
-                }
+                checkNotNull(
+                    buildMapRendererThemeOrNull(
+                        context,
+                        currentSource.themeFile,
+                        currentSource.mapsforgeThemeName,
+                        currentSource.bundledThemeId,
+                        currentSource.externalTheme,
+                    ),
+                ) { "Selected theme unavailable" }
             val tileDiskCache = WorldWindTileDiskCache.shared(context).also { it.trim() }
             imagery =
                 WorldWindMapsforge(
                     currentSource,
                     theme,
                     tileDiskCache,
-                    themeVariant = worldWindThemeVariant(hikingThemeEnabled),
                 )
             val mapBounds = checkNotNull(imagery).bounds
             center =
@@ -438,13 +424,6 @@ internal suspend fun awaitWorldWindStartCenter(
     }
     return center
 }
-
-/** Names the theme choice in saved 3D image keys; [TerrainSource] does not describe the hiking theme. */
-internal fun worldWindThemeVariant(hikingThemeEnabled: Boolean): String =
-    when (hikingThemeEnabled) {
-        true -> "hiking-3d"
-        false -> "selected"
-    }
 
 internal suspend fun finishWorldWindResources(
     close: suspend () -> Unit,

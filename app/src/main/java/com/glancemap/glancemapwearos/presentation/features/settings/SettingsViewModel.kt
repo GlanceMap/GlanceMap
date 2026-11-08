@@ -806,15 +806,6 @@ class SettingsViewModel(
             settingsRepository.setTerrain3dEnabled(enabled)
         }
 
-    val terrain3dHikingThemeEnabled: StateFlow<Boolean> =
-        settingsRepository.terrain3dHikingThemeEnabled
-            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
-
-    fun setTerrain3dHikingThemeEnabled(enabled: Boolean) =
-        viewModelScope.launch {
-            settingsRepository.setTerrain3dHikingThemeEnabled(enabled)
-        }
-
     val liveElevation: StateFlow<Boolean> =
         settingsRepository.liveElevation
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)

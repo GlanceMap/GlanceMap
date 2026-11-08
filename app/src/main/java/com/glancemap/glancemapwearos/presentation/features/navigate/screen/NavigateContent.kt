@@ -127,7 +127,6 @@ internal fun NavigateContent(
     focusRequester: FocusRequester,
     mapHolder: MapHolder?,
     terrain3dEnabled: Boolean,
-    terrain3dHikingThemeEnabled: Boolean,
     terrainMapPath: String?,
     terrainInteractive: Boolean,
     onMapViewReadyForRendering: () -> Unit,
@@ -639,7 +638,6 @@ internal fun NavigateContent(
         terrainRuntime.publish(
             WatchWorldWindInputs(
                 enabled = terrainEligible,
-                hikingThemeEnabled = terrain3dHikingThemeEnabled,
                 holder = mapHolder,
                 mapPath = terrainMapPath,
                 appearanceInProgress = mapAppearanceApplyInProgress,

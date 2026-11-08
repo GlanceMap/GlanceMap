@@ -142,7 +142,6 @@ private data class OsMapStyleUi(
 fun ThemeSettingsScreen(
     themeViewModel: ThemeViewModel,
     mapViewModel: MapViewModel,
-    settingsViewModel: SettingsViewModel,
     @Suppress("UNUSED_PARAMETER")
     onOpenMaps: () -> Unit,
     onOpenGeneralSettings: () -> Unit,
@@ -150,7 +149,6 @@ fun ThemeSettingsScreen(
     val resources = LocalResources.current
     val listTokens = rememberSettingsListTokens()
     val themeItems by themeViewModel.themeItems.collectAsState()
-    val terrain3dHikingThemeEnabled by settingsViewModel.terrain3dHikingThemeEnabled.collectAsState()
     val expandedGroups = remember { mutableStateMapOf<String, Boolean>() }
     val selectedStyle =
         themeItems
@@ -289,19 +287,6 @@ fun ThemeSettingsScreen(
                     } else {
                         stringResource(R.string.glancemap_state_off)
                     },
-            )
-        }
-
-        // Same setting as the shortcut shown under the 3D switch in map settings.
-        item {
-            SettingsToggleChip(
-                checked = terrain3dHikingThemeEnabled,
-                onCheckedChanged = settingsViewModel::setTerrain3dHikingThemeEnabled,
-                label = stringResource(R.string.map_terrain_3d_hiking_theme),
-                secondaryLabel =
-                    stringResource(
-                        if (terrain3dHikingThemeEnabled) R.string.glancemap_state_on else R.string.glancemap_state_off,
-                    ),
             )
         }
 

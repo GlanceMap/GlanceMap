@@ -21,6 +21,9 @@ object MapsforgeThemeCatalog {
     const val OS_MAP_THEME_ID = "os_map"
     const val OS_MAP_DAY_THEME_ID = "os_map_day"
     const val OS_MAP_NIGHT_THEME_ID = "os_map_night"
+
+    /** Minimal bundled theme tuned for draped 3D terrain; also selectable for the 2D map. */
+    const val HIKING_3D_THEME_ID = "hiking_3d"
     private const val MAPSFORGE_THEME_PREFIX = "mapsforge:"
     val LEGACY_HILLSHADING_THEME_ID = "$MAPSFORGE_THEME_PREFIX${MapsforgeThemes.HILLSHADING.name}"
     val DEFAULT_MAPSFORGE_STYLE_ID = "$MAPSFORGE_THEME_PREFIX${MapsforgeThemes.DEFAULT.name}"
@@ -88,5 +91,6 @@ object MapsforgeThemeCatalog {
             themeId == VOLUNTARY_THEME_ID ||
             themeId == OS_MAP_THEME_ID ||
             themeId == OS_MAP_DAY_THEME_ID ||
-            themeId == OS_MAP_NIGHT_THEME_ID
+            themeId == OS_MAP_NIGHT_THEME_ID ||
+            themeId == HIKING_3D_THEME_ID
 }

@@ -35,6 +35,7 @@ class ThemeRepositoryImpl(
         const val THEME_ID_TIRAMISU = MapsforgeThemeCatalog.TIRAMISU_THEME_ID
         const val THEME_ID_HIKE_RIDE_SIGHT = MapsforgeThemeCatalog.HIKE_RIDE_SIGHT_THEME_ID
         const val THEME_ID_VOLUNTARY = MapsforgeThemeCatalog.VOLUNTARY_THEME_ID
+        const val THEME_ID_HIKING_3D = MapsforgeThemeCatalog.HIKING_3D_THEME_ID
         const val THEME_ID_OS_MAP = MapsforgeThemeCatalog.OS_MAP_THEME_ID
         const val THEME_ID_OS_MAP_DAY = MapsforgeThemeCatalog.OS_MAP_DAY_THEME_ID
         const val THEME_ID_OS_MAP_NIGHT = MapsforgeThemeCatalog.OS_MAP_NIGHT_THEME_ID
@@ -54,6 +55,9 @@ class ThemeRepositoryImpl(
         MapThemePreferences(context.getSharedPreferences(MapThemePreferences.PREFERENCES_NAME, Context.MODE_PRIVATE))
 
     private val keySelectedThemeId = "selected_theme_id"
+
+    /** Theme to restore when the 3D hiking theme shortcut is switched off. */
+    private val keyThemeBeforeHiking3d = "theme_before_hiking_3d"
     private val keyHillShadingEnabled = "global_hill_shading_enabled"
     private val keyReliefOverlayEnabled = "global_relief_overlay_enabled"
     private val keyNightModeEnabled = "global_night_mode_enabled"
@@ -106,6 +110,13 @@ class ThemeRepositoryImpl(
                 put(
                     THEME_ID_VOLUNTARY,
                     parseThemeStyleMenuFromXml(context, THEME_ID_VOLUNTARY, TAG),
+                )
+            }
+            // Parsed (no style menu) so settings do not fall back to Elevate's styles for it.
+            if (BundledRenderThemeAssetLocator.isThemeAvailable(context.assets, THEME_ID_HIKING_3D)) {
+                put(
+                    THEME_ID_HIKING_3D,
+                    parseThemeStyleMenuFromXml(context, THEME_ID_HIKING_3D, TAG),
                 )
             }
             if (BundledRenderThemeAssetLocator.isThemeAvailable(context.assets, THEME_ID_OS_MAP_DAY)) {
@@ -204,6 +215,7 @@ class ThemeRepositoryImpl(
             THEME_ID_VOLUNTARY,
             THEME_ID_OS_MAP_DAY,
             THEME_ID_OS_MAP_NIGHT,
+            THEME_ID_HIKING_3D,
         )
 
     private fun themeSupportsNativeHillShading(themeId: String?): Boolean {
@@ -341,38 +353,59 @@ class ThemeRepositoryImpl(
             else -> styleId
         }
 
-    override suspend fun setTheme(themeId: String) =
+    override suspend fun setTheme(themeId: String) = withMapPreferences { applyTheme(themeId) }
+
+    override suspend fun setHiking3dThemeEnabled(enabled: Boolean) =
         withMapPreferences {
-            Log.i(TAG, "theme_selected theme=$themeId")
-            val validThemeId =
-                when {
-                    externalThemes.themes().any { it.id == themeId } -> themeId
-                    themeId == THEME_ID_OS_MAP -> osMapDefaultInternalThemeId()
-                    MapsforgeThemeCatalog.isBundledAssetTheme(themeId) &&
-                        BundledRenderThemeAssetLocator.isThemeAvailable(context.assets, themeId) -> themeId
-                    MapsforgeThemeCatalog.isMapsforgeFamilyTheme(themeId) -> themeId
-                    else -> THEME_ID_ELEVATE
-                }
-            val normalizedThemeId =
-                if (validThemeId == THEME_ID_ELEVATE_WINTER_WHITE) {
-                    THEME_ID_ELEVATE_WINTER
-                } else {
-                    validThemeId
-                }
+            val transition =
+                hiking3dThemeTransition(
+                    currentThemeId = selectedThemeIdOrDefault(),
+                    themeBeforeHiking3d = prefs.getString(keyThemeBeforeHiking3d, null),
+                    enable = enabled,
+                    fallbackThemeId = THEME_ID_ELEVATE,
+                )
+            transition.themeToSelect?.let(::applyTheme)
             prefs.edit().apply {
-                putString(keySelectedThemeId, normalizedThemeId)
-                if (isWinterFamilyTheme(normalizedThemeId)) {
-                    putString(selectedStyleKeyForTheme(normalizedThemeId), WINTER_STYLE_ID)
-                }
-                if (isOsMapInternalTheme(normalizedThemeId)) {
-                    putString(selectedStyleKeyForTheme(normalizedThemeId), DEFAULT_STYLE_ID)
-                }
-                if (MapsforgeThemeCatalog.isMapsforgeFamilyTheme(normalizedThemeId)) {
-                    putString(selectedStyleKeyForTheme(normalizedThemeId), mapsforgeStyleIdOrDefault())
+                if (transition.themeToRemember == null) {
+                    remove(keyThemeBeforeHiking3d)
+                } else {
+                    putString(keyThemeBeforeHiking3d, transition.themeToRemember)
                 }
                 apply()
             }
         }
+
+    private fun applyTheme(themeId: String) {
+        Log.i(TAG, "theme_selected theme=$themeId")
+        val validThemeId =
+            when {
+                externalThemes.themes().any { it.id == themeId } -> themeId
+                themeId == THEME_ID_OS_MAP -> osMapDefaultInternalThemeId()
+                MapsforgeThemeCatalog.isBundledAssetTheme(themeId) &&
+                    BundledRenderThemeAssetLocator.isThemeAvailable(context.assets, themeId) -> themeId
+                MapsforgeThemeCatalog.isMapsforgeFamilyTheme(themeId) -> themeId
+                else -> THEME_ID_ELEVATE
+            }
+        val normalizedThemeId =
+            if (validThemeId == THEME_ID_ELEVATE_WINTER_WHITE) {
+                THEME_ID_ELEVATE_WINTER
+            } else {
+                validThemeId
+            }
+        prefs.edit().apply {
+            putString(keySelectedThemeId, normalizedThemeId)
+            if (isWinterFamilyTheme(normalizedThemeId)) {
+                putString(selectedStyleKeyForTheme(normalizedThemeId), WINTER_STYLE_ID)
+            }
+            if (isOsMapInternalTheme(normalizedThemeId)) {
+                putString(selectedStyleKeyForTheme(normalizedThemeId), DEFAULT_STYLE_ID)
+            }
+            if (MapsforgeThemeCatalog.isMapsforgeFamilyTheme(normalizedThemeId)) {
+                putString(selectedStyleKeyForTheme(normalizedThemeId), mapsforgeStyleIdOrDefault())
+            }
+            apply()
+        }
+    }
 
     override suspend fun setMapStyle(styleId: String) =
         withMapPreferences {
@@ -935,6 +968,14 @@ class ThemeRepositoryImpl(
                     id = THEME_ID_TIRAMISU,
                     name = context.getString(R.string.map_tiramisu),
                     selected = selectedThemeIdUi == THEME_ID_TIRAMISU,
+                )
+        }
+        if (BundledRenderThemeAssetLocator.isThemeAvailable(context.assets, THEME_ID_HIKING_3D)) {
+            items +=
+                ThemeListItem.ThemeOption(
+                    id = THEME_ID_HIKING_3D,
+                    name = context.getString(R.string.map_terrain_3d_hiking_theme),
+                    selected = selectedThemeIdUi == THEME_ID_HIKING_3D,
                 )
         }
         items +=

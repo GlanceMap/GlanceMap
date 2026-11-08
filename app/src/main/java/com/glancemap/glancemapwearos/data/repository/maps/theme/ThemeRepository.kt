@@ -40,6 +40,12 @@ interface ThemeRepository {
 
     suspend fun setTheme(themeId: String)
 
+    /**
+     * Selects the 3D hiking theme, remembering the current theme, or restores the remembered theme
+     * when [enabled] is false and the 3D hiking theme is still selected.
+     */
+    suspend fun setHiking3dThemeEnabled(enabled: Boolean)
+
     suspend fun setMapStyle(styleId: String)
 
     suspend fun toggleOverlay(

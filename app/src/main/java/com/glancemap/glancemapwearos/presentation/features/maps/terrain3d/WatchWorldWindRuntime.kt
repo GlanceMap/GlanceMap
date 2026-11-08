@@ -11,7 +11,6 @@ import com.glancemap.glancemapwearos.presentation.features.maps.MapHolder
 /** What the map screen asks of the 3D session; the last values are kept while the screen is hidden. */
 internal data class WatchWorldWindInputs(
     val enabled: Boolean,
-    val hikingThemeEnabled: Boolean,
     val holder: MapHolder?,
     val mapPath: String?,
     val appearanceInProgress: Boolean,
@@ -63,7 +62,6 @@ fun RunWatchWorldWind(runtime: WatchWorldWindRuntime) {
     rememberWatchWorldWindSession(
         session = runtime.session,
         enabled = inputs?.enabled == true,
-        hikingThemeEnabled = inputs?.hikingThemeEnabled == true,
         holder = inputs?.holder,
         mapPath = inputs?.mapPath,
         appearanceInProgress = inputs?.appearanceInProgress == true,

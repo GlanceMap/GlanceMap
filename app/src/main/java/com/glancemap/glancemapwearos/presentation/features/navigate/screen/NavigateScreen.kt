@@ -190,7 +190,6 @@ fun NavigateScreen(
         // ---- VMS ----
         val selectedMapPath by mapViewModel.selectedMapPath.collectAsState()
         val terrain3dEnabled by settingsViewModel.terrain3dEnabled.collectAsState()
-        val terrain3dHikingThemeEnabled by settingsViewModel.terrain3dHikingThemeEnabled.collectAsState()
         val installedMapBounds by mapViewModel.installedMapBounds.collectAsState()
         val missingMapPromptDisabled by mapViewModel.missingMapPromptDisabled.collectAsState()
         val missingMapPromptDismissed by mapViewModel.missingMapPromptDismissed.collectAsState()
@@ -1081,7 +1080,6 @@ fun NavigateScreen(
             focusRequester = focusRequester,
             mapHolder = mapHolder,
             terrain3dEnabled = terrain3dEnabled,
-            terrain3dHikingThemeEnabled = terrain3dHikingThemeEnabled,
             terrainMapPath = selectedMapPath,
             terrainInteractive = isScreenResumed && screenState.isInteractive,
             onMapViewReadyForRendering = { mapViewModel.onMapViewReadyForRendering() },

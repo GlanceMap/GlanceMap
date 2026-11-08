@@ -621,10 +621,6 @@ interface SettingsRepository {
 
     suspend fun setTerrain3dEnabled(enabled: Boolean)
 
-    val terrain3dHikingThemeEnabled: Flow<Boolean>
-
-    suspend fun setTerrain3dHikingThemeEnabled(enabled: Boolean)
-
     val liveElevation: Flow<Boolean>
 
     suspend fun setLiveElevation(enabled: Boolean)

@@ -45,14 +45,13 @@ private const val TILE_SIZE = 256
 
 /**
  * Session-owned, single-worker Mapsforge tile provider. With [diskCache], drawn images are saved
- * as PNG and later requests load them instead of drawing again; [themeVariant] names the theme
- * choice that the source's theme fields do not describe (the dedicated 3D hiking theme).
+ * as PNG and later requests load them instead of drawing again. The selected map theme, including
+ * the bundled 3D hiking theme, is part of each saved image's key.
  */
 internal class WorldWindMapsforge(
     source: TerrainSource,
     theme: XmlRenderTheme,
     private val diskCache: WorldWindTileDiskCache? = null,
-    themeVariant: String = "selected",
 ) : Closeable {
     private val worker = Executors.newSingleThreadExecutor().asCoroutineDispatcher()
     private val scope = CoroutineScope(SupervisorJob() + worker)
@@ -109,7 +108,7 @@ internal class WorldWindMapsforge(
         "${source.mapFile.absolutePath}:${source.mapFile.lastModified()}:${source.mapFile.length()}"
     private val themeIdentity =
         "${source.themeFile}:${source.themeFile?.lastModified()}:${source.mapsforgeThemeName}:" +
-            "${source.bundledThemeId}:${source.externalTheme}:$themeVariant:" +
+            "${source.bundledThemeId}:${source.externalTheme}:" +
             "${BuildConfig.VERSION_CODE}:${BuildConfig.GIT_SHA}"
     private val textScale = source.textScale
 

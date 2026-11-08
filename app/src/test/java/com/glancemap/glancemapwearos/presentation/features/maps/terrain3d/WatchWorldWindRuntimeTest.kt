@@ -11,7 +11,6 @@ class WatchWorldWindRuntimeTest {
     private fun inputs(mapPath: String) =
         WatchWorldWindInputs(
             enabled = true,
-            hikingThemeEnabled = false,
             holder = null,
             mapPath = mapPath,
             appearanceInProgress = false,
