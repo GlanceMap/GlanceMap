@@ -821,6 +821,15 @@ object DiagnosticsExporter {
             writer.appendLine("reliefOverlayCacheSizeMb=${formatBytesToMb(cacheSnapshot.reliefOverlayCacheSizeBytes)}")
             writer.appendLine("bundledThemeCacheDirCount=${cacheSnapshot.bundledThemeCacheDirCount}")
             writer.appendLine("bundledThemeCacheTotalSizeMb=${formatBytesToMb(cacheSnapshot.bundledThemeCacheTotalSizeBytes)}")
+            val demDisk = cacheSnapshot.demDisk
+            writer.appendLine("demDiskCacheFileCount=${demDisk.fileCount}")
+            writer.appendLine("demDiskCacheSizeMb=${formatBytesToMb(demDisk.sizeBytes)}")
+            writer.appendLine("demDiskCacheLimitMb=${formatBytesToMb(demDisk.limitBytes)}")
+            writer.appendLine(
+                "demDiskSinceProcessStart=copies=${demDisk.copies} " +
+                    "copyMb=${formatBytesToMb(demDisk.copyBytes)} copyMs=${demDisk.copyMs} " +
+                    "hits=${demDisk.hits} fallbackTiles=${demDisk.fallbackTiles}",
+            )
             if (cacheSnapshot.tileCacheBuckets.isEmpty()) {
                 writer.appendLine("tileCacheBuckets=none")
             } else {

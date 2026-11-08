@@ -62,7 +62,9 @@ tiles stay readable. The 3D repository keeps at most four tiles. Heights use the
 same bilinear interpolation as the in-memory decoder. If a copy cannot be written
 or mapped, that tile is decoded onto the heap as before; in 3D that fallback is
 capped at 16 MiB of decoded samples, where one oversized tile can remain cached.
-These limits do not cap total heap use. A grid
+These limits do not cap total heap use. The diagnostics export's Cache Summary
+reports the shared folder's file count, size and limit, and copies, copy time,
+reuse and in-memory fallbacks for all DEM consumers since the process started. A grid
 intentionally omitted by the four-tile safeguard is counted as skipped rather
 than logged as a retrieval failure. Unexpected failures remain logged and counted.
 Completed, fully populated 64×64 elevation grids are retained in a separate
@@ -100,6 +102,10 @@ elevation requests are outstanding, and reaches a full ring after 500 ms of quie
 Once all visible imagery textures are ready, unrelated imagery requests do not
 delay completion; pending elevation work still does.
 It can show partial progress again as panning or zooming requires more tiles.
+Diagnostics time the ring: `render_activity` adds `busy_ms` when it reaches 100%,
+and interval and session-end lines report `render_first_complete_ms` (from
+session start), `render_completions`, `render_busy_ms_total` and
+`render_busy_ms_max`. A loading period interrupted by screen-off is not counted.
 The indicator tracks current
 renderer observations, not a guarantee that the GPU has presented a complete
 frame or that WorldWind will not discover more work. A failed visible imagery

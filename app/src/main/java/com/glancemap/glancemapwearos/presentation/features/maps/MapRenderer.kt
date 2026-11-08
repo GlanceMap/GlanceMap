@@ -196,6 +196,7 @@ class MapRenderer(
         val reliefOverlayCacheSizeBytes: Long,
         val bundledThemeCacheDirCount: Int,
         val bundledThemeCacheTotalSizeBytes: Long,
+        val demDisk: DemDiskDiagnostics,
     )
 
     data class CacheBucketDiagnostics(

@@ -139,7 +139,10 @@ internal class ReliefDemRepository(
                 Log.w(tag, "Decoding DEM tile $tileId in memory", error)
                 null
             }
-        if (mapped == null) cacheStats?.fallbackTiles?.incrementAndGet()
+        if (mapped == null) {
+            cacheStats?.fallbackTiles?.incrementAndGet()
+            cache.recordFallback()
+        }
         return mapped
     }
 

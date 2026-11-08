@@ -95,6 +95,9 @@ internal class DemDiskCache(
             }
     }
 
+    /** Counters for every consumer since the process started, for the diagnostics export. */
+    val totals = ReliefDemCacheStats()
+
     /** Maps the uncompressed copy of [source]; null when a ZIP has no HGT entry or the grid is not square. */
     @Synchronized
     fun map(
@@ -111,10 +114,31 @@ internal class DemDiskCache(
         if (target.isFile) {
             target.setLastModified(System.currentTimeMillis())
             stats?.diskHits?.incrementAndGet()
+            totals.diskHits.incrementAndGet()
         } else if (!copy(source, target, stats)) {
             return null
         }
         return target
+    }
+
+    /** Records a tile decoded onto the heap because its copy could not be written or mapped. */
+    fun recordFallback() {
+        totals.fallbackTiles.incrementAndGet()
+    }
+
+    @Synchronized
+    fun diagnostics(): DemDiskDiagnostics {
+        val files = dir.listFiles { file -> file.isFile && file.name.endsWith(".hgt") }.orEmpty()
+        return DemDiskDiagnostics(
+            fileCount = files.size,
+            sizeBytes = files.sumOf(File::length),
+            limitBytes = maxBytes,
+            copies = totals.diskCopies.get(),
+            copyBytes = totals.diskCopyBytes.get(),
+            copyMs = totals.diskCopyNanos.get() / 1_000_000,
+            hits = totals.diskHits.get(),
+            fallbackTiles = totals.fallbackTiles.get(),
+        )
     }
 
     @Synchronized
@@ -139,9 +163,12 @@ internal class DemDiskCache(
                 temp.delete()
             }
         if (written != null) {
-            stats?.diskCopies?.incrementAndGet()
-            stats?.diskCopyBytes?.addAndGet(written)
-            stats?.diskCopyNanos?.addAndGet(System.nanoTime() - started)
+            val nanos = System.nanoTime() - started
+            for (counters in listOfNotNull(stats, totals)) {
+                counters.diskCopies.incrementAndGet()
+                counters.diskCopyBytes.addAndGet(written)
+                counters.diskCopyNanos.addAndGet(nanos)
+            }
             trim(target)
         }
         return written != null
@@ -157,6 +184,18 @@ internal class DemDiskCache(
         }
     }
 }
+
+/** Shared DEM copy folder state; counters cover every consumer since the process started. */
+data class DemDiskDiagnostics(
+    val fileCount: Int,
+    val sizeBytes: Long,
+    val limitBytes: Long,
+    val copies: Long,
+    val copyBytes: Long,
+    val copyMs: Long,
+    val hits: Long,
+    val fallbackTiles: Long,
+)
 
 internal fun demDiskCacheName(source: File): String {
     val tileId = source.name.substringBefore('.')

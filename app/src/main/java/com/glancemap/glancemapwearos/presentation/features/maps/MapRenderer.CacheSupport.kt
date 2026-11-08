@@ -97,6 +97,7 @@ internal fun captureMapRendererCacheDiagnostics(context: Context): MapRenderer.C
             },
         bundledThemeCacheDirCount = bundledThemeDirs.size,
         bundledThemeCacheTotalSizeBytes = bundledThemeDirs.sumOf { mapRendererDirectorySizeBytes(it) },
+        demDisk = DemDiskCache.shared(context).diagnostics(),
     )
 }
 

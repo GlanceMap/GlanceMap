@@ -117,6 +117,28 @@ class ReliefDemDiskTest {
     }
 
     @Test
+    fun `diagnostics report folder size and counters from every consumer`() {
+        val cache = DemDiskCache(temp.newFolder("cache"), DEM_DISK_BYTES)
+        val gz = temp.newFile("N45E006.hgt.gz").apply { writeBytes(gzip(hgtBytes)) }
+        val otherConsumer = ReliefDemCacheStats()
+        cache.map(gz, stats)
+        cache.map(gz, otherConsumer)
+        cache.map(gz)
+        cache.recordFallback()
+
+        val diagnostics = cache.diagnostics()
+
+        assertEquals(1, diagnostics.fileCount)
+        assertEquals(hgtBytes.size.toLong(), diagnostics.sizeBytes)
+        assertEquals(DEM_DISK_BYTES, diagnostics.limitBytes)
+        assertEquals(1L, diagnostics.copies)
+        assertEquals(hgtBytes.size.toLong(), diagnostics.copyBytes)
+        assertEquals(2L, diagnostics.hits)
+        assertEquals(1L, diagnostics.fallbackTiles)
+        assertEquals(1L, otherConsumer.diskHits.get())
+    }
+
+    @Test
     fun `clear removes all copies`() {
         val dir = temp.newFolder("cache")
         val cache = DemDiskCache(dir, Long.MAX_VALUE)

@@ -107,6 +107,7 @@ private suspend fun runWatchWorldWindSession(
 ) {
     val sessionId = UUID.randomUUID().toString()
     val started = SystemClock.elapsedRealtime()
+    val renderTiming = WorldWindRenderTiming(started)
     var imagery: WorldWindMapsforge? = null
     var elevation: WorldWindElevation? = null
     var window: WatchWorldWindWindow? = null
@@ -210,7 +211,15 @@ private suspend fun runWatchWorldWindSession(
         progressJob =
             CoroutineScope(currentCoroutineContext()).launch {
                 snapshotFlow { interactive.value }.collectLatest { awake ->
-                    if (awake) observeWorldWindRenderProgress(session, imageryProvider, elevationProvider, sessionId)
+                    if (awake) {
+                        observeWorldWindRenderProgress(
+                            session,
+                            imageryProvider,
+                            elevationProvider,
+                            sessionId,
+                            renderTiming,
+                        )
+                    }
                 }
             }
         waitForWorldWindReady(imageryProvider, currentWindow, interactive)
@@ -278,6 +287,7 @@ private suspend fun runWatchWorldWindSession(
                     "pan=${currentWindow.panCount.get()} zoom=${currentWindow.zoomCount.get()} " +
                     "orbit=${currentWindow.orbitCount.get()} recenter=${currentWindow.recenterCount.get()} " +
                     "${currentWindow.holdMetrics.logFields()} " +
+                    "${renderTiming.logFields()} " +
                     "track_rebuilds=${currentWindow.trackRebuildCount.get()} " +
                     "marker_updates=${currentWindow.markerUpdateCount.get()} " +
                     "internal_gpu_bytes=unavailable",
@@ -317,7 +327,9 @@ private suspend fun runWatchWorldWindSession(
                 imagery?.close()
             },
             onFinished = {
-                val endMessage = worldWindEndMessage(sessionId, started, demContext, window, imagery, elevation)
+                val endMessage =
+                    worldWindEndMessage(sessionId, started, demContext, window, imagery, elevation) +
+                        " ${renderTiming.logFields()}"
                 Log.i(TERRAIN_LOG_TAG, endMessage)
                 DebugTelemetry.log(TERRAIN_LOG_TAG, endMessage)
             },
@@ -330,36 +342,52 @@ private suspend fun observeWorldWindRenderProgress(
     imagery: WorldWindMapsforge,
     elevation: WorldWindElevation,
     sessionId: String,
+    timing: WorldWindRenderTiming,
 ) {
     val progress = WorldWindRenderProgress()
     var lastProgressLogAt: Long? = null
-    while (currentCoroutineContext().isActive) {
-        val now = SystemClock.elapsedRealtime()
-        val visible = imagery.visibleTiles.get()
-        val pendingElevation = elevation.pendingGrids.get()
-        val pendingImagery = imagery.outstandingRequests()
-        val percent = progress.update(visible, pendingElevation, pendingImagery, now)
-        val renderError = (visible?.failed ?: 0) > 0
-        val rendering = !renderError && percent != 100
-        val lastLog = lastProgressLogAt
-        val activeReportDue = rendering && (lastLog == null || now - lastLog >= 5_000)
-        if (session.rendering != rendering || session.renderError != renderError || activeReportDue) {
-            DebugTelemetry.log(
-                TERRAIN_LOG_TAG,
-                "event=render_activity renderer=worldwind session_id=$sessionId " +
-                    "active=$rendering visible_ready=${visible?.ready ?: 0} " +
-                    "visible_total=${visible?.total ?: 0} visible_failed=${visible?.failed ?: 0} " +
-                    "imagery_pending=$pendingImagery elevation_pending=$pendingElevation " +
-                    "progress_percent=${percent ?: "unavailable"}",
-            )
-            lastProgressLogAt = now
+    try {
+        while (currentCoroutineContext().isActive) {
+            val now = SystemClock.elapsedRealtime()
+            val visible = imagery.visibleTiles.get()
+            val pendingElevation = elevation.pendingGrids.get()
+            val pendingImagery = imagery.outstandingRequests()
+            val percent = progress.update(visible, pendingElevation, pendingImagery, now)
+            val renderError = (visible?.failed ?: 0) > 0
+            val rendering = !renderError && percent != 100
+            val busyMs = timing.update(complete = percent == 100, nowMs = now)
+            val lastLog = lastProgressLogAt
+            val activeReportDue = rendering && (lastLog == null || now - lastLog >= 5_000)
+            if (session.rendering != rendering || session.renderError != renderError || activeReportDue) {
+                DebugTelemetry.log(
+                    TERRAIN_LOG_TAG,
+                    "event=render_activity renderer=worldwind session_id=$sessionId active=$rendering " +
+                        worldWindRenderActivityFields(visible, pendingImagery, pendingElevation, percent, busyMs),
+                )
+                lastProgressLogAt = now
+            }
+            session.renderProgress = percent
+            session.renderError = renderError
+            session.rendering = rendering
+            delay(250)
         }
-        session.renderProgress = percent
-        session.renderError = renderError
-        session.rendering = rendering
-        delay(250)
+    } finally {
+        timing.pause()
     }
 }
+
+private fun worldWindRenderActivityFields(
+    visible: WorldWindVisibleTiles?,
+    pendingImagery: Int,
+    pendingElevation: Int,
+    percent: Int?,
+    busyMs: Long?,
+): String =
+    "visible_ready=${visible?.ready ?: 0} " +
+        "visible_total=${visible?.total ?: 0} visible_failed=${visible?.failed ?: 0} " +
+        "imagery_pending=$pendingImagery elevation_pending=$pendingElevation " +
+        "progress_percent=${percent ?: "unavailable"}" +
+        (busyMs?.let { " busy_ms=$it" } ?: "")
 
 internal suspend fun finishWorldWindResources(
     close: suspend () -> Unit,
