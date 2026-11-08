@@ -33,6 +33,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.mapsforge.core.model.BoundingBox
 import org.mapsforge.core.model.LatLong
 import org.mapsforge.map.android.rendertheme.AssetsRenderTheme
 import java.util.UUID
@@ -132,7 +133,7 @@ private suspend fun runWatchWorldWindSession(
         }
         val currentSource =
             checkNotNull(source?.takeIf { it.mapFile.absolutePath == mapPath }) { "Selected map is not ready" }
-        val center = holder.mapView.model.mapViewPosition.center
+        var center = holder.mapView.model.mapViewPosition.center
         withContext(Dispatchers.IO) {
             val theme =
                 if (hikingThemeEnabled) {
@@ -162,6 +163,10 @@ private suspend fun runWatchWorldWindSession(
                     themeVariant = worldWindThemeVariant(hikingThemeEnabled),
                 )
             val mapBounds = checkNotNull(imagery).bounds
+            center =
+                awaitWorldWindStartCenter(mapBounds) {
+                    withContext(Dispatchers.Main) { holder.mapView.model.mapViewPosition.center }
+                }
             check(mapBounds.contains(center.latitude, center.longitude)) {
                 "Current location is outside the selected map"
             }
@@ -406,6 +411,26 @@ private fun worldWindRenderActivityFields(
         "imagery_pending=$pendingImagery elevation_pending=$pendingElevation " +
         "progress_percent=${percent ?: "unavailable"}" +
         (busyMs?.let { " busy_ms=$it" } ?: "")
+
+/**
+ * Returns the 2D map center once it lies inside the selected map. On a cold start the map view is
+ * briefly at 0,0 before its position is restored, which would otherwise fail 3D startup. After
+ * [attempts] the last center is returned and the caller's map-coverage check reports the failure.
+ */
+internal suspend fun awaitWorldWindStartCenter(
+    bounds: BoundingBox,
+    attempts: Int = 40,
+    intervalMs: Long = 250,
+    readCenter: suspend () -> LatLong,
+): LatLong {
+    var center = readCenter()
+    repeat(attempts) {
+        if (bounds.contains(center.latitude, center.longitude)) return center
+        delay(intervalMs)
+        center = readCenter()
+    }
+    return center
+}
 
 /** Names the theme choice in saved 3D image keys; [TerrainSource] does not describe the hiking theme. */
 internal fun worldWindThemeVariant(hikingThemeEnabled: Boolean): String =

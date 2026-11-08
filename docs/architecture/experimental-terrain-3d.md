@@ -28,6 +28,9 @@ automatically turn those settings off.
 Recording, active or paused guidance, and route tools use the regular 2D map.
 While terrain is visible, the Mapsforge view is detached and its layer manager
 is paused; returning to 2D restores the 3D ground center and resumes the manager.
+At startup the session waits up to 10 seconds for the 2D map center to lie inside
+the selected map, since a cold start briefly reports 0,0 before the position is
+restored; a center still outside the map then fails startup as before.
 A WorldWind startup failure returns to 2D without changing the saved 3D setting.
 The renderer pauses when the screen is not interactive. Its session and camera
 are retained for up to 30 seconds of screen-off time, then closed when the app
