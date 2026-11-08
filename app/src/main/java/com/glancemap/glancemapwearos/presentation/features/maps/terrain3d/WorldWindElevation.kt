@@ -2,13 +2,16 @@ package com.glancemap.glancemapwearos.presentation.features.maps.terrain3d
 
 import android.content.Context
 import android.os.SystemClock
+import android.util.Log
 import com.glancemap.glancemapwearos.core.maps.Dem3CoverageUtils
 import com.glancemap.glancemapwearos.core.maps.DemSignatureStore
 import com.glancemap.glancemapwearos.presentation.features.maps.DemElevationSample
-import com.glancemap.glancemapwearos.presentation.features.maps.DemTileData
 import com.glancemap.glancemapwearos.presentation.features.maps.ReliefDemCacheStats
 import com.glancemap.glancemapwearos.presentation.features.maps.ReliefDemRepository
 import com.glancemap.glancemapwearos.presentation.features.maps.TerrainSource
+import com.glancemap.glancemapwearos.presentation.features.maps.demResolutionLabel
+import com.glancemap.glancemapwearos.presentation.features.maps.demTileId
+import com.glancemap.glancemapwearos.presentation.features.maps.resolveDemFile
 import earth.worldwind.geom.Angle.Companion.degrees
 import earth.worldwind.geom.Sector
 import earth.worldwind.geom.TileMatrix
@@ -21,6 +24,8 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import org.mapsforge.core.model.BoundingBox
+import java.io.File
+import java.io.IOException
 import java.nio.Buffer
 import java.nio.ShortBuffer
 import java.util.concurrent.atomic.AtomicBoolean
@@ -32,6 +37,7 @@ import kotlin.math.roundToInt
 private const val WORLDWIND_DEM_CACHE_ENTRIES = 4
 private const val WORLDWIND_DEM_CACHE_BYTES = 16L * 1024 * 1024
 private const val WORLDWIND_GRID_CACHE_BYTES = 1024L * 1024
+private const val WORLDWIND_MAPPED_DEM_TILES = 8
 
 private interface WorldWindGridFactory : ElevationSource.ElevationDataFactory {
     val skipped: AtomicBoolean
@@ -46,11 +52,11 @@ private fun worldWindHeightPrimitive(value: Double): Short =
         Short.MIN_VALUE
     }
 
-internal fun worldWindElevationGrid(
+internal fun <T> worldWindElevationGrid(
     latitudes: DoubleArray,
     longitudes: DoubleArray,
-    loadTile: (Double, Double) -> DemTileData?,
-    sampleTile: (DemTileData, Int, Int, Double, Double) -> Double,
+    loadTile: (Double, Double) -> T?,
+    sampleTile: (T, Int, Int, Double, Double) -> Double,
     checkCancelled: () -> Unit,
 ): ShortArray {
     val result = ShortArray(latitudes.size * longitudes.size) { Short.MIN_VALUE }
@@ -75,6 +81,13 @@ internal fun worldWindElevationGrid(
     return result
 }
 
+private typealias MappedDemEntry = MutableMap.MutableEntry<String, MappedDemTile?>
+
+/** Least recently used mapped tiles; a dropped mapping is released once it is collected. */
+private class MappedDemTiles : LinkedHashMap<String, MappedDemTile?>(16, 0.75f, true) {
+    override fun removeEldestEntry(eldest: MappedDemEntry?): Boolean = size > WORLDWIND_MAPPED_DEM_TILES
+}
+
 /** Conservative three-arcsecond coverage also handles mixed Standard/Detailed fallback. */
 internal class WorldWindElevation(
     context: Context,
@@ -85,9 +98,22 @@ internal class WorldWindElevation(
     val cacheRetainedBeforeClose = AtomicLong()
     val gridCache = WorldWindGridCache(WORLDWIND_GRID_CACHE_BYTES)
     val gridCacheRetainedBeforeClose = AtomicLong()
+    private val demRootDirs = source.demSource.readFallbackOrder().map { Dem3CoverageUtils.demRootDir(context, it) }
+    val diskCache = WorldWindDemDiskCache(File(context.cacheDir, WORLDWIND_DEM_DISK_DIR), WORLDWIND_DEM_DISK_BYTES)
+    private val mappedTiles = MappedDemTiles()
+    private val fallbackTiles = HashSet<String>()
+    val fallbackTileCount = AtomicLong()
+
+    fun diskLogFields(): String =
+        "dem_disk_hits=${diskCache.diskHits.get()} dem_disk_copies=${diskCache.copies.get()} " +
+            "dem_disk_copy_bytes=${diskCache.copiedBytes.get()} " +
+            "dem_disk_copy_ms=${diskCache.copyNanos.get() / 1_000_000} " +
+            "dem_fallback_tiles=${fallbackTileCount.get()}"
+
+    /** Used only for a tile whose uncompressed copy cannot be written or mapped. */
     private val repository =
         ReliefDemRepository(
-            source.demSource.readFallbackOrder().map { Dem3CoverageUtils.demRootDir(context, it) },
+            demRootDirs,
             TERRAIN_LOG_TAG,
             cacheEntryLimit = WORLDWIND_DEM_CACHE_ENTRIES,
             cacheStats = cacheStats,
@@ -158,7 +184,7 @@ internal class WorldWindElevation(
                                             if (closed) return@synchronized null
                                             job.ensureActive()
                                             val generation = DemSignatureStore.generation()
-                                            if (gridCache.prepareGeneration(generation)) repository.clear()
+                                            if (gridCache.prepareGeneration(generation)) clearTiles(diskCopies = true)
                                             val key = tileMatrix.tileKey(row, column)
                                             gridCache.get(key)?.let { return@synchronized ShortBuffer.wrap(it) }
                                             val started = SystemClock.elapsedRealtime()
@@ -166,8 +192,8 @@ internal class WorldWindElevation(
                                                 worldWindElevationGrid(
                                                     latitudes,
                                                     longitudes,
-                                                    repository::loadDemTileFor,
-                                                    repository::elevationAtUsingTileOrNaN,
+                                                    ::loadTileFor,
+                                                    ::elevationAtUsingTileOrNaN,
                                                     job::ensureActive,
                                                 )
                                             gridCount.incrementAndGet()
@@ -206,8 +232,79 @@ internal class WorldWindElevation(
         longitude: Double,
     ): DemElevationSample? =
         synchronized(lock) {
-            if (closed) null else repository.elevationSampleAt(latitude, longitude)
+            if (closed) return@synchronized null
+            val tileLat = floor(latitude).toInt()
+            val tileLon = floor(longitude).toInt()
+            val tile = loadTileFor(latitude, longitude) ?: return@synchronized null
+            tile.elevationOrNaN(tileLat, tileLon, latitude, longitude).takeUnless { it.isNaN() }?.let {
+                DemElevationSample(it, demTileId(tileLat, tileLon), tile.axisLen, demResolutionLabel(tile.axisLen))
+            }
         }
+
+    private fun loadTileFor(
+        latitude: Double,
+        longitude: Double,
+    ): WorldWindDemTile? {
+        val id = demTileId(floor(latitude).toInt(), floor(longitude).toInt())
+        return when {
+            id in fallbackTiles -> decodedTile(latitude, longitude)
+            mappedTiles.containsKey(id) -> {
+                cacheStats.hits.incrementAndGet()
+                mappedTiles[id]
+            }
+            else -> {
+                cacheStats.misses.incrementAndGet()
+                openTile(id, latitude, longitude)
+            }
+        }
+    }
+
+    /** Maps the tile's uncompressed copy; a tile that cannot be mapped uses the in-memory fallback. */
+    private fun openTile(
+        id: String,
+        latitude: Double,
+        longitude: Double,
+    ): WorldWindDemTile? {
+        val file = resolveDemFile(demRootDirs, id)
+        val mapped =
+            try {
+                file?.let(diskCache::rawFileFor)?.let(::mapRawDemTile)
+            } catch (error: IOException) {
+                Log.w(TERRAIN_LOG_TAG, "Using in-memory DEM for $id", error)
+                null
+            }
+        if (file == null || mapped != null) {
+            mappedTiles[id] = mapped
+        } else if (fallbackTiles.add(id)) {
+            fallbackTileCount.incrementAndGet()
+        }
+        return mapped ?: file?.let { decodedTile(latitude, longitude) }
+    }
+
+    private fun decodedTile(
+        latitude: Double,
+        longitude: Double,
+    ): WorldWindDemTile? = repository.loadDemTileFor(latitude, longitude)?.let(::DecodedWorldWindDemTile)
+
+    private fun elevationAtUsingTileOrNaN(
+        tile: WorldWindDemTile,
+        tileLat: Int,
+        tileLon: Int,
+        latitude: Double,
+        longitude: Double,
+    ): Double {
+        val pointLat = floor(latitude).toInt()
+        val pointLon = floor(longitude).toInt()
+        val owner = if (pointLat == tileLat && pointLon == tileLon) tile else loadTileFor(latitude, longitude)
+        return owner?.elevationOrNaN(pointLat, pointLon, latitude, longitude) ?: Double.NaN
+    }
+
+    private fun clearTiles(diskCopies: Boolean) {
+        mappedTiles.clear()
+        fallbackTiles.clear()
+        repository.clear()
+        if (diskCopies) diskCache.clear()
+    }
 
     override fun close() {
         synchronized(lock) {
@@ -216,7 +313,7 @@ internal class WorldWindElevation(
             closed = true
             coverage.clear()
             gridCache.clear()
-            repository.clear()
+            clearTiles(diskCopies = false)
         }
     }
 }

@@ -134,18 +134,7 @@ internal class ReliefDemRepository(
     private fun tileId(
         latTile: Int,
         lonTile: Int,
-    ): String {
-        val latPrefix = if (latTile >= 0) "N" else "S"
-        val lonPrefix = if (lonTile >= 0) "E" else "W"
-        return String.format(
-            Locale.US,
-            "%s%02d%s%03d",
-            latPrefix,
-            abs(latTile),
-            lonPrefix,
-            abs(lonTile),
-        )
-    }
+    ): String = demTileId(latTile, lonTile)
 
     private fun computeMaxDemTileCacheEntries(): Int {
         val maxHeapMb = Runtime.getRuntime().maxMemory() / (1024L * 1024L)
@@ -159,6 +148,22 @@ internal class ReliefDemRepository(
             }
         return adaptive.coerceIn(MIN_DEM_TILE_CACHE_ENTRIES, MAX_DEM_TILE_CACHE_ENTRIES)
     }
+}
+
+internal fun demTileId(
+    latTile: Int,
+    lonTile: Int,
+): String {
+    val latPrefix = if (latTile >= 0) "N" else "S"
+    val lonPrefix = if (lonTile >= 0) "E" else "W"
+    return String.format(
+        Locale.US,
+        "%s%02d%s%03d",
+        latPrefix,
+        abs(latTile),
+        lonPrefix,
+        abs(lonTile),
+    )
 }
 
 internal fun resolveDemFile(
@@ -208,10 +213,25 @@ internal fun interpolateDemElevationOrNaN(
     lonTile: Int,
     lat: Double,
     lon: Double,
+): Double =
+    interpolateDemSamplesOrNaN(tile.axisLen, tile.rowLen, tile.samples.size, latTile, lonTile, lat, lon) {
+        tile.samples[it]
+    }
+
+/** Shared bilinear HGT interpolation, so in-memory and file-backed samples produce identical heights. */
+@Suppress("LongParameterList")
+internal inline fun interpolateDemSamplesOrNaN(
+    tileAxisLen: Int,
+    rowLen: Int,
+    sampleCount: Int,
+    latTile: Int,
+    lonTile: Int,
+    lat: Double,
+    lon: Double,
+    sampleAt: (Int) -> Short,
 ): Double {
-    val axisLen = tile.axisLen.coerceAtLeast(1)
-    val rowLen = tile.rowLen
-    if (rowLen <= axisLen || tile.samples.size < rowLen * rowLen) return Double.NaN
+    val axisLen = tileAxisLen.coerceAtLeast(1)
+    if (rowLen <= axisLen || sampleCount < rowLen * rowLen) return Double.NaN
 
     val fracLat = (lat - latTile.toDouble()).coerceIn(0.0, 1.0)
     val fracLon = (lon - lonTile.toDouble()).coerceIn(0.0, 1.0)
@@ -227,25 +247,25 @@ internal fun interpolateDemElevationOrNaN(
     var weightedElevation = 0.0
     var validWeight = 0.0
 
-    val z00 = tile.samples[r0 * rowLen + c0]
+    val z00 = sampleAt(r0 * rowLen + c0)
     val w00 = (1.0 - t) * (1.0 - u)
     if (z00 != DEM_VOID_SAMPLE && w00 > 0.0) {
         weightedElevation += z00.toDouble() * w00
         validWeight += w00
     }
-    val z01 = tile.samples[r0 * rowLen + c1]
+    val z01 = sampleAt(r0 * rowLen + c1)
     val w01 = (1.0 - t) * u
     if (z01 != DEM_VOID_SAMPLE && w01 > 0.0) {
         weightedElevation += z01.toDouble() * w01
         validWeight += w01
     }
-    val z10 = tile.samples[r1 * rowLen + c0]
+    val z10 = sampleAt(r1 * rowLen + c0)
     val w10 = t * (1.0 - u)
     if (z10 != DEM_VOID_SAMPLE && w10 > 0.0) {
         weightedElevation += z10.toDouble() * w10
         validWeight += w10
     }
-    val z11 = tile.samples[r1 * rowLen + c1]
+    val z11 = sampleAt(r1 * rowLen + c1)
     val w11 = t * u
     if (z11 != DEM_VOID_SAMPLE && w11 > 0.0) {
         weightedElevation += z11.toDouble() * w11

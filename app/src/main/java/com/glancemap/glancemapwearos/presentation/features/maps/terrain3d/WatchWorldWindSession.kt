@@ -274,6 +274,7 @@ private suspend fun runWatchWorldWindSession(
                     "dem_hgt_loads=${elevationProvider.cacheStats.loads.get()} " +
                     "dem_hgt_decoded_bytes=${elevationProvider.cacheStats.decodedBytes.get()} " +
                     "dem_hgt_load_ms=${elevationProvider.cacheStats.loadNanos.get() / 1_000_000} " +
+                    "${elevationProvider.diskLogFields()} " +
                     "pan=${currentWindow.panCount.get()} zoom=${currentWindow.zoomCount.get()} " +
                     "orbit=${currentWindow.orbitCount.get()} recenter=${currentWindow.recenterCount.get()} " +
                     "${currentWindow.holdMetrics.logFields()} " +
@@ -408,6 +409,7 @@ private fun worldWindEndMessage(
         "dem_hgt_loads=${elevation?.cacheStats?.loads?.get() ?: 0} " +
         "dem_hgt_decoded_bytes=${elevation?.cacheStats?.decodedBytes?.get() ?: 0} " +
         "dem_hgt_load_ms=${(elevation?.cacheStats?.loadNanos?.get() ?: 0) / 1_000_000} " +
+        "${elevation?.diskLogFields() ?: "dem_disk=unavailable"} " +
         "heap_used=${runtime.totalMemory() - runtime.freeMemory()} heap_max=${runtime.maxMemory()} " +
         "internal_gpu_bytes=unavailable first_useful_frame=unavailable"
 }

@@ -27,8 +27,7 @@ context during a short pause, but it can discard graphics resources, in which
 case tiles must still be rendered again. When a longer sleep expires during deep
 sleep, the old view is closed before a new session starts; it is not resumed
 first. During standby the existing bounded
-imagery and DEM caches remain allocated, including the single oversized DEM
-tile exception described below. Progress polling is suspended and in-flight
+imagery and DEM caches remain allocated, and uncompressed DEM copies stay mapped. Progress polling is suspended and in-flight
 imagery requests are cancelled while the screen is off. A synchronous tile
 render already executing may finish before cancellation takes effect.
 
@@ -48,11 +47,20 @@ including where Detailed terrain is present, to avoid claiming uniform 1-second
 resolution across fallback boundaries. Coarse elevation grids spanning more than
 four HGT files are omitted. The WorldWind resource-cache capacity is one eighth
 of maximum heap, capped at 16 MiB and floored at 1 MiB; it is a cache capacity,
-not a measured GPU allocation. The decoded HGT cache remains separate and is
-capped at the lower of four tiles or the existing adaptive limit, and 16 MiB of
-decoded samples. One oversized tile can remain cached even if it exceeds that
-budget. A grid processes one source tile at a time; decoding another tile can
-temporarily overlap the cached tile. These limits do not cap total heap use;
+not a measured GPU allocation. The 3D view reads DEM heights from uncompressed
+copies of the selected-first tiles in the app cache folder (`worldwind-dem`),
+memory-mapped rather than decoded onto the heap, so a view spanning two
+1-arc-second tiles no longer reloads them in turn. Each `.hgt.gz`, `.hgt.zip` or
+`.hgt` source is copied once, keyed by source path, size and modification time,
+and written through a temporary file and rename; raw sources are copied too so a
+mapped file is never rewritten in place. Least recently used copies are removed
+above 160 MiB (about six 1-arc-second tiles), always keeping the newest, and a
+DEM signature change deletes them all. At most eight tiles stay mapped per
+session. Heights use the same bilinear interpolation as the in-memory decoder.
+If a copy cannot be written or mapped, that tile falls back to the previous
+decoded HGT cache, capped at the lower of four tiles or the existing adaptive
+limit and 16 MiB of decoded samples, where one oversized tile can remain cached.
+These limits do not cap total heap use;
 other relief and recording consumers retain their existing cache policy. A grid
 intentionally omitted by the four-tile safeguard is counted as skipped rather
 than logged as a retrieval failure. Unexpected failures remain logged and counted.
@@ -119,8 +127,11 @@ Standby diagnostics record pause and resume within the same session.
 `dem_grid_cache_hits`, `dem_grid_cache_misses` and `dem_grid_cache_retained_bytes`
 report reuse and retained samples for the completed-grid cache; its retained size
 before close is logged at session end.
-The decoded DEM cache reports retained and peak retained sample bytes after
-eviction, and its retained size before session teardown; these do not measure
+`dem_cache_hits` and `dem_cache_misses` count mapped-tile reuse. `dem_disk_hits`,
+`dem_disk_copies`, `dem_disk_copy_bytes` and `dem_disk_copy_ms` report reuse and
+creation of uncompressed copies, and `dem_fallback_tiles` counts tiles that used
+the decoded fallback, whose `dem_hgt_*` load fields and retained and peak
+retained sample bytes after eviction and before session teardown are logged; these do not measure
 transient allocations or total process memory. Unavailable internal metrics are
 labelled as such. Each DEM grid reuses loaded
 tiles during sampling to reduce repeated per-sample lookup allocations. A GL callback is not proof of a fully rendered terrain frame.
