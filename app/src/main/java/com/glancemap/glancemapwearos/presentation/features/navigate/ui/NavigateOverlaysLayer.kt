@@ -313,7 +313,7 @@ internal fun BoxScope.NavigateOverlaysLayer(
         val controlRadius = terrainIndicatorControlRadius(maxWidth, maxHeight, sideButtonEdgePadding, sideButtonSize)
         SlopeOverlayStatusIndicator(
             visible = slopeOverlayToggleEnabled,
-            processing = slopeOverlayProcessing,
+            processing = rememberShownWhenSlow(slopeOverlayProcessing),
             progressPercent = slopeOverlayProgressPercent,
             enabled = slopeOverlayEnabled,
             screenSize = screenSize,

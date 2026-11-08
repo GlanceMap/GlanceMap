@@ -17,6 +17,8 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
+import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.presentation.ui.WearScreenSize
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -130,6 +132,38 @@ class TerrainIndicatorUiTest {
         }
         val yellowRingPixels = yellowRingPixels()
         assertTrue("Expected the slope ring at the 3D ring position, found $yellowRingPixels pixels", yellowRingPixels > 330)
+    }
+
+    @Test
+    fun slopeIndicatorAppearsOnlyWhenLoadingIsSlowAndHidesWhenDone() {
+        val loading = mutableStateOf(false)
+        val description =
+            InstrumentationRegistry
+                .getInstrumentation()
+                .targetContext
+                .getString(R.string.navigate_slope_rendering_in_progress)
+        composeRule.mainClock.autoAdvance = false
+        composeRule.setContent {
+            Box(Modifier.size(120.dp).background(Color.Black)) {
+                SlopeOverlayStatusIndicator(
+                    visible = true,
+                    processing = rememberShownWhenSlow(loading.value),
+                    progressPercent = 40,
+                    enabled = true,
+                    screenSize = WearScreenSize.SMALL,
+                )
+            }
+        }
+        composeRule.runOnIdle { loading.value = true }
+        composeRule.mainClock.advanceTimeBy(SLOPE_INDICATOR_DELAY_MS / 2)
+        composeRule.onNodeWithContentDescription(description, useUnmergedTree = true).assertDoesNotExist()
+
+        composeRule.mainClock.advanceTimeBy(SLOPE_INDICATOR_DELAY_MS)
+        composeRule.onNodeWithContentDescription(description, useUnmergedTree = true).assertIsDisplayed()
+
+        composeRule.runOnIdle { loading.value = false }
+        composeRule.mainClock.advanceTimeBy(1_000)
+        composeRule.onNodeWithContentDescription(description, useUnmergedTree = true).assertDoesNotExist()
     }
 
     private fun yellowRingPixels(): Int {

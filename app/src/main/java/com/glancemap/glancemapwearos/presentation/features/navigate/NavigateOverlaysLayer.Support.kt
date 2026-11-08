@@ -118,6 +118,29 @@ internal fun BoxScope.PanningDistanceGuide(
 
 // Reuse the slope indicator layout and preserve its existing rendering behavior.
 
+/** Slope loading shorter than this shows no indicator, so quick loads do not flash it. */
+internal const val SLOPE_INDICATOR_DELAY_MS = 1_000L
+
+/**
+ * True once [active] has stayed true for [delayMillis], and false as soon as it turns false, so
+ * brief work shows nothing while slower work still shows its progress.
+ */
+@Composable
+internal fun rememberShownWhenSlow(
+    active: Boolean,
+    delayMillis: Long = SLOPE_INDICATOR_DELAY_MS,
+): Boolean {
+    var slow by remember { mutableStateOf(false) }
+    LaunchedEffect(active) {
+        slow = false
+        if (active) {
+            delay(delayMillis)
+            slow = true
+        }
+    }
+    return active && slow
+}
+
 /** Radius of the ring through the side control buttons, used to place the terrain indicator. */
 internal fun terrainIndicatorControlRadius(
     maxWidth: Dp,
