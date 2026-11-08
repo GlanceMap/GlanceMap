@@ -43,6 +43,12 @@ render already executing may finish before cancellation takes effect.
 
 WorldWind 2.1.1 uses offline 256-pixel Mapsforge tiles from the selected map and
 the chosen 3D theme on a single worker, with duplicate in-flight requests coalesced.
+Requests made for a newer view are drawn first; within one view WorldWind's
+request order is kept, so coarse fallback tiles still fill the screen before
+their detailed descendants. Before drawing, a tile that WorldWind did not
+request in its latest frame is skipped by cancellation rather than reported as
+missing, so it is drawn normally if it returns to view; diagnostics count these
+as `skipped`.
 The hiking theme emphasizes paths, peaks, contours and water with restrained land colours;
 features depend on the map data and labels are draped onto terrain. The selected
 2D theme remains unchanged. Rendered

@@ -7,6 +7,7 @@ import earth.worldwind.layer.mercator.MercatorTileFactory
 import earth.worldwind.layer.mercator.MercatorTiledImageLayer
 import earth.worldwind.layer.mercator.MercatorTiledSurfaceImage
 import earth.worldwind.render.RenderContext
+import earth.worldwind.render.Texture
 import earth.worldwind.render.image.ImageSource
 import earth.worldwind.render.image.ImageTile
 import kotlinx.coroutines.CancellationException
@@ -47,7 +48,15 @@ internal class WorldWindMapsforge(
     val tileFailures = AtomicLong()
     val tileCoalesced = AtomicLong()
     val tileCancelled = AtomicLong()
+    val tileSkipped = AtomicLong()
     val visibleTiles = AtomicReference<WorldWindVisibleTiles?>(null)
+
+    /** Tiles WorldWind asked for in its latest frame; null until the first frame. */
+    private val wantedTiles = AtomicReference<Set<WorldWindTileKey>?>(null)
+
+    /** Increments whenever the set of wanted tiles changes, i.e. the view moved. */
+    private val viewGeneration = AtomicLong()
+    private val renderGate = WorldWindViewPriorityGate()
     private val coalescer =
         WorldWindCoalescer<WorldWindTileKey, IntArray>(
             scope,
@@ -113,6 +122,8 @@ internal class WorldWindMapsforge(
                     minZoom = 0,
                 ),
                 visibleTiles,
+                wantedTiles,
+                viewGeneration,
             ),
         )
 
@@ -128,9 +139,13 @@ internal class WorldWindMapsforge(
 
     private fun imageFor(key: WorldWindTileKey): ImageSource =
         ImageSource.fromImageFactory(
-            object : ImageSource.ImageFactory {
+            object : WorldWindTileImageFactory {
+                override val key = key
+
                 override suspend fun createBitmap(): Bitmap? {
-                    val pixels = coalescer.get(key) { render(key) } ?: return null
+                    val view = viewGeneration.get()
+                    val pixels =
+                        coalescer.get(key) { renderGate.withPermit(view) { renderIfWanted(key) } } ?: return null
                     currentCoroutineContext().ensureActive()
                     val decoded = worldWindBitmap(pixels)
                     return if (closed) {
@@ -143,6 +158,18 @@ internal class WorldWindMapsforge(
                 }
             },
         )
+
+    /**
+     * Skips a tile that WorldWind no longer requests. Cancellation, unlike a null image, does not
+     * mark the tile absent, so it is drawn normally if it comes back into view.
+     */
+    private fun renderIfWanted(key: WorldWindTileKey): IntArray? {
+        if (!worldWindTileWanted(wantedTiles.get(), key)) {
+            tileSkipped.incrementAndGet()
+            throw CancellationException("Tile left the view")
+        }
+        return render(key)
+    }
 
     @Suppress("TooGenericExceptionCaught")
     private fun render(key: WorldWindTileKey): IntArray? =
@@ -194,13 +221,26 @@ internal class WorldWindMapsforge(
     }
 }
 
+/** Image factory that exposes its tile key, so a frame can report which tiles it still wants. */
+internal interface WorldWindTileImageFactory : ImageSource.ImageFactory {
+    val key: WorldWindTileKey
+}
+
+internal fun worldWindTileWanted(
+    wanted: Set<WorldWindTileKey>?,
+    key: WorldWindTileKey,
+): Boolean = wanted == null || key in wanted
+
 internal class WorldWindVisibleTileImage(
     image: MercatorTiledSurfaceImage,
     private val visibleTiles: AtomicReference<WorldWindVisibleTiles?>,
+    private val wantedTiles: AtomicReference<Set<WorldWindTileKey>?>? = null,
+    private val viewGeneration: AtomicLong? = null,
 ) : MercatorTiledSurfaceImage(image.tileFactory, image.levelSet) {
     private var total = 0
     private var ready = 0
     private var failed = 0
+    private val frameWanted = HashSet<WorldWindTileKey>()
 
     init {
         imageOptions = image.imageOptions
@@ -210,13 +250,30 @@ internal class WorldWindVisibleTileImage(
         total = 0
         ready = 0
         failed = 0
+        frameWanted.clear()
         super.assembleTiles(rc)
         if (!rc.isPickMode) {
+            if (wantedTiles?.get() != frameWanted) {
+                wantedTiles?.set(frameWanted.toSet())
+                viewGeneration?.incrementAndGet()
+            }
             val previous = visibleTiles.get()
             if (previous?.ready != ready || previous.total != total || previous.failed != failed) {
                 visibleTiles.set(WorldWindVisibleTiles(ready, total, failed))
             }
         }
+    }
+
+    override fun getTexture(
+        rc: RenderContext,
+        tile: ImageTile,
+        retrieve: Boolean,
+    ): Texture? {
+        if (retrieve && !rc.isPickMode) {
+            val source = tile.imageSource?.takeIf { it.isImageFactory }
+            (source?.asImageFactory() as? WorldWindTileImageFactory)?.let { frameWanted += it.key }
+        }
+        return super.getTexture(rc, tile, retrieve)
     }
 
     override fun addTile(

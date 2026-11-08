@@ -273,7 +273,7 @@ private suspend fun runWatchWorldWindSession(
                     "heap_max=${runtime.maxMemory()} " +
                     "resource_cache_capacity=${worldWindCacheBudget(runtime.maxMemory())} " +
                     "resolution=256 coalesced=${imageryProvider.tileCoalesced.get()} " +
-                    "cancelled=${imageryProvider.tileCancelled.get()} " +
+                    "cancelled=${imageryProvider.tileCancelled.get()} skipped=${imageryProvider.tileSkipped.get()} " +
                     "failed=${imageryProvider.tileFailures.get()} " +
                     "outstanding=${imageryProvider.outstandingRequests()} " +
                     "dem_grids=${elevationProvider.gridCount.get()} " +
@@ -430,6 +430,7 @@ private fun worldWindEndMessage(
         "requests=${imagery?.tileRequests?.get() ?: 0} renders=${imagery?.tileRenders?.get() ?: 0} " +
         "images=${imagery?.tileImagesAvailable?.get() ?: 0} failed=${imagery?.tileFailures?.get() ?: 0} " +
         "coalesced=${imagery?.tileCoalesced?.get() ?: 0} cancelled=${imagery?.tileCancelled?.get() ?: 0} " +
+        "skipped=${imagery?.tileSkipped?.get() ?: 0} " +
         "render_ms=${imagery?.tileRenderMs?.get() ?: 0} dem_grids=${elevation?.gridCount?.get() ?: 0} " +
         "dem_samples=${elevation?.sampleCount?.get() ?: 0} dem_voids=${elevation?.voidCount?.get() ?: 0} " +
         "dem_ms=${elevation?.sampleMs?.get() ?: 0} " +
