@@ -111,6 +111,27 @@ class WorldWindHoldInteractionTest {
     }
 
     @Test
+    fun startCameraRestsOnTheDemSampleAndPanningKeepsThatHeight() {
+        launchWindow()
+        composeRule.waitUntil(15_000) { window.engine.viewport.width > 0 && window.engine.viewport.height > 0 }
+        composeRule.runOnIdle {
+            window.initialize(LatLong(45.0, 6.0), 45, 0f, groundElevation = 1_480.0)
+            assertEquals(AltitudeMode.ABSOLUTE, window.lookAt.altitudeMode)
+            assertEquals(1_480.0, window.lookAt.position.altitude, 0.01)
+            assertTrue(window.engine.camera.position.altitude > 1_480.0)
+        }
+        val downTime = SystemClock.uptimeMillis()
+        val distance = ViewConfiguration.get(window.context).scaledTouchSlop * 2f + 5f
+        send(downTime, MotionEvent.ACTION_DOWN, 40f, 80f)
+        send(downTime, MotionEvent.ACTION_MOVE, 40f + distance, 80f)
+        composeRule.runOnIdle {
+            assertEquals(AltitudeMode.ABSOLUTE, window.lookAt.altitudeMode)
+            assertEquals(1_480.0, window.lookAt.position.altitude, 1.0)
+        }
+        send(downTime, MotionEvent.ACTION_CANCEL, 40f + distance, 80f)
+    }
+
+    @Test
     fun draggingBeyondToleranceDoesNotStartOrbit() {
         launchWindow()
         val downTime = SystemClock.uptimeMillis()

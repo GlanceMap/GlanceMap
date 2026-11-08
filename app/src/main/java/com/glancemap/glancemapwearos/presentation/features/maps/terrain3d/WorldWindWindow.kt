@@ -63,6 +63,14 @@ internal fun worldWindKeepGestureHeight(
     }
 }
 
+/** Loaded terrain within this distance of the start DEM sample hands the camera back to ground clamping. */
+private const val START_GROUND_TOLERANCE_METERS = 25.0
+
+internal fun worldWindTerrainReachedStartGround(
+    startGround: Double,
+    terrainElevation: Double,
+): Boolean = abs(terrainElevation - startGround) <= START_GROUND_TOLERANCE_METERS
+
 internal fun worldWindShouldApplyBearing(
     degrees: Float,
     previous: Float?,
@@ -152,6 +160,9 @@ internal class WatchWorldWindWindow(
     private var lastX = 0f
     private var lastY = 0f
     private var anchoredElevation = 0.0
+
+    /** True while the start camera rests on the session's DEM sample until WorldWind terrain arrives. */
+    @Volatile private var provisionalGround = false
     private var screenPaused = false
 
     init {
@@ -166,6 +177,7 @@ internal class WatchWorldWindWindow(
                 override fun gestureDidBegin() {
                     super.gestureDidBegin()
                     if (activeGestures == 1) {
+                        provisionalGround = false
                         beginLookAt.copy(this@WatchWorldWindWindow.lookAt)
                         if (beginLookAt.altitudeMode == AltitudeMode.CLAMP_TO_GROUND) {
                             worldWindKeepGestureHeight(
@@ -209,17 +221,25 @@ internal class WatchWorldWindWindow(
             }
     }
 
+    /**
+     * Places the start camera. With [groundElevation] from the local DEM, the look-at point starts
+     * at that height instead of on not-yet-loaded (flat) WorldWind terrain, so the view does not
+     * move closer and then jump when terrain arrives; it is ground-clamped again once terrain loads.
+     */
     fun initialize(
         center: LatLong,
         angle: Int,
         bearing: Float,
+        groundElevation: Double? = null,
     ) {
         preferredTilt = worldWindViewingAngle(angle)
+        val startGround = groundElevation?.takeIf { it.isFinite() }
+        provisionalGround = startGround != null
         lookAt.set(
             center.latitude.degrees,
             center.longitude.degrees,
-            0.0,
-            AltitudeMode.CLAMP_TO_GROUND,
+            startGround ?: 0.0,
+            if (startGround != null) AltitudeMode.ABSOLUTE else AltitudeMode.CLAMP_TO_GROUND,
             worldWindInitialRange(),
             bearing.toDouble().degrees,
             worldWindViewingAngle(angle).degrees,
@@ -309,6 +329,10 @@ internal class WatchWorldWindWindow(
     override fun renderFrame(frame: Frame) {
         super.renderFrame(frame)
         val elevation = engine.globe.getElevation(lookAt.position.latitude, lookAt.position.longitude)
+        if (provisionalGround && worldWindTerrainReachedStartGround(lookAt.position.altitude, elevation)) {
+            provisionalGround = false
+            lookAt.altitudeMode = AltitudeMode.CLAMP_TO_GROUND
+        }
         val idle = SystemClock.elapsedRealtime() - lastInteractionMs.get() > 2_000
         if (idle && abs(elevation - anchoredElevation) >= 5.0) applyLookAt()
     }

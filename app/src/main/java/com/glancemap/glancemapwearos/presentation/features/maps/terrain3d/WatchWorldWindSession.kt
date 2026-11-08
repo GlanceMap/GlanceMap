@@ -113,6 +113,8 @@ private suspend fun runWatchWorldWindSession(
     var window: WatchWorldWindWindow? = null
     var progressJob: Job? = null
     var demContext = "dem_actual=unavailable axis=unavailable"
+    var startGround: Double? = null
+    var prewarmContext = "dem_prewarm_tiles=0 dem_prewarm_ms=0"
     session.failed = false
     session.initializing = true
     session.rendering = true
@@ -166,6 +168,11 @@ private suspend fun runWatchWorldWindSession(
                     resolveDemFile(listOf(Dem3CoverageUtils.demRootDir(context, dem)), sample.tileId) != null
                 }
             demContext = "dem_actual=${actual?.id ?: "unavailable"} axis=${sample.axisLen}"
+            startGround = sample.elevationMeters
+            val prewarmStarted = SystemClock.elapsedRealtime()
+            val prewarmed = elevation.prewarm(center.latitude, center.longitude)
+            prewarmContext =
+                "dem_prewarm_tiles=$prewarmed dem_prewarm_ms=${SystemClock.elapsedRealtime() - prewarmStarted}"
         }
         snapshotFlow { interactive.value }.first { it }
         val currentWindow = WatchWorldWindWindow(context, { session.center = it }, { session.onUserPanStarted() })
@@ -192,7 +199,7 @@ private suspend fun runWatchWorldWindSession(
         )
         currentWindow.engine.globe.elevationModel
             .addCoverage(checkNotNull(elevation).coverage)
-        currentWindow.initialize(center, angle, bearing)
+        currentWindow.initialize(center, angle, bearing, startGround)
         session.center = center
         val imageryProvider = checkNotNull(imagery)
         val elevationProvider = checkNotNull(elevation)
@@ -205,7 +212,8 @@ private suspend fun runWatchWorldWindSession(
         }
         session.view = currentWindow
         val elapsed = SystemClock.elapsedRealtime() - started
-        val viewMessage = "event=view_created renderer=worldwind session_id=$sessionId elapsed_ms=$elapsed"
+        val viewMessage =
+            "event=view_created renderer=worldwind session_id=$sessionId elapsed_ms=$elapsed $prewarmContext"
         Log.i(TERRAIN_LOG_TAG, viewMessage)
         DebugTelemetry.log(TERRAIN_LOG_TAG, viewMessage)
         progressJob =

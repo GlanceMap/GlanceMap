@@ -26,12 +26,37 @@ import java.nio.ShortBuffer
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
+import kotlin.math.cos
 import kotlin.math.floor
 import kotlin.math.roundToInt
 
 private const val WORLDWIND_DEM_CACHE_ENTRIES = 4
 private const val WORLDWIND_DEM_CACHE_BYTES = 16L * 1024 * 1024
 private const val WORLDWIND_GRID_CACHE_BYTES = 1024L * 1024
+
+/** Ground distance around the start that is covered by the DEM prewarm, about 11 km. */
+private const val WORLDWIND_PREWARM_DEGREES = 0.1
+
+/**
+ * HGT tiles (south-west corner degrees) within [WORLDWIND_PREWARM_DEGREES] of the start, clipped to
+ * the map; at most four, which also fits the 3D repository's tile limit.
+ */
+internal fun worldWindPrewarmTiles(
+    latitude: Double,
+    longitude: Double,
+    bounds: BoundingBox,
+): List<Pair<Int, Int>> {
+    val lonSpan = WORLDWIND_PREWARM_DEGREES / cos(Math.toRadians(latitude)).coerceAtLeast(0.1)
+    val minLat = floor(maxOf(latitude - WORLDWIND_PREWARM_DEGREES, bounds.minLatitude)).toInt()
+    val maxLat = floor(minOf(latitude + WORLDWIND_PREWARM_DEGREES, bounds.maxLatitude)).toInt()
+    val minLon = floor(maxOf(longitude - lonSpan, bounds.minLongitude)).toInt()
+    val maxLon = floor(minOf(longitude + lonSpan, bounds.maxLongitude)).toInt()
+    val centerTile = floor(latitude).toInt() to floor(longitude).toInt()
+    return (minLat..maxLat)
+        .flatMap { lat -> (minLon..maxLon).map { lon -> lat to lon } }
+        .sortedByDescending { it == centerTile }
+        .take(WORLDWIND_DEM_CACHE_ENTRIES)
+}
 
 private interface WorldWindGridFactory : ElevationSource.ElevationDataFactory {
     val skipped: AtomicBoolean
@@ -79,7 +104,7 @@ internal fun <T> worldWindElevationGrid(
 internal class WorldWindElevation(
     context: Context,
     source: TerrainSource,
-    bounds: BoundingBox,
+    private val bounds: BoundingBox,
 ) : AutoCloseable {
     val cacheStats = ReliefDemCacheStats()
     val cacheRetainedBeforeClose = AtomicLong()
@@ -218,6 +243,24 @@ internal class WorldWindElevation(
     ): DemElevationSample? =
         synchronized(lock) {
             if (closed) null else repository.elevationSampleAt(latitude, longitude)
+        }
+
+    /**
+     * Copies and maps the DEM tiles around the start before the view appears, so terrain does not
+     * arrive in stages while the first imagery loads. Returns the number of tiles with DEM data.
+     */
+    fun prewarm(
+        latitude: Double,
+        longitude: Double,
+    ): Int =
+        synchronized(lock) {
+            if (closed) {
+                0
+            } else {
+                worldWindPrewarmTiles(latitude, longitude, bounds).count { (tileLat, tileLon) ->
+                    repository.loadDemTileFor(tileLat + 0.5, tileLon + 0.5) != null
+                }
+            }
         }
 
     private fun clearTiles(diskCopies: Boolean) {

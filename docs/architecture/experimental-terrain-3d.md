@@ -8,6 +8,16 @@ Previous renderer and viewing-angle
 preferences are ignored; enabling 3D starts WorldWind at 45° and a 4,000 m range
 to provide a wider, more overhead initial view in mountainous areas. This does
 not guarantee that every nearby ridge is visible.
+Before the view appears, the session copies and maps the DEM tiles within about
+0.1° (about 11 km) of the start, at most four with the start tile first, so a
+cold start does not receive terrain in stages while the first imagery loads;
+`view_created` reports `dem_prewarm_tiles` and `dem_prewarm_ms`. The start
+look-at point is placed at the local DEM height of the map center instead of on
+WorldWind terrain that has not loaded yet, which would otherwise rise toward the
+camera, request finer imagery and then shift the camera when terrain arrives.
+Once loaded terrain under the look-at point is within 25 m of that height, the
+look-at point is ground-clamped again; a gesture before then keeps the start
+height, as gestures already do for a ground-clamped anchor.
 
 Enabling 3D requires complete DEM coverage for the selected map, including the
 existing source fallback, and otherwise shows the DEM setup guidance. A confirmed

@@ -4,7 +4,10 @@ import com.glancemap.glancemapwearos.presentation.features.maps.DemTileData
 import com.glancemap.glancemapwearos.presentation.features.maps.interpolateDemElevationOrNaN
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.mapsforge.core.model.BoundingBox
 
 class WorldWindElevationTest {
     @Test
@@ -64,5 +67,27 @@ class WorldWindElevationTest {
                 checkCancelled = {},
             )
         assertArrayEquals(shortArrayOf(Short.MIN_VALUE), missing)
+    }
+
+    @Test
+    fun `prewarm covers nearby tiles with the start tile first and stays inside the map`() {
+        val bayern = BoundingBox(47.0, 10.0, 49.0, 13.0)
+        assertEquals(listOf(47 to 11, 47 to 10), worldWindPrewarmTiles(47.3466, 11.0718, bayern))
+        assertEquals(listOf(47 to 11), worldWindPrewarmTiles(47.5, 11.5, bayern))
+
+        val corner = worldWindPrewarmTiles(47.98, 11.02, BoundingBox(46.0, 10.0, 49.0, 13.0))
+        assertEquals(47 to 11, corner.first())
+        assertEquals(setOf(47 to 11, 47 to 10, 48 to 11, 48 to 10), corner.toSet())
+
+        val clipped = worldWindPrewarmTiles(47.02, 11.02, BoundingBox(47.0, 11.0, 48.0, 12.0))
+        assertEquals(listOf(47 to 11), clipped)
+    }
+
+    @Test
+    fun `start camera returns to ground clamping once terrain reaches the DEM sample`() {
+        assertFalse(worldWindTerrainReachedStartGround(startGround = 1_480.0, terrainElevation = 0.0))
+        assertFalse(worldWindTerrainReachedStartGround(startGround = 1_480.0, terrainElevation = 1_420.0))
+        assertTrue(worldWindTerrainReachedStartGround(startGround = 1_480.0, terrainElevation = 1_462.0))
+        assertTrue(worldWindTerrainReachedStartGround(startGround = 1_480.0, terrainElevation = 1_505.0))
     }
 }
