@@ -93,4 +93,26 @@ class MapSettingsLiveElevationDiagnosticsTest {
             ),
         )
     }
+
+    @Test
+    fun fallbackNoticeIsShownOnlyWhenLiveElevationUsesCoarserTerrain() {
+        val standardSelectedDetailedUsed =
+            DemMapReadiness(
+                isReady = true,
+                hasAnyTerrain = true,
+                selectedSource = DemSource.MAPSFORGE_DEM3,
+                usesFallbackTerrain = true,
+                requiredTiles = 28,
+                availableTiles = 28,
+                isCoverageKnown = true,
+                selectedAvailableTiles = 0,
+                selectedCoverageKnown = true,
+                fallbackAvailableTiles = 28,
+            )
+        assertFalse(shouldShowFallbackTerrainNotice(standardSelectedDetailedUsed))
+
+        val detailedSelectedStandardUsed = standardSelectedDetailedUsed.copy(selectedSource = DemSource.MAPZEN_SKADI_1S)
+        assertTrue(shouldShowFallbackTerrainNotice(detailedSelectedStandardUsed))
+        assertFalse(shouldShowFallbackTerrainNotice(detailedSelectedStandardUsed.copy(usesFallbackTerrain = false)))
+    }
 }

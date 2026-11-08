@@ -16,6 +16,7 @@ import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.Slider
 import androidx.wear.compose.material3.Text
 import com.glancemap.glancemapwearos.R
+import com.glancemap.glancemapwearos.core.maps.DemSource
 import com.glancemap.glancemapwearos.core.service.diagnostics.TerrainDiagnostics
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import com.glancemap.glancemapwearos.domain.model.maps.theme.ThemeListItem
@@ -205,7 +206,8 @@ fun MapSettingsScreen(
                             if (canEnableLiveElevation(readiness)) {
                                 viewModel.setLiveElevation(true)
                                 val noticeKey = "${selectedMapPath.orEmpty()}:${readiness.selectedSource.id}"
-                                if (readiness.usesFallbackTerrain && fallbackTerrainNoticeKey != noticeKey) {
+                                val showNotice = shouldShowFallbackTerrainNotice(readiness)
+                                if (showNotice && fallbackTerrainNoticeKey != noticeKey) {
                                     fallbackTerrainNoticeKey = noticeKey
                                     fallbackTerrainNotice = readiness
                                 }
@@ -338,6 +340,22 @@ internal fun buildLiveElevationGateDiagnosticsDetail(
     }
 
 internal fun canEnableLiveElevation(readiness: DemMapReadiness): Boolean = readiness.hasAnyTerrain
+
+/**
+ * The fallback notice is shown only when live elevation reads coarser terrain than the selected
+ * source; a same or finer fallback works as well or better and needs no interruption.
+ */
+internal fun shouldShowFallbackTerrainNotice(readiness: DemMapReadiness): Boolean {
+    val selected = readiness.selectedSource
+    val fallback = selected.readFallbackOrder().firstOrNull { it != selected }
+    return readiness.usesFallbackTerrain && fallback != null && fallback.arcSeconds() > selected.arcSeconds()
+}
+
+private fun DemSource.arcSeconds(): Int =
+    when (this) {
+        DemSource.MAPSFORGE_DEM3 -> 3
+        DemSource.MAPZEN_SKADI_1S -> 1
+    }
 
 internal fun canEnableTerrain3d(readiness: DemMapReadiness): Boolean = readiness.isReady && readiness.hasAnyTerrain
 
