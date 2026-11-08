@@ -617,6 +617,10 @@ interface SettingsRepository {
 
     suspend fun setNavigationMarkerAnchorMode(mode: String)
 
+    val terrain3dEnabled: Flow<Boolean>
+
+    suspend fun setTerrain3dEnabled(enabled: Boolean)
+
     val liveElevation: Flow<Boolean>
 
     suspend fun setLiveElevation(enabled: Boolean)

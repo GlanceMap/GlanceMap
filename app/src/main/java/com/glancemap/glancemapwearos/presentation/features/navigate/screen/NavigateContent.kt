@@ -1,6 +1,8 @@
 package com.glancemap.glancemapwearos.presentation.features.navigate
 
 import android.graphics.Rect
+import android.os.SystemClock
+import android.util.Log
 import android.view.GestureDetector
 import android.view.MotionEvent
 import android.view.ScaleGestureDetector
@@ -8,11 +10,14 @@ import android.view.View
 import android.view.ViewConfiguration
 import android.view.ViewGroup
 import android.widget.FrameLayout
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
@@ -21,12 +26,16 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -45,17 +54,23 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.view.ViewCompat
+import androidx.wear.compose.material3.Icon
+import androidx.wear.compose.material3.IconButton
+import androidx.wear.compose.material3.IconButtonDefaults
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.Text
 import com.glancemap.glancemapwearos.R
+import com.glancemap.glancemapwearos.core.maps.DEFAULT_TERRAIN_3D_VIEWING_ANGLE
 import com.glancemap.glancemapwearos.core.maps.MAP_ZOOM_MAX_LEVEL
 import com.glancemap.glancemapwearos.core.maps.MAP_ZOOM_MIN_LEVEL
 import com.glancemap.glancemapwearos.core.service.diagnostics.BenchmarkTrace
+import com.glancemap.glancemapwearos.core.service.diagnostics.CompassHeadingReferenceDiagnostics
 import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
 import com.glancemap.glancemapwearos.core.service.diagnostics.ScreenOffActivityDiagnostics
 import com.glancemap.glancemapwearos.core.service.location.model.GpsEnvironmentWarning
@@ -68,12 +83,21 @@ import com.glancemap.glancemapwearos.presentation.features.maps.MapHolder
 import com.glancemap.glancemapwearos.presentation.features.maps.MapLayerMutationCoordinator
 import com.glancemap.glancemapwearos.presentation.features.maps.MapZoomChangeAttribution
 import com.glancemap.glancemapwearos.presentation.features.maps.RotatableMarker
+import com.glancemap.glancemapwearos.presentation.features.maps.terrain3d.RunWatchWorldWind
+import com.glancemap.glancemapwearos.presentation.features.maps.terrain3d.TERRAIN_LOG_TAG
+import com.glancemap.glancemapwearos.presentation.features.maps.terrain3d.TerrainGpxOverlay
+import com.glancemap.glancemapwearos.presentation.features.maps.terrain3d.TerrainZoomControls
+import com.glancemap.glancemapwearos.presentation.features.maps.terrain3d.WatchWorldWindInputs
+import com.glancemap.glancemapwearos.presentation.features.maps.terrain3d.WatchWorldWindRuntime
+import com.glancemap.glancemapwearos.presentation.features.maps.terrain3d.nextTerrainAnglePreset
+import com.glancemap.glancemapwearos.presentation.features.maps.terrain3d.worldWindApproximateZoom
 import com.glancemap.glancemapwearos.presentation.features.navigate.guidance.TurnByTurnGuidanceState
 import com.glancemap.glancemapwearos.presentation.features.poi.PoiNavigateTarget
 import com.glancemap.glancemapwearos.presentation.features.poi.PoiOverlayMarker
 import com.glancemap.glancemapwearos.presentation.features.recording.TraceRecordingUiState
 import com.glancemap.glancemapwearos.presentation.features.recording.TraceRecordingViewModel
 import com.glancemap.glancemapwearos.presentation.features.recording.dashboard.LocalFullscreenPopupTimeFormat
+import com.glancemap.glancemapwearos.presentation.features.routetools.RouteShortcutTray
 import com.glancemap.glancemapwearos.presentation.features.routetools.RouteToolCreatePreview
 import com.glancemap.glancemapwearos.presentation.features.routetools.RouteToolSession
 import com.glancemap.glancemapwearos.presentation.ui.cappedFontScale
@@ -94,6 +118,7 @@ import kotlin.math.log2
 )
 @Composable
 internal fun NavigateContent(
+    hostedTerrainRuntime: WatchWorldWindRuntime?,
     mapFocusState: NavigateMapFocusState,
     mapFocusVisibleControls: Set<MapFocusControl>,
     onEnterMapFocus: () -> Unit,
@@ -101,6 +126,9 @@ internal fun NavigateContent(
     hasLocationPermission: Boolean,
     focusRequester: FocusRequester,
     mapHolder: MapHolder?,
+    terrain3dEnabled: Boolean,
+    terrainMapPath: String?,
+    terrainInteractive: Boolean,
     onMapViewReadyForRendering: () -> Unit,
     onNavigateTimeSuppressedChange: (Boolean) -> Unit,
     showNavigateTime: Boolean,
@@ -200,6 +228,9 @@ internal fun NavigateContent(
     onDismissStartDecisionPrompt: () -> Unit,
     activeGpxDetails: List<GpxTrackDetails>,
     gpxTrackColor: Int,
+    gpxTrackColorMode: String,
+    gpxTrackWidth: Float,
+    gpxTrackOpacityPercent: Int,
     routeToolSession: RouteToolSession?,
     crosshairSelectionActive: Boolean,
     crosshairSelectionTitle: String? = null,
@@ -593,6 +624,82 @@ internal fun NavigateContent(
             )
         }
     val routeToolModeActive = routeToolSession != null || crosshairSelectionActive || reshapePreviewInspectMode
+    val terrainEligible =
+        terrain3dEnabled &&
+            !routeToolModeActive &&
+            !turnByTurnGuidanceState.active &&
+            !turnByTurnGuidancePaused &&
+            !traceRecordingState.active &&
+            !traceRecordingState.saving
+    // The activity hosts the 3D runtime so leaving this screen pauses the session instead of closing it.
+    val terrainRuntime = hostedTerrainRuntime ?: remember { WatchWorldWindRuntime() }
+    if (hostedTerrainRuntime == null) RunWatchWorldWind(terrainRuntime)
+    SideEffect {
+        terrainRuntime.publish(
+            WatchWorldWindInputs(
+                enabled = terrainEligible,
+                holder = mapHolder,
+                mapPath = terrainMapPath,
+                appearanceInProgress = mapAppearanceApplyInProgress,
+            ),
+            screenInteractive = terrainInteractive,
+            bearing = -mapRotationDeg,
+        )
+    }
+    DisposableEffect(terrainRuntime) {
+        terrainRuntime.routeVisible = true
+        onDispose { terrainRuntime.routeVisible = false }
+    }
+    val worldWindSession = terrainRuntime.session
+    val worldWindLongPressOrbit = worldWindSession.view?.longPressOrbit == true
+    SideEffect {
+        worldWindSession.onUserPanStarted = onUserPanStarted
+        worldWindSession.view?.takeIf { terrainInteractive }?.let { view ->
+            view.pinchEnabled = mapPinchZoomEnabled
+            if (!worldWindLongPressOrbit) view.setBearing(-mapRotationDeg)
+            view.updateOverlay(
+                TerrainGpxOverlay(
+                    activeGpxDetails,
+                    gpxTrackColor,
+                    gpxTrackColorMode,
+                    gpxTrackWidth,
+                    gpxTrackOpacityPercent,
+                ),
+                lastKnownLocation,
+            )
+        }
+    }
+    val terrainVisible = terrainEligible && worldWindSession.view != null && !worldWindSession.failed
+    LaunchedEffect(terrainVisible) {
+        rotaryScrollAccumulator = 0f
+        if (!terrainVisible) {
+            worldWindSession.presetAngle = DEFAULT_TERRAIN_3D_VIEWING_ANGLE
+        }
+    }
+    LaunchedEffect(terrainVisible, navMode, lastKnownLocation) {
+        if (terrainVisible && navMode != NavMode.PANNING && !isOfflineMode) {
+            lastKnownLocation?.let { location ->
+                worldWindSession.view?.recenter(location)
+            }
+        }
+    }
+    DisposableEffect(mapView, terrainVisible) {
+        val center = worldWindSession.center
+        if (terrainVisible && mapView != null && center != null) {
+            MapLayerMutationCoordinator.setGestureActive(mapView, false)
+            (mapView.parent as? ViewGroup)?.removeView(mapView)
+            mapView.layerManager.pause()
+        }
+        onDispose {
+            if (terrainVisible && mapView != null && center != null) {
+                val start = SystemClock.elapsedRealtime()
+                mapView.setCenter(worldWindSession.center ?: center)
+                mapView.layerManager.proceed()
+                mapView.layerManager.redrawLayers()
+                Log.i(TERRAIN_LOG_TAG, "switch_3d_to_2d_resume_ms=${SystemClock.elapsedRealtime() - start}")
+            }
+        }
+    }
     val density = LocalDensity.current
     var visibleMapSizePx by remember { mutableStateOf(IntSize.Zero) }
     var clockChipWidthPx by remember { mutableIntStateOf(0) }
@@ -617,6 +724,23 @@ internal fun NavigateContent(
         )
     val scaleIndicator = liveHudState.scaleIndicator
     val showScaleBar = liveHudState.showScaleBar
+    val worldWindRange = worldWindSession.view?.cameraRange
+    var worldWindScaleVisible by remember { mutableStateOf(false) }
+    var lastWorldWindRange by remember { mutableStateOf<Double?>(null) }
+    LaunchedEffect(worldWindRange, terrainVisible) {
+        if (!terrainVisible || worldWindRange == null) {
+            lastWorldWindRange = null
+            worldWindScaleVisible = false
+        } else {
+            val previous = lastWorldWindRange
+            lastWorldWindRange = worldWindRange
+            if (previous != null && previous != worldWindRange) {
+                worldWindScaleVisible = true
+                delay(5_000)
+                worldWindScaleVisible = false
+            }
+        }
+    }
     val liveElevationLabel = liveHudState.liveElevationLabel
     val liveDistanceLabel = liveHudState.liveDistanceLabel
     val fullScreenPopupExpanded =
@@ -631,6 +755,13 @@ internal fun NavigateContent(
             visibleControls = mapFocusVisibleControls,
             toolsAvailable = hasLocationPermission && mapView != null && !routeToolModeActive,
         )
+    val headingReferenceTestActive by CompassHeadingReferenceDiagnostics.active.collectAsState()
+    LaunchedEffect(terrainVisible, shortcutTrayExpanded, routeToolModeActive, headingReferenceTestActive) {
+        if (!terrainVisible || !shortcutTrayExpanded) return@LaunchedEffect
+        if (routeToolModeActive || headingReferenceTestActive) return@LaunchedEffect
+        delay(5_000L)
+        onShortcutTrayDismiss()
+    }
     val suppressNavigateTimeForLayout =
         !fullScreenPopupExpanded &&
             adaptive.fontScale > 1f &&
@@ -711,15 +842,23 @@ internal fun NavigateContent(
                     var consumed = false
 
                     while (rotaryScrollAccumulator >= thresholdPx) {
-                        consumed =
-                            enqueueCrownZoomStep(step = positiveStep) ||
-                            consumed
+                        val zoomed =
+                            if (terrainVisible) {
+                                worldWindSession.view?.zoomByStep(positiveStep) == true
+                            } else {
+                                enqueueCrownZoomStep(step = positiveStep)
+                            }
+                        consumed = zoomed || consumed
                         rotaryScrollAccumulator -= thresholdPx
                     }
                     while (rotaryScrollAccumulator <= -thresholdPx) {
-                        consumed =
-                            enqueueCrownZoomStep(step = negativeStep) ||
-                            consumed
+                        val zoomed =
+                            if (terrainVisible) {
+                                worldWindSession.view?.zoomByStep(negativeStep) == true
+                            } else {
+                                enqueueCrownZoomStep(step = negativeStep)
+                            }
+                        consumed = zoomed || consumed
                         rotaryScrollAccumulator += thresholdPx
                     }
 
@@ -732,7 +871,7 @@ internal fun NavigateContent(
                                 rotaryScrollAccumulator < 0f -> negativeStep
                                 else -> 0
                             }
-                        pendingStep != 0 && canApplyMapZoomStep(step = pendingStep)
+                        pendingStep != 0 && (terrainVisible || canApplyMapZoomStep(step = pendingStep))
                     }
                 }.focusRequester(focusRequester)
                 .focusable(),
@@ -832,7 +971,23 @@ internal fun NavigateContent(
             var isMultiTouchGestureSuppressed by remember { mutableStateOf(false) }
             var lastMapSurfaceTelemetrySignature by remember { mutableStateOf<String?>(null) }
 
-            if (suppressMapRenderingForGuidance) {
+            if (terrainVisible) {
+                val terrainView = worldWindSession.view
+                terrainView?.let { terrainView ->
+                    key(terrainView) {
+                        // The view outlives this screen, so detach it from the previous container first.
+                        AndroidView(
+                            factory = { viewContext ->
+                                FrameLayout(viewContext).apply {
+                                    (terrainView.parent as? ViewGroup)?.removeView(terrainView)
+                                    addView(terrainView)
+                                }
+                            },
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
+                }
+            } else if (suppressMapRenderingForGuidance) {
                 DisposableEffect(mapView) {
                     (mapView.parent as? ViewGroup)?.removeView(mapView)
                     MapLayerMutationCoordinator.setGestureActive(mapView, false)
@@ -1046,146 +1201,311 @@ internal fun NavigateContent(
                 )
             }
 
-            CompositionLocalProvider(LocalFullscreenPopupTimeFormat provides navigateTimeFormat) {
-                NavigateOverlaysLayer(
-                    mapFocusMode = mapFocusState.mapFocusMode,
-                    mapFocusVisibleControls = mapFocusVisibleControls,
-                    onEnterMapFocus = onEnterMapFocus,
-                    onExitMapFocus = { onExitMapFocus("button") },
-                    mapView = mapView,
-                    traceRecordingViewModel = traceRecordingViewModel,
-                    mapAppearanceApplyInProgress = mapAppearanceApplyInProgress && hasActiveMap,
-                    slopeOverlayToggleEnabled = slopeOverlayToggleEnabled,
-                    slopeOverlayEnabled = slopeOverlayEnabled,
-                    slopeOverlayProcessing = slopeOverlayProcessing,
-                    slopeOverlayProgressPercent = slopeOverlayProgressPercent,
-                    navMode = navMode,
-                    isScreenInteractive = screenState.isInteractive,
-                    screenSize = screenSize,
-                    isMetric = isMetric,
-                    liveElevationEnabled = liveElevationEnabled,
-                    liveElevationLabel = liveElevationLabel,
-                    liveDistanceEnabled = liveDistanceEnabled,
-                    liveDistanceLabel = liveDistanceLabel,
-                    zoomLabelTopPadding = zoomLabelTopPadding,
-                    liveElevationIconSize = liveElevationIconSize,
-                    clockChipWidth = with(density) { clockChipWidthPx.toDp() },
-                    northIndicatorMode = northIndicatorMode,
-                    mapRotationDeg = mapRotationDeg,
-                    navigationMarkerAnchorMode = navigationMarkerAnchorMode,
-                    compassHeadingDeg = compassHeadingDeg,
-                    northIndicatorButtonSize = northIndicatorButtonSize,
-                    northIndicatorIconSize = northIndicatorIconSize,
-                    showZoomPlusButton = showZoomPlusButton,
-                    showZoomMinusButton = showZoomMinusButton,
-                    triggerHaptic = triggerHaptic,
-                    onZoomStep = { step -> applyMapZoomStep(step, inputSource = "zoom_button") },
-                    zoomButtonSize = zoomButtonSize,
-                    zoomIconSize = zoomIconSize,
-                    scaleIndicator = scaleIndicator,
-                    showScaleBar = showScaleBar,
-                    zoomScaleBarWidth = zoomScaleBarWidth,
-                    poiTapMessage = poiTapMessage,
-                    poiTapCanExpand = poiTapPopup?.canExpand == true,
-                    poiTapCanCreateGpx = poiTapMarker != null,
-                    poiTapExpanded = poiTapPopupExpanded,
-                    onPoiTapExpandToggle = {
-                        poiTapPopupExpanded = !poiTapPopupExpanded
-                    },
-                    onPoiTapCreateGpx = {
-                        poiTapMarker?.let { marker ->
-                            onPoiTapCreateGpx(marker)
+            if (!terrainVisible) {
+                CompositionLocalProvider(LocalFullscreenPopupTimeFormat provides navigateTimeFormat) {
+                    NavigateOverlaysLayer(
+                        mapFocusMode = mapFocusState.mapFocusMode,
+                        mapFocusVisibleControls = mapFocusVisibleControls,
+                        onEnterMapFocus = onEnterMapFocus,
+                        onExitMapFocus = { onExitMapFocus("button") },
+                        mapView = mapView,
+                        traceRecordingViewModel = traceRecordingViewModel,
+                        mapAppearanceApplyInProgress = mapAppearanceApplyInProgress && hasActiveMap,
+                        slopeOverlayToggleEnabled = slopeOverlayToggleEnabled,
+                        slopeOverlayEnabled = slopeOverlayEnabled,
+                        slopeOverlayProcessing = slopeOverlayProcessing,
+                        slopeOverlayProgressPercent = slopeOverlayProgressPercent,
+                        navMode = navMode,
+                        isScreenInteractive = screenState.isInteractive,
+                        screenSize = screenSize,
+                        isMetric = isMetric,
+                        liveElevationEnabled = liveElevationEnabled,
+                        liveElevationLabel = liveElevationLabel,
+                        liveDistanceEnabled = liveDistanceEnabled,
+                        liveDistanceLabel = liveDistanceLabel,
+                        zoomLabelTopPadding = zoomLabelTopPadding,
+                        liveElevationIconSize = liveElevationIconSize,
+                        clockChipWidth = with(density) { clockChipWidthPx.toDp() },
+                        northIndicatorMode = northIndicatorMode,
+                        mapRotationDeg = mapRotationDeg,
+                        navigationMarkerAnchorMode = navigationMarkerAnchorMode,
+                        compassHeadingDeg = compassHeadingDeg,
+                        northIndicatorButtonSize = northIndicatorButtonSize,
+                        northIndicatorIconSize = northIndicatorIconSize,
+                        showZoomPlusButton = showZoomPlusButton,
+                        showZoomMinusButton = showZoomMinusButton,
+                        triggerHaptic = triggerHaptic,
+                        onZoomStep = { step -> applyMapZoomStep(step, inputSource = "zoom_button") },
+                        zoomButtonSize = zoomButtonSize,
+                        zoomIconSize = zoomIconSize,
+                        scaleIndicator = scaleIndicator,
+                        showScaleBar = showScaleBar,
+                        zoomScaleBarWidth = zoomScaleBarWidth,
+                        poiTapMessage = poiTapMessage,
+                        poiTapCanExpand = poiTapPopup?.canExpand == true,
+                        poiTapCanCreateGpx = poiTapMarker != null,
+                        poiTapExpanded = poiTapPopupExpanded,
+                        onPoiTapExpandToggle = {
+                            poiTapPopupExpanded = !poiTapPopupExpanded
+                        },
+                        onPoiTapCreateGpx = {
+                            poiTapMarker?.let { marker ->
+                                onPoiTapCreateGpx(marker)
+                                poiTapMarker = null
+                                poiTapPopup = null
+                                poiTapPopupExpanded = false
+                                poiTapPopupScrollInProgress = false
+                            }
+                        },
+                        onPoiTapDismiss = {
                             poiTapMarker = null
                             poiTapPopup = null
                             poiTapPopupExpanded = false
                             poiTapPopupScrollInProgress = false
-                        }
+                        },
+                        onPoiTapScrollInProgressChanged = { isScrolling ->
+                            poiTapPopupScrollInProgress = isScrolling
+                        },
+                        onMenuClick = onMenuClick,
+                        sideButtonEdgePadding = sideButtonEdgePadding,
+                        sideButtonSize = sideButtonSize,
+                        sideButtonIconSize = sideButtonIconSize,
+                        shortcutTrayExpanded = shortcutTrayExpanded,
+                        routeToolModeActive = routeToolModeActive,
+                        onShortcutTrayToggle = onShortcutTrayToggle,
+                        onShortcutTrayDismiss = onShortcutTrayDismiss,
+                        onGpxToolsClick = onOpenGpxTools,
+                        onCreatePoiClick = onStartPoiCreation,
+                        keepAppOpen = keepAppOpen,
+                        onKeepAppOpenToggle = onKeepAppOpenToggle,
+                        traceRecordingState = traceRecordingState,
+                        recordingDashboardMetricSlots = recordingDashboardMetricSlots,
+                        turnByTurnDashboardMetricSlots = turnByTurnDashboardMetricSlots,
+                        userWeightKg = userWeightKg,
+                        backpackWeightKg = backpackWeightKg,
+                        bikeWeightKg = bikeWeightKg,
+                        recordingDashboardExpandRequestToken = recordingDashboardExpandRequestToken,
+                        recordingActionPromptRequestToken = effectiveRecordingActionPromptRequestToken,
+                        onRecordingClick = {
+                            onShortcutTrayDismiss()
+                            if (traceRecordingState.active || traceRecordingState.saving) {
+                                expandedOverlayState.requestRecordingActionPrompt()
+                            } else {
+                                onStartRecording()
+                            }
+                        },
+                        onPauseRecording = onPauseRecording,
+                        onResumeRecording = onResumeRecording,
+                        onFinishRecording = onFinishRecording,
+                        onDiscardRecording = onDiscardRecording,
+                        onRecordingMetricSelected = onRecordingMetricSelected,
+                        onTurnByTurnMetricSelected = onTurnByTurnMetricSelected,
+                        gpsIndicatorState = gpsIndicatorState,
+                        watchGpsDegradedWarning = watchGpsDegradedWarning,
+                        navButtonBottomPadding = navButtonBottomPadding,
+                        navButtonSize = navButtonSize,
+                        navButtonIconSize = navButtonIconSize,
+                        locationMarker = locationMarker,
+                        lastKnownLocation = lastKnownLocation,
+                        onRecenter = onRecenter,
+                        onRecenterRequested = onRecenterRequested,
+                        autoRecenterEnabled = autoRecenterEnabled,
+                        autoRecenterDelay = autoRecenterDelay,
+                        onToggleAutoRecenter = onToggleAutoRecenter,
+                        onToggleOrientation = onToggleOrientation,
+                        isOfflineMode = isOfflineMode,
+                        selectingGpxPointB = selectingGpxPointB,
+                        onCancelSelectingGpxPointB = onCancelSelectingGpxPointB,
+                        turnByTurnGuidanceState = turnByTurnGuidanceState,
+                        turnByTurnGuidancePaused = turnByTurnGuidancePaused,
+                        turnByTurnVoiceGuidanceEnabled = turnByTurnVoiceGuidanceEnabled,
+                        turnByTurnCompactPopupEnabled = turnByTurnCompactPopupEnabled,
+                        turnByTurnMapProgressEnabled = turnByTurnMapProgressEnabled,
+                        turnByTurnElevationProgressRingEnabled = turnByTurnElevationProgressRingEnabled,
+                        routeProgressRingSegments = routeProgressRingSegments,
+                        onTurnByTurnVoiceGuidanceChange = onTurnByTurnVoiceGuidanceChange,
+                        turnByTurnFullScreenExpanded = turnByTurnFullScreenExpanded,
+                        recordingDashboardFullScreenExpanded = recordingDashboardFullScreenExpanded,
+                        combinedGuidanceRecordingFullScreenExpanded =
+                        combinedGuidanceRecordingFullScreenExpanded,
+                        guideBackToRouteActive = guideBackToRouteActive,
+                        showGuideBackPrompt = showGuideBackPrompt,
+                        startDecisionPrompt = startDecisionPrompt,
+                        onPauseTurnByTurnGuidance = onPauseTurnByTurnGuidance,
+                        onResumeTurnByTurnGuidance = onResumeTurnByTurnGuidance,
+                        onStopTurnByTurnGuidance = onStopTurnByTurnGuidance,
+                        onTurnByTurnExpandedChange = expandedOverlayState.onTurnByTurnExpandedChange,
+                        onRecordingExpandedChange = expandedOverlayState.onRecordingExpandedChange,
+                        onCombinedGuidanceRecordingExpandedChange =
+                            expandedOverlayState.onCombinedGuidanceRecordingExpandedChange,
+                        onGuideBackToRoute = onGuideBackToRoute,
+                        onDismissGuideBackPrompt = onDismissGuideBackPrompt,
+                        onAcceptStartDecisionPrompt = onAcceptStartDecisionPrompt,
+                        onDismissStartDecisionPrompt = onDismissStartDecisionPrompt,
+                    )
+                }
+            } else {
+                IconButton(
+                    onClick = onMenuClick,
+                    modifier =
+                        Modifier
+                            .align(Alignment.CenterStart)
+                            .padding(start = sideButtonEdgePadding)
+                            .size(sideButtonSize),
+                    colors =
+                        IconButtonDefaults.iconButtonColors(
+                            containerColor = Color.Black.copy(alpha = 0.7f),
+                            contentColor = Color.White,
+                        ),
+                ) {
+                    Icon(Icons.Default.Menu, stringResource(R.string.navigate_menu), Modifier.size(sideButtonIconSize))
+                }
+                TerrainZoomControls(
+                    buttonSize = zoomButtonSize,
+                    iconSize = zoomIconSize,
+                    edgePadding = sideButtonEdgePadding,
+                    showPlus = showZoomPlusButton && mapChrome.shows(MapFocusControl.ZOOM_PLUS),
+                    showMinus = showZoomMinusButton && mapChrome.shows(MapFocusControl.ZOOM_MINUS),
+                    onZoom = { step ->
+                        val zoomed = worldWindSession.view?.zoomByStep(step)
+                        if (zoomed == true) triggerHaptic()
                     },
-                    onPoiTapDismiss = {
-                        poiTapMarker = null
-                        poiTapPopup = null
-                        poiTapPopupExpanded = false
-                        poiTapPopupScrollInProgress = false
-                    },
-                    onPoiTapScrollInProgressChanged = { isScrolling ->
-                        poiTapPopupScrollInProgress = isScrolling
-                    },
-                    onMenuClick = onMenuClick,
-                    sideButtonEdgePadding = sideButtonEdgePadding,
-                    sideButtonSize = sideButtonSize,
-                    sideButtonIconSize = sideButtonIconSize,
-                    shortcutTrayExpanded = shortcutTrayExpanded,
-                    routeToolModeActive = routeToolModeActive,
-                    onShortcutTrayToggle = onShortcutTrayToggle,
-                    onShortcutTrayDismiss = onShortcutTrayDismiss,
-                    onGpxToolsClick = onOpenGpxTools,
-                    onCreatePoiClick = onStartPoiCreation,
-                    keepAppOpen = keepAppOpen,
-                    onKeepAppOpenToggle = onKeepAppOpenToggle,
-                    traceRecordingState = traceRecordingState,
-                    recordingDashboardMetricSlots = recordingDashboardMetricSlots,
-                    turnByTurnDashboardMetricSlots = turnByTurnDashboardMetricSlots,
-                    userWeightKg = userWeightKg,
-                    backpackWeightKg = backpackWeightKg,
-                    bikeWeightKg = bikeWeightKg,
-                    recordingDashboardExpandRequestToken = recordingDashboardExpandRequestToken,
-                    recordingActionPromptRequestToken = effectiveRecordingActionPromptRequestToken,
-                    onRecordingClick = {
-                        onShortcutTrayDismiss()
-                        if (traceRecordingState.active || traceRecordingState.saving) {
-                            expandedOverlayState.requestRecordingActionPrompt()
-                        } else {
-                            onStartRecording()
-                        }
-                    },
-                    onPauseRecording = onPauseRecording,
-                    onResumeRecording = onResumeRecording,
-                    onFinishRecording = onFinishRecording,
-                    onDiscardRecording = onDiscardRecording,
-                    onRecordingMetricSelected = onRecordingMetricSelected,
-                    onTurnByTurnMetricSelected = onTurnByTurnMetricSelected,
+                )
+                NavModeButtonOverlay(
+                    visible = mapChrome.shows(MapFocusControl.NAV_MODE_BUTTON),
+                    mapView = mapView,
+                    navMode = navMode,
+                    isOfflineMode = isOfflineMode,
                     gpsIndicatorState = gpsIndicatorState,
                     watchGpsDegradedWarning = watchGpsDegradedWarning,
+                    lastKnownLocation = lastKnownLocation,
+                    triggerHaptic = triggerHaptic,
                     navButtonBottomPadding = navButtonBottomPadding,
                     navButtonSize = navButtonSize,
                     navButtonIconSize = navButtonIconSize,
-                    locationMarker = locationMarker,
-                    lastKnownLocation = lastKnownLocation,
                     onRecenter = onRecenter,
                     onRecenterRequested = onRecenterRequested,
                     autoRecenterEnabled = autoRecenterEnabled,
                     autoRecenterDelay = autoRecenterDelay,
                     onToggleAutoRecenter = onToggleAutoRecenter,
                     onToggleOrientation = onToggleOrientation,
-                    isOfflineMode = isOfflineMode,
-                    selectingGpxPointB = selectingGpxPointB,
-                    onCancelSelectingGpxPointB = onCancelSelectingGpxPointB,
-                    turnByTurnGuidanceState = turnByTurnGuidanceState,
-                    turnByTurnGuidancePaused = turnByTurnGuidancePaused,
-                    turnByTurnVoiceGuidanceEnabled = turnByTurnVoiceGuidanceEnabled,
-                    turnByTurnCompactPopupEnabled = turnByTurnCompactPopupEnabled,
-                    turnByTurnMapProgressEnabled = turnByTurnMapProgressEnabled,
-                    turnByTurnElevationProgressRingEnabled = turnByTurnElevationProgressRingEnabled,
-                    routeProgressRingSegments = routeProgressRingSegments,
-                    onTurnByTurnVoiceGuidanceChange = onTurnByTurnVoiceGuidanceChange,
-                    turnByTurnFullScreenExpanded = turnByTurnFullScreenExpanded,
-                    recordingDashboardFullScreenExpanded = recordingDashboardFullScreenExpanded,
-                    combinedGuidanceRecordingFullScreenExpanded =
-                    combinedGuidanceRecordingFullScreenExpanded,
-                    guideBackToRouteActive = guideBackToRouteActive,
-                    showGuideBackPrompt = showGuideBackPrompt,
-                    startDecisionPrompt = startDecisionPrompt,
-                    onPauseTurnByTurnGuidance = onPauseTurnByTurnGuidance,
-                    onResumeTurnByTurnGuidance = onResumeTurnByTurnGuidance,
-                    onStopTurnByTurnGuidance = onStopTurnByTurnGuidance,
-                    onTurnByTurnExpandedChange = expandedOverlayState.onTurnByTurnExpandedChange,
-                    onRecordingExpandedChange = expandedOverlayState.onRecordingExpandedChange,
-                    onCombinedGuidanceRecordingExpandedChange =
-                        expandedOverlayState.onCombinedGuidanceRecordingExpandedChange,
-                    onGuideBackToRoute = onGuideBackToRoute,
-                    onDismissGuideBackPrompt = onDismissGuideBackPrompt,
-                    onAcceptStartDecisionPrompt = onAcceptStartDecisionPrompt,
-                    onDismissStartDecisionPrompt = onDismissStartDecisionPrompt,
+                    navigationMarkerAnchorMode = navigationMarkerAnchorMode,
+                    isScreenInteractive = terrainInteractive,
+                    onTerrainRecenter = { location ->
+                        worldWindSession.view?.recenter(location)
+                    },
+                )
+                if (mapChrome.showToolsControl) {
+                    RouteShortcutTray(
+                        expanded = shortcutTrayExpanded,
+                        mapFocusMode = mapFocusState.mapFocusMode,
+                        keepAppOpen = keepAppOpen,
+                        edgePadding = sideButtonEdgePadding,
+                        anchorSize = sideButtonSize,
+                        actionHeight = sideButtonSize,
+                        iconSize = sideButtonIconSize,
+                        onToggleExpanded = onShortcutTrayToggle,
+                        onKeepAppOpenClick = onKeepAppOpenToggle,
+                        onGpxToolsClick = onOpenGpxTools,
+                        onCreatePoiClick = onStartPoiCreation,
+                        onMapFocusClick = {
+                            onShortcutTrayDismiss()
+                            if (mapFocusState.mapFocusMode) onExitMapFocus("button") else onEnterMapFocus()
+                        },
+                        recordingActive = traceRecordingState.active,
+                        recordingPaused = traceRecordingState.paused,
+                        recordingSaving = traceRecordingState.saving,
+                        headingReferenceTestActive = headingReferenceTestActive,
+                        onRecordingClick = {
+                            onShortcutTrayDismiss()
+                            if (traceRecordingState.active || traceRecordingState.saving) {
+                                expandedOverlayState.requestRecordingActionPrompt()
+                            } else {
+                                onStartRecording()
+                            }
+                        },
+                        onHeadingReferenceMark = { referenceHeadingDeg ->
+                            val result = CompassHeadingReferenceDiagnostics.recordReference(referenceHeadingDeg)
+                            Toast
+                                .makeText(
+                                    context,
+                                    resources.getString(result.userMessageRes),
+                                    Toast.LENGTH_SHORT,
+                                ).show()
+                        },
+                    )
+                }
+            }
+
+            val showWorldWindScale = terrainVisible && worldWindScaleVisible
+            if (showWorldWindScale && mapChrome.shows(MapFocusControl.SCALE)) {
+                worldWindSession.view?.let { view ->
+                    val latitude = view.lookAt.position.latitude.inDegrees
+                    val indicator =
+                        calculateScaleIndicatorForZoom(
+                            zoomLevel = worldWindApproximateZoom(latitude, view.cameraRange),
+                            viewportWidthPx = visibleMapSizePx.width.toDouble(),
+                            latitudeDegrees = latitude,
+                            isMetric = isMetric,
+                            resources = resources,
+                        )
+                    indicator?.let {
+                        Column(
+                            modifier = Modifier.align(Alignment.TopCenter).padding(top = zoomLabelTopPadding),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) {
+                            Text(
+                                text = it.label,
+                                modifier =
+                                    Modifier
+                                        .padding(top = 2.dp)
+                                        .background(Color.Black.copy(alpha = 0.78f), RoundedCornerShape(5.dp))
+                                        .padding(horizontal = 5.dp, vertical = 1.dp),
+                                color = Color.White,
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 10.sp,
+                                lineHeight = 10.sp,
+                            )
+                            StandardScaleBar(
+                                width = zoomScaleBarWidth * it.widthRatio,
+                                modifier = Modifier.padding(top = 2.dp),
+                            )
+                        }
+                    }
+                }
+            }
+            BoxWithConstraints(Modifier.fillMaxSize()) {
+                val controlRadius =
+                    terrainIndicatorControlRadius(maxWidth, maxHeight, sideButtonEdgePadding, sideButtonSize)
+                SlopeOverlayStatusIndicator(
+                    visible =
+                        terrainVisible ||
+                            (
+                                terrainEligible &&
+                                    worldWindSession.initializing
+                            ),
+                    processing =
+                        (worldWindSession.initializing || worldWindSession.rendering) &&
+                            terrainInteractive,
+                    progressPercent =
+                        worldWindSession.renderProgress?.let {
+                            if (worldWindSession.initializing) it.coerceAtMost(99) else it
+                        },
+                    enabled = true,
+                    screenSize = screenSize,
+                    modifier = Modifier.terrainIndicatorRingOffset(maxWidth, controlRadius),
+                    terrain3d = true,
+                    renderError = worldWindSession.renderError,
+                    onClick =
+                        if (terrainVisible) {
+                            {
+                                worldWindSession.presetAngle = nextTerrainAnglePreset(worldWindSession.presetAngle)
+                                worldWindSession.view?.setPresetViewingAngle(worldWindSession.presetAngle)
+                                triggerHaptic()
+                            }
+                        } else {
+                            null
+                        },
                 )
             }
 
@@ -1245,42 +1565,44 @@ internal fun NavigateContent(
                 modifier = Modifier.align(Alignment.Center),
             )
 
-            NavigateRouteToolOverlayHost(
-                routeToolSession = routeToolSession,
-                activeGpxDetails = activeGpxDetails,
-                mapView = mapView,
-                mapRotationDeg = mapRotationDeg,
-                viewportRevision = routeToolOverlayRevision,
-                screenSize = screenSize,
-                isMetric = isMetric,
-                routeToolCreatePreview = routeToolCreatePreview,
-                routeToolCreatePreviewInProgress = routeToolCreatePreviewInProgress,
-                routeToolCreatePreviewMessage = routeToolCreatePreviewMessage,
-                routeToolDraftConnectorPoints = routeToolDraftConnectorPoints,
-                gpxTrackColor = gpxTrackColor,
-                onRouteToolPickHere = onRouteToolPickHere,
-                onRouteToolUndoLastPoint = onRouteToolUndoLastPoint,
-                onRouteToolSaveCreatePreview = onRouteToolSaveCreatePreview,
-                onRouteToolRefreshCreatePreview = onRouteToolRefreshCreatePreview,
-                onCancelRouteToolMode = onCancelRouteToolMode,
-                reshapePreviewInspectMode = reshapePreviewInspectMode,
-                reshapePreviewPoints = reshapePreviewPoints,
-                reshapePreviewTitle = reshapePreviewTitle,
-                reshapePreviewInstruction = reshapePreviewInstruction,
-                reshapePreviewBusy = reshapePreviewBusy,
-                reshapePreviewBusyMessage = reshapePreviewBusyMessage,
-                reshapePreviewMessage = reshapePreviewMessage,
-                onDismissReshapePreview = onDismissReshapePreview,
-                onSaveReshapePreview = onSaveReshapePreview,
-                crosshairSelectionActive = crosshairSelectionActive,
-                crosshairSelectionBusy = crosshairSelectionBusy,
-                crosshairSelectionBusyMessage = crosshairSelectionBusyMessage,
-                crosshairSelectionTitle = crosshairSelectionTitle,
-                crosshairSelectionInstruction = crosshairSelectionInstruction,
-                onCrosshairSelectionPickHere = onCrosshairSelectionPickHere,
-                onCancelCrosshairSelection = onCancelCrosshairSelection,
-                visibleMapSizePx = visibleMapSizePx,
-            )
+            if (!terrainVisible) {
+                NavigateRouteToolOverlayHost(
+                    routeToolSession = routeToolSession,
+                    activeGpxDetails = activeGpxDetails,
+                    mapView = mapView,
+                    mapRotationDeg = mapRotationDeg,
+                    viewportRevision = routeToolOverlayRevision,
+                    screenSize = screenSize,
+                    isMetric = isMetric,
+                    routeToolCreatePreview = routeToolCreatePreview,
+                    routeToolCreatePreviewInProgress = routeToolCreatePreviewInProgress,
+                    routeToolCreatePreviewMessage = routeToolCreatePreviewMessage,
+                    routeToolDraftConnectorPoints = routeToolDraftConnectorPoints,
+                    gpxTrackColor = gpxTrackColor,
+                    onRouteToolPickHere = onRouteToolPickHere,
+                    onRouteToolUndoLastPoint = onRouteToolUndoLastPoint,
+                    onRouteToolSaveCreatePreview = onRouteToolSaveCreatePreview,
+                    onRouteToolRefreshCreatePreview = onRouteToolRefreshCreatePreview,
+                    onCancelRouteToolMode = onCancelRouteToolMode,
+                    reshapePreviewInspectMode = reshapePreviewInspectMode,
+                    reshapePreviewPoints = reshapePreviewPoints,
+                    reshapePreviewTitle = reshapePreviewTitle,
+                    reshapePreviewInstruction = reshapePreviewInstruction,
+                    reshapePreviewBusy = reshapePreviewBusy,
+                    reshapePreviewBusyMessage = reshapePreviewBusyMessage,
+                    reshapePreviewMessage = reshapePreviewMessage,
+                    onDismissReshapePreview = onDismissReshapePreview,
+                    onSaveReshapePreview = onSaveReshapePreview,
+                    crosshairSelectionActive = crosshairSelectionActive,
+                    crosshairSelectionBusy = crosshairSelectionBusy,
+                    crosshairSelectionBusyMessage = crosshairSelectionBusyMessage,
+                    crosshairSelectionTitle = crosshairSelectionTitle,
+                    crosshairSelectionInstruction = crosshairSelectionInstruction,
+                    onCrosshairSelectionPickHere = onCrosshairSelectionPickHere,
+                    onCancelCrosshairSelection = onCancelCrosshairSelection,
+                    visibleMapSizePx = visibleMapSizePx,
+                )
+            }
         } else {
             NavigatePermissionRequiredContent(
                 sizing = sizing,

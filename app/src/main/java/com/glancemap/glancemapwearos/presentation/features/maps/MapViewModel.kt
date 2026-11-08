@@ -12,6 +12,7 @@ import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.core.cache.AppDerivedCacheCleaner
 import com.glancemap.glancemapwearos.core.cache.AppDerivedCacheCleanupResult
 import com.glancemap.glancemapwearos.core.maps.Dem3CoverageUtils
+import com.glancemap.glancemapwearos.core.maps.DemCoverageSummary
 import com.glancemap.glancemapwearos.core.maps.DemSignatureStore
 import com.glancemap.glancemapwearos.core.maps.DemSource
 import com.glancemap.glancemapwearos.core.maps.GeoBounds
@@ -29,6 +30,8 @@ import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import com.glancemap.glancemapwearos.data.repository.maps.theme.ThemeRepository
 import com.glancemap.glancemapwearos.data.repository.maps.theme.ThemeSelection
 import com.glancemap.glancemapwearos.domain.model.maps.theme.RenderThemeSource
+import com.glancemap.glancemapwearos.domain.model.maps.theme.ThemeListItem
+import com.glancemap.glancemapwearos.domain.model.maps.theme.ThemeUiIds
 import com.glancemap.glancemapwearos.domain.model.maps.theme.mapsforge.MapsforgeThemeCatalog
 import com.glancemap.glancemapwearos.presentation.SyncManager
 import com.glancemap.glancemapwearos.presentation.features.gpx.GpxTrackDetails
@@ -46,6 +49,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
@@ -271,6 +275,10 @@ class MapViewModel(
     val selectedMapPath: StateFlow<String?> =
         settingsRepository.selectedMapPath
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
+    private val _mapTerrainUnavailable = MutableStateFlow<String?>(null)
+    val mapTerrainUnavailable: StateFlow<String?> = _mapTerrainUnavailable.asStateFlow()
+    private var mapSelectionJob: Job? = null
 
     private var mapRenderer: MapRenderer? = null
     private val themeComposer = BundledAssetThemeComposer(context)
@@ -1039,9 +1047,39 @@ class MapViewModel(
     }
 
     fun selectMapPath(path: String?) {
-        viewModelScope.launch {
-            settingsRepository.setSelectedMapPath(path)
-        }
+        mapSelectionJob?.cancel()
+        _mapTerrainUnavailable.value = null
+        mapSelectionJob =
+            viewModelScope.launch {
+                selectMapWithTerrainGuard(
+                    path = path,
+                    coverage = { mapPath ->
+                        withContext(Dispatchers.IO) {
+                            runCatching { Dem3CoverageUtils.coverageForMap(context, File(mapPath)) }
+                                .getOrElse { DemCoverageSummary(0, 0, isCoverageKnown = false) }
+                        }
+                    },
+                    disableFeatures = {
+                        val terrainEnabled = settingsRepository.terrain3dEnabled.first()
+                        val toggles =
+                            themeRepository.getThemeItems().first().filterIsInstance<ThemeListItem.GlobalToggle>()
+                        val hillEnabled = toggles.any { it.id == ThemeUiIds.HILL_SHADING && it.enabled }
+                        val slopeEnabled = toggles.any { it.id == ThemeUiIds.RELIEF_OVERLAY && it.enabled }
+                        disableTerrainFeatures(
+                            state = TerrainFeatureState(terrainEnabled, hillEnabled, slopeEnabled),
+                            disable3d = { settingsRepository.setTerrain3dEnabled(false) },
+                            disableHill = { themeRepository.setHillShadingEnabled(false) },
+                            disableSlope = { themeRepository.setReliefOverlayEnabled(false) },
+                        )
+                    },
+                    select = settingsRepository::setSelectedMapPath,
+                    notifyMissing = { _mapTerrainUnavailable.value = it },
+                )
+            }
+    }
+
+    fun dismissMapTerrainUnavailable() {
+        _mapTerrainUnavailable.value = null
     }
 
     fun refreshMapLayer() {

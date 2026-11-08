@@ -3,10 +3,19 @@ package com.glancemap.glancemapwearos.presentation.features.maps
 import org.mapsforge.core.graphics.Bitmap
 
 internal data class DemTileData(
-    val axisLen: Int,
+    override val axisLen: Int,
     val rowLen: Int,
     val samples: ShortArray,
-)
+) : DemTile {
+    override val heapBytes: Long get() = samples.size.toLong() * Short.SIZE_BYTES
+
+    override fun elevationOrNaN(
+        tileLat: Int,
+        tileLon: Int,
+        lat: Double,
+        lon: Double,
+    ): Double = interpolateDemElevationOrNaN(this, tileLat, tileLon, lat, lon)
+}
 
 internal data class OverlayTileKey(
     val zoom: Byte,

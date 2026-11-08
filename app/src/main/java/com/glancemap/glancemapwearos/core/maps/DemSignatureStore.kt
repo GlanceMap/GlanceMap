@@ -41,6 +41,8 @@ object DemSignatureStore {
     private val invalidationGeneration = AtomicLong(0L)
     private val resolvedGenerationByCacheKey = ConcurrentHashMap<String, Long>()
 
+    internal fun generation(): Long = invalidationGeneration.get()
+
     fun markDirty(context: Context) {
         val generation = invalidationGeneration.incrementAndGet()
         prefs(context)

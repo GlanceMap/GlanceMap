@@ -1,0 +1,83 @@
+package com.glancemap.glancemapwearos.presentation.features.maps.terrain3d
+
+import com.glancemap.glancemapwearos.core.maps.DEFAULT_TERRAIN_3D_VIEWING_ANGLE
+import earth.worldwind.geom.AltitudeMode
+import earth.worldwind.geom.Angle.Companion.degrees
+import earth.worldwind.geom.LookAt
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class WorldWindCameraTest {
+    @Test
+    fun `pan anchor keeps the starting ground height without changing camera orientation`() {
+        val lookAt = LookAt()
+        lookAt.set(
+            45.0.degrees,
+            6.0.degrees,
+            0.0,
+            AltitudeMode.CLAMP_TO_GROUND,
+            4000.0,
+            30.0.degrees,
+            45.0.degrees,
+            0.0.degrees,
+        )
+        worldWindKeepGestureHeight(lookAt, 1200.0)
+        assertEquals(AltitudeMode.ABSOLUTE, lookAt.altitudeMode)
+        assertEquals(1200.0, lookAt.position.altitude, 0.0)
+        assertEquals(4000.0, lookAt.range, 0.0)
+        assertEquals(30.0, lookAt.heading.inDegrees, 0.0)
+        assertEquals(45.0, lookAt.tilt.inDegrees, 0.0)
+        worldWindKeepGestureHeight(lookAt, 2200.0)
+        assertEquals(1200.0, lookAt.position.altitude, 0.0)
+    }
+
+    @Test
+    fun `compass bearing does not interrupt manual orbit and resumes afterwards`() {
+        assertFalse(worldWindShouldApplyBearing(30f, 20f, manualOrbit = true))
+        assertTrue(worldWindShouldApplyBearing(30f, 20f, manualOrbit = false))
+        assertFalse(worldWindShouldApplyBearing(30f, 30f, manualOrbit = false))
+        assertFalse(worldWindShouldApplyBearing(Float.NaN, 20f, manualOrbit = false))
+    }
+
+    @Test
+    fun `cache budget scales with heap but is capped`() {
+        assertEquals(8L * 1024 * 1024, worldWindCacheBudget(64L * 1024 * 1024))
+        assertEquals(32L * 1024 * 1024, worldWindCacheBudget(256L * 1024 * 1024))
+        assertEquals(32L * 1024 * 1024, worldWindCacheBudget(512L * 1024 * 1024))
+        assertEquals(16L * 1024 * 1024, worldWindCacheBudget(128L * 1024 * 1024))
+        assertTrue(worldWindCacheBudget(32L * 1024 * 1024) <= 4L * 1024 * 1024)
+    }
+
+    @Test
+    fun `worldwind can zoom closer than the custom terrain minimum`() {
+        assertTrue(worldWindZoomByStep(1000.0, 1) < 1000.0)
+        assertTrue(worldWindZoomByStep(14000.0, -1) > 14000.0)
+        assertTrue(worldWindZoomByStep(250.0, 1) < 250.0)
+        assertTrue(worldWindZoomByStep(50000.0, -1) > 50000.0)
+    }
+
+    @Test
+    fun `initial field of view maps the existing camera range`() {
+        assertEquals(4000.0, worldWindInitialRange(), 0.01)
+        assertEquals(45, DEFAULT_TERRAIN_3D_VIEWING_ANGLE)
+        assertEquals(60.0, worldWindViewingAngle(60), 0.01)
+        assertEquals(45.0, worldWindViewingAngle(45), 0.01)
+        assertEquals(70.0, worldWindViewingAngle(70), 0.01)
+    }
+
+    @Test
+    fun `wide views flatten while local views retain the chosen tilt`() {
+        assertEquals(0.0, worldWindDisplayedTilt(0.0, 2_000.0), 0.01)
+        assertEquals(85.0, worldWindDisplayedTilt(85.0, 2_000.0), 0.01)
+        assertTrue(worldWindDisplayedTilt(85.0, 500_000.0) in 0.0..84.9)
+        assertEquals(0.0, worldWindDisplayedTilt(85.0, 2_000_000.0), 0.01)
+    }
+
+    @Test
+    fun `approximate map zoom changes with camera range`() {
+        assertTrue(worldWindApproximateZoom(0.0, 1_000.0) > worldWindApproximateZoom(0.0, 10_000.0))
+        assertTrue(worldWindApproximateZoom(45.0, 1_000_000.0) in 1..22)
+    }
+}

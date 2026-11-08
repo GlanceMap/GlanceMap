@@ -53,6 +53,8 @@ import com.glancemap.glancemapwearos.presentation.features.download.DownloadSett
 import com.glancemap.glancemapwearos.presentation.features.gpx.GpxScreen
 import com.glancemap.glancemapwearos.presentation.features.home.MainScreen
 import com.glancemap.glancemapwearos.presentation.features.maps.MapsScreen
+import com.glancemap.glancemapwearos.presentation.features.maps.terrain3d.RunWatchWorldWind
+import com.glancemap.glancemapwearos.presentation.features.maps.terrain3d.WatchWorldWindRuntime
 import com.glancemap.glancemapwearos.presentation.features.navigate.AmbientScreen
 import com.glancemap.glancemapwearos.presentation.features.navigate.NavigateScreen
 import com.glancemap.glancemapwearos.presentation.features.navigate.UI_RECORDING_START_REACQUIRE_SOURCE
@@ -424,6 +426,10 @@ class MainActivity : ComponentActivity() {
                     recordingActionPromptRequestToken += 1L
                 }
 
+                // Hosted above the routes and the ambient screen so the 3D session survives leaving the map.
+                val terrainRuntime = remember { WatchWorldWindRuntime() }
+                RunWatchWorldWind(terrainRuntime)
+
                 if (isAmbient) {
                     AmbientScreen(
                         ambientTick = ambientTickMs,
@@ -499,6 +505,7 @@ class MainActivity : ComponentActivity() {
                                         launchSingleTop = true
                                     }
                                 },
+                                terrainRuntime = terrainRuntime,
                             )
                         }
 

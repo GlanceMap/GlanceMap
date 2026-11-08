@@ -3,5 +3,5 @@ app/src/main/assets/theme/elevate/** -text whitespace=-blank-at-eol,-blank-at-eo
 app/src/main/assets/theme/elevate-winter/** -text whitespace=-blank-at-eol,-blank-at-eof,-space-before-tab
 app/src/main/assets/theme/elevate-winter-white/** -text whitespace=-blank-at-eol,-blank-at-eof,-space-before-tab
 
-# Gradle's Windows wrapper uses CRLF line endings.
-gradlew.bat whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+# Keep the Gradle wrapper batch script in its Windows line endings without flagging CR as whitespace.
+gradlew.bat whitespace=cr-at-eol

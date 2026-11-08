@@ -136,8 +136,15 @@ fun MapsScreen(
     val routingPackFiles by mapViewModel.routingPackFiles.collectAsState()
     val demTileFiles by mapViewModel.demTileFiles.collectAsState()
     val selectedMapPath by mapViewModel.selectedMapPath.collectAsState()
+    val mapTerrainUnavailable by mapViewModel.mapTerrainUnavailable.collectAsState()
     val demDownloadState by themeViewModel.demDownloadUiState.collectAsState()
     val selectedDemSource by themeViewModel.demSource.collectAsState()
+
+    DemSetupBottomSheet(
+        visible = mapTerrainUnavailable != null,
+        reason = DemSetupReason.MAP_TERRAIN_UNAVAILABLE,
+        onDismiss = mapViewModel::dismissMapTerrainUnavailable,
+    )
 
     // Explicit state (no "by" delegation to avoid the error you saw)
     val showDeleteDialogState = remember { mutableStateOf(false) }

@@ -30,6 +30,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -162,6 +163,24 @@ class ThemeViewModel(
                 started = SharingStarted.WhileSubscribed(5_000),
                 initialValue = emptyList(),
             )
+
+    /** Whether the 3D hiking theme is the selected map theme (2D and 3D). */
+    val hiking3dThemeSelected: StateFlow<Boolean> =
+        themeItems
+            .map { items ->
+                items.any {
+                    it is ThemeListItem.ThemeOption && it.id == MapsforgeThemeCatalog.HIKING_3D_THEME_ID && it.selected
+                }
+            }.stateIn(
+                scope = viewModelScope,
+                started = SharingStarted.WhileSubscribed(5_000),
+                initialValue = false,
+            )
+
+    /** Shortcut under the 3D switch: selects the 3D hiking theme, or restores the previous theme. */
+    fun setHiking3dThemeEnabled(enabled: Boolean) {
+        viewModelScope.launch { themeRepository.setHiking3dThemeEnabled(enabled) }
+    }
 
     fun setTheme(themeId: String) {
         viewModelScope.launch {

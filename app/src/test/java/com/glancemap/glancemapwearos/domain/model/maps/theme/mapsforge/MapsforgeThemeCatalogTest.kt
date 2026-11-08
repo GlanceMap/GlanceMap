@@ -16,6 +16,7 @@ class MapsforgeThemeCatalogTest {
         assertTrue(MapsforgeThemeCatalog.isBundledAssetTheme(MapsforgeThemeCatalog.OS_MAP_THEME_ID))
         assertTrue(MapsforgeThemeCatalog.isBundledAssetTheme(MapsforgeThemeCatalog.OS_MAP_DAY_THEME_ID))
         assertTrue(MapsforgeThemeCatalog.isBundledAssetTheme(MapsforgeThemeCatalog.OS_MAP_NIGHT_THEME_ID))
+        assertTrue(MapsforgeThemeCatalog.isBundledAssetTheme(MapsforgeThemeCatalog.HIKING_3D_THEME_ID))
     }
 
     @Test

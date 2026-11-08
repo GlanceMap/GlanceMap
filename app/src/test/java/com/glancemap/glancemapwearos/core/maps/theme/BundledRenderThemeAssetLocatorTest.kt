@@ -21,6 +21,10 @@ class BundledRenderThemeAssetLocatorTest {
             BundledRenderThemeAssetLocator.resolveKnownThemeIdOrNull(MapsforgeThemeCatalog.FRENCH_KISS_THEME_ID),
         )
         assertEquals(
+            MapsforgeThemeCatalog.HIKING_3D_THEME_ID,
+            BundledRenderThemeAssetLocator.resolveKnownThemeIdOrNull(MapsforgeThemeCatalog.HIKING_3D_THEME_ID),
+        )
+        assertEquals(
             MapsforgeThemeCatalog.TIRAMISU_THEME_ID,
             BundledRenderThemeAssetLocator.resolveKnownThemeIdOrNull(MapsforgeThemeCatalog.TIRAMISU_THEME_ID),
         )
