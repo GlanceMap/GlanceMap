@@ -9,6 +9,7 @@ import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import earth.worldwind.geom.AltitudeMode
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -148,13 +149,19 @@ class WorldWindHoldInteractionTest {
     fun panningAndLongPressOrbitCanAlternate() {
         launchWindow()
         composeRule.waitUntil(15_000) { window.engine.viewport.width > 0 && window.engine.viewport.height > 0 }
-        composeRule.runOnIdle { window.initialize(LatLong(45.0, 6.0), 45, 0f) }
+        composeRule.runOnIdle {
+            window.initialize(LatLong(45.0, 6.0), 45, 0f)
+            assertEquals(AltitudeMode.CLAMP_TO_GROUND, window.lookAt.altitudeMode)
+        }
         val distance = ViewConfiguration.get(window.context).scaledTouchSlop * 2f + 5f
         var downTime = SystemClock.uptimeMillis()
         send(downTime, MotionEvent.ACTION_DOWN, 40f, 80f)
         send(downTime, MotionEvent.ACTION_MOVE, 40f + distance, 80f)
         send(downTime, MotionEvent.ACTION_UP, 40f + distance, 80f)
-        composeRule.runOnIdle { assertEquals(1L, window.panCount.get()) }
+        composeRule.runOnIdle {
+            assertEquals(1L, window.panCount.get())
+            assertEquals(AltitudeMode.ABSOLUTE, window.lookAt.altitudeMode)
+        }
 
         downTime = SystemClock.uptimeMillis()
         send(downTime, MotionEvent.ACTION_DOWN, 40f, 80f)

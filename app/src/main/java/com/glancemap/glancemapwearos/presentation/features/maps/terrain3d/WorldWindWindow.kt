@@ -53,6 +53,16 @@ internal fun worldWindZoomByStep(
 
 internal fun worldWindViewingAngle(angle: Int): Double = sanitizeTerrain3dViewingAngle(angle).toDouble()
 
+internal fun worldWindKeepGestureHeight(
+    lookAt: LookAt,
+    groundElevation: Double,
+) {
+    if (lookAt.altitudeMode == AltitudeMode.CLAMP_TO_GROUND) {
+        lookAt.position.altitude = groundElevation
+        lookAt.altitudeMode = AltitudeMode.ABSOLUTE
+    }
+}
+
 internal fun worldWindShouldApplyBearing(
     degrees: Float,
     previous: Float?,
@@ -157,6 +167,15 @@ internal class WatchWorldWindWindow(
                     super.gestureDidBegin()
                     if (activeGestures == 1) {
                         beginLookAt.copy(this@WatchWorldWindWindow.lookAt)
+                        if (beginLookAt.altitudeMode == AltitudeMode.CLAMP_TO_GROUND) {
+                            worldWindKeepGestureHeight(
+                                beginLookAt,
+                                engine.globe.getElevation(
+                                    beginLookAt.position.latitude,
+                                    beginLookAt.position.longitude,
+                                ),
+                            )
+                        }
                         lookAt.copy(beginLookAt)
                     }
                 }

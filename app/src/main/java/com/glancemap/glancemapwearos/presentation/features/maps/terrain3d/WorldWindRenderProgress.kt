@@ -25,7 +25,8 @@ internal class WorldWindRenderProgress {
                 } else {
                     100
                 }
-            if (percentage < 100 || pendingElevation > 0 || pendingImagery > 0) {
+            val unseenImageryPending = visible.total == 0 && pendingImagery > 0
+            if (percentage < 100 || pendingElevation > 0 || unseenImageryPending) {
                 quietSince = null
                 percentage.coerceAtMost(99)
             } else {

@@ -13,7 +13,9 @@ are still required.
 
 `render_activity` records when the 3D loading ring starts or finishes, with the
 observed visible imagery, failed visible tiles and pending imagery/elevation
-counts. It does not prove that the GPU has presented a complete frame.
+counts. While loading, it also reports those counts and the ring percentage at
+most every five seconds, so long waits can be diagnosed. It does not prove that
+the GPU has presented a complete frame.
 `standby` records screen-off pause and wake within one session; compare session
 IDs, tile work, memory and wake timing on the physical watch. The session closes
 after 30 seconds off-screen, and Android can discard its EGL context earlier.

@@ -74,14 +74,19 @@ If the callback is delayed, movement timestamped after the hold duration enters
 orbit instead of cancelling it. Orbit remains active until the finger is lifted.
 Panning starts when movement passes the same threshold and applies the initial
 drag rather than discarding it. Each new gesture uses the current 3D look-at
-position as its anchor, including after orbit or a pan fling.
+position as its anchor, including after orbit or a pan fling. A ground-clamped
+anchor is converted to the starting ground height for the gesture, so panning
+does not repeatedly move the camera up and down with the terrain beneath it.
+WorldWind's camera collision protection remains active.
 The tools shortcut remains available in 3D; actions that start recording, guidance,
 or route tools retain the existing switch to 2D. The 3D indicator below the tools
 button cycles session-only 0°, 60°, and 80° viewing-angle presets; from the
 initial 45° view the first tap selects 60°. The loading ring spins until visible
 imagery can be counted, then shows the share of visible imagery tiles with
-textures. It remains below completion while imagery or elevation requests are
-outstanding and reaches a full ring after 500 ms without observed pending work.
+textures. It remains below completion while visible imagery is incomplete or
+elevation requests are outstanding, and reaches a full ring after 500 ms of quiet.
+Once all visible imagery textures are ready, unrelated imagery requests do not
+delay completion; pending elevation work still does.
 It can show partial progress again as panning or zooming requires more tiles.
 The indicator tracks current
 renderer observations, not a guarantee that the GPU has presented a complete

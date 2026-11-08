@@ -6,6 +6,23 @@ import org.junit.Test
 
 class WorldWindRenderProgressTest {
     @Test
+    fun completeVisibleImageryDoesNotWaitForUnrelatedImageryRequests() {
+        val progress = WorldWindRenderProgress()
+        val visible = WorldWindVisibleTiles(4, 4)
+        assertEquals(99, progress.update(visible, 0, 2, 0))
+        assertEquals(100, progress.update(visible, 0, 2, 500))
+        assertEquals(75, progress.update(WorldWindVisibleTiles(3, 4), 0, 2, 600))
+    }
+
+    @Test
+    fun unknownOrEmptyVisibilityStillWaitsForImageryWork() {
+        val progress = WorldWindRenderProgress()
+        assertNull(progress.update(null, 0, 1, 0))
+        assertEquals(99, progress.update(WorldWindVisibleTiles(0, 0), 0, 1, 100))
+        assertEquals(99, progress.update(WorldWindVisibleTiles(0, 0), 0, 1, 1000))
+    }
+
+    @Test
     fun reportsVisibleTileProgressAndRestartsForANewView() {
         val progress = WorldWindRenderProgress()
         assertNull(progress.update(null, pendingElevation = 0, pendingImagery = 0, nowMs = 0))
@@ -16,12 +33,12 @@ class WorldWindRenderProgressTest {
     }
 
     @Test
-    fun elevationAndImageryWorkPreventCompletionAndRestartTheQuietPeriod() {
+    fun elevationAndUnknownVisibleImageryWorkRestartTheQuietPeriod() {
         val progress = WorldWindRenderProgress()
         val visible = WorldWindVisibleTiles(4, 4)
         assertEquals(99, progress.update(visible, 1, 0, 0))
         assertEquals(99, progress.update(visible, 0, 0, 100))
-        assertEquals(99, progress.update(visible, 0, 1, 500))
+        assertEquals(99, progress.update(WorldWindVisibleTiles(0, 0), 0, 1, 500))
         assertEquals(99, progress.update(visible, 0, 0, 600))
         assertEquals(100, progress.update(visible, 0, 0, 1100))
     }

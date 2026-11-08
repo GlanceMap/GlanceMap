@@ -1,12 +1,38 @@
 package com.glancemap.glancemapwearos.presentation.features.maps.terrain3d
 
 import com.glancemap.glancemapwearos.core.maps.DEFAULT_TERRAIN_3D_VIEWING_ANGLE
+import earth.worldwind.geom.AltitudeMode
+import earth.worldwind.geom.Angle.Companion.degrees
+import earth.worldwind.geom.LookAt
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class WorldWindCameraTest {
+    @Test
+    fun `pan anchor keeps the starting ground height without changing camera orientation`() {
+        val lookAt = LookAt()
+        lookAt.set(
+            45.0.degrees,
+            6.0.degrees,
+            0.0,
+            AltitudeMode.CLAMP_TO_GROUND,
+            4000.0,
+            30.0.degrees,
+            45.0.degrees,
+            0.0.degrees,
+        )
+        worldWindKeepGestureHeight(lookAt, 1200.0)
+        assertEquals(AltitudeMode.ABSOLUTE, lookAt.altitudeMode)
+        assertEquals(1200.0, lookAt.position.altitude, 0.0)
+        assertEquals(4000.0, lookAt.range, 0.0)
+        assertEquals(30.0, lookAt.heading.inDegrees, 0.0)
+        assertEquals(45.0, lookAt.tilt.inDegrees, 0.0)
+        worldWindKeepGestureHeight(lookAt, 2200.0)
+        assertEquals(1200.0, lookAt.position.altitude, 0.0)
+    }
+
     @Test
     fun `compass bearing does not interrupt manual orbit and resumes afterwards`() {
         assertFalse(worldWindShouldApplyBearing(30f, 20f, manualOrbit = true))

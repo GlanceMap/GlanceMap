@@ -331,21 +331,27 @@ private suspend fun observeWorldWindRenderProgress(
     sessionId: String,
 ) {
     val progress = WorldWindRenderProgress()
+    var lastProgressLogAt: Long? = null
     while (currentCoroutineContext().isActive) {
+        val now = SystemClock.elapsedRealtime()
         val visible = imagery.visibleTiles.get()
         val pendingElevation = elevation.pendingGrids.get()
         val pendingImagery = imagery.outstandingRequests()
-        val percent = progress.update(visible, pendingElevation, pendingImagery, SystemClock.elapsedRealtime())
+        val percent = progress.update(visible, pendingElevation, pendingImagery, now)
         val renderError = (visible?.failed ?: 0) > 0
         val rendering = !renderError && percent != 100
-        if (session.rendering != rendering || session.renderError != renderError) {
+        val lastLog = lastProgressLogAt
+        val activeReportDue = rendering && (lastLog == null || now - lastLog >= 5_000)
+        if (session.rendering != rendering || session.renderError != renderError || activeReportDue) {
             DebugTelemetry.log(
                 TERRAIN_LOG_TAG,
                 "event=render_activity renderer=worldwind session_id=$sessionId " +
                     "active=$rendering visible_ready=${visible?.ready ?: 0} " +
                     "visible_total=${visible?.total ?: 0} visible_failed=${visible?.failed ?: 0} " +
-                    "imagery_pending=$pendingImagery elevation_pending=$pendingElevation",
+                    "imagery_pending=$pendingImagery elevation_pending=$pendingElevation " +
+                    "progress_percent=${percent ?: "unavailable"}",
             )
+            lastProgressLogAt = now
         }
         session.renderProgress = percent
         session.renderError = renderError
