@@ -31,6 +31,7 @@ internal class ReliefOverlayLayer(
     private val demRootDirs: List<File> = listOf(demRootDir),
     private val diskCacheRootDir: File? = null,
     cacheNamespace: String = "default",
+    demDiskCache: DemDiskCache? = null,
     private val onProcessingStateChanged: () -> Unit = {},
 ) : Layer() {
     companion object {
@@ -62,7 +63,7 @@ internal class ReliefOverlayLayer(
         private const val IDLE_FINE_PRIORITY_TILES = 8
     }
 
-    private val demRepository = ReliefDemRepository(demRootDirs = demRootDirs, tag = TAG)
+    private val demRepository = ReliefDemRepository(demRootDirs, TAG, diskCache = demDiskCache)
     private val diskCache =
         ReliefOverlayDiskCache(
             diskCacheRootDir = diskCacheRootDir,

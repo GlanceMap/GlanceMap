@@ -3,6 +3,7 @@ package com.glancemap.glancemapwearos.presentation.features.maps
 import android.content.Context
 import android.content.SharedPreferences
 import android.util.Log
+import com.glancemap.glancemapwearos.presentation.features.maps.terrain3d.WorldWindTileDiskCache
 import java.io.File
 import java.security.MessageDigest
 import java.util.Locale
@@ -97,6 +98,8 @@ internal fun captureMapRendererCacheDiagnostics(context: Context): MapRenderer.C
             },
         bundledThemeCacheDirCount = bundledThemeDirs.size,
         bundledThemeCacheTotalSizeBytes = bundledThemeDirs.sumOf { mapRendererDirectorySizeBytes(it) },
+        demDisk = DemDiskCache.shared(context).diagnostics(),
+        worldWindTileCacheSizeBytes = WorldWindTileDiskCache.shared(context).sizeBytes(),
     )
 }
 

@@ -52,6 +52,7 @@ data class DiagnosticsSettingsSnapshot(
     val keepAppOpen: Boolean,
     val gpsInAmbientMode: Boolean,
     val gpsDebugTelemetry: Boolean,
+    val terrainEnabled: Boolean = false,
     val diagnosticsCaptureMode: String = SettingsRepository.DEFAULT_DIAGNOSTICS_CAPTURE_MODE,
     val gpsPassiveLocationExperiment: Boolean,
     val backButtonExitsNavigation: Boolean,
@@ -820,6 +821,16 @@ object DiagnosticsExporter {
             writer.appendLine("reliefOverlayCacheSizeMb=${formatBytesToMb(cacheSnapshot.reliefOverlayCacheSizeBytes)}")
             writer.appendLine("bundledThemeCacheDirCount=${cacheSnapshot.bundledThemeCacheDirCount}")
             writer.appendLine("bundledThemeCacheTotalSizeMb=${formatBytesToMb(cacheSnapshot.bundledThemeCacheTotalSizeBytes)}")
+            val demDisk = cacheSnapshot.demDisk
+            writer.appendLine("demDiskCacheFileCount=${demDisk.fileCount}")
+            writer.appendLine("demDiskCacheSizeMb=${formatBytesToMb(demDisk.sizeBytes)}")
+            writer.appendLine("demDiskCacheLimitMb=${formatBytesToMb(demDisk.limitBytes)}")
+            writer.appendLine(
+                "demDiskSinceProcessStart=copies=${demDisk.copies} " +
+                    "copyMb=${formatBytesToMb(demDisk.copyBytes)} copyMs=${demDisk.copyMs} " +
+                    "hits=${demDisk.hits} fallbackTiles=${demDisk.fallbackTiles}",
+            )
+            writer.appendLine("worldWindTileCacheSizeMb=${formatBytesToMb(cacheSnapshot.worldWindTileCacheSizeBytes)}")
             if (cacheSnapshot.tileCacheBuckets.isEmpty()) {
                 writer.appendLine("tileCacheBuckets=none")
             } else {
@@ -931,6 +942,7 @@ object DiagnosticsExporter {
             writer.appendLine("gpsPositionFilterEnabled=true")
             writer.appendLine()
             writer.appendLine("Battery Benchmark Context")
+            writer.appendLine("terrainEnabled=${settings.terrainEnabled}")
             val batteryBenchmarkMode =
                 settings.diagnosticsCaptureMode == SettingsRepository.DIAGNOSTICS_CAPTURE_MODE_BATTERY
             writer.appendLine(

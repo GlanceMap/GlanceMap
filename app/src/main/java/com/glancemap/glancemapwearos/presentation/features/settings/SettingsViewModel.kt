@@ -797,6 +797,15 @@ class SettingsViewModel(
             settingsRepository.setNavigationMarkerAnchorMode(mode)
         }
 
+    val terrain3dEnabled: StateFlow<Boolean> =
+        settingsRepository.terrain3dEnabled
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
+    fun setTerrain3dEnabled(enabled: Boolean) =
+        viewModelScope.launch {
+            settingsRepository.setTerrain3dEnabled(enabled)
+        }
+
     val liveElevation: StateFlow<Boolean> =
         settingsRepository.liveElevation
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)

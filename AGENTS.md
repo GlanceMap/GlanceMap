@@ -16,9 +16,20 @@
 - Smallest correct diff wins only after understanding the affected flow.
 - Reuse repository patterns; do not add speculative abstractions, dependencies, infrastructure, or boilerplate.
 
+### Subsystem documentation
+
+Read the relevant documentation before changing a subsystem:
+
+- `docs/location/` for location/GPS changes;
+- `docs/compass/` for compass/sensor changes;
+- relevant files under `docs/architecture/` for navigation, recording/GPX, elevation, transfer, and architectural-flow changes; and
+- `docs/performance-benchmarking.md` for performance work.
+
+Update the corresponding documentation in the same PR when architecture boundaries, major flows, protocol responsibilities, thresholds, or documented hardware behavior change.
+
 ## Behavior preservation
 
-Do not change validated product behavior merely to satisfy formatting, static analysis, complexity, or code-size metrics. Preserve:
+Preserve validated product behavior during refactoring, simplification, optimization, dependency changes, and maintenance work; do not change it merely to satisfy formatting, static analysis, complexity, or code-size metrics. Minimal or smaller code is subordinate to validated behavior, hardware requirements, and documented subsystem contracts. Preserve:
 
 - recording/GPX, GPS/location continuity, sparse cadence, pause/resume, activity timing, distance, and sensor-source separation;
 - track smoothing and turn/switchback/detour safety, elevation/barometer fusion, map/navigation safety, and hardware calibration, heuristics, and thresholds.
@@ -43,6 +54,8 @@ Run focused tests in addition when changing behavior. Do not report work as comp
 ## Hardware and real-world validation
 
 CI does not substitute for real-device or real-world validation when behavior depends on GPS, sensors, barometer, hardware quirks, battery/runtime behavior, or physical-world calibration. Report required but unperformed validation explicitly.
+
+Do not claim performance, battery, location-accuracy, or heading improvements without comparable before/after evidence appropriate to the claim. Distinguish test results from real-device measurements.
 
 ## Branch and PR hygiene
 

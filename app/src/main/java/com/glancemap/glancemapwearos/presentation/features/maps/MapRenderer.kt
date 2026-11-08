@@ -196,6 +196,8 @@ class MapRenderer(
         val reliefOverlayCacheSizeBytes: Long,
         val bundledThemeCacheDirCount: Int,
         val bundledThemeCacheTotalSizeBytes: Long,
+        val demDisk: DemDiskDiagnostics,
+        val worldWindTileCacheSizeBytes: Long,
     )
 
     data class CacheBucketDiagnostics(
@@ -442,6 +444,21 @@ class MapRenderer(
                 demSource,
             ).also { configurationInterrupted = false }
         } ?: ThemeApplyResult()
+
+    internal suspend fun terrainSource(): TerrainSource? =
+        runRendererWork {
+            val path = currentMapPath ?: return@runRendererWork null
+            TerrainSource(
+                mapFile = File(path),
+                themeFile = currentThemeFile,
+                externalTheme = currentExternalTheme,
+                mapsforgeThemeName = currentMapsforgeThemeName,
+                bundledThemeId = currentBundledThemeId,
+                demSource = currentDemSource,
+                textScale = currentMapLabelTextScale,
+                hillShadingEnabled = currentHillShadingEnabled,
+            )
+        }
 
     suspend fun setElevationLabelUnitsMetric(isMetric: Boolean) {
         runRendererWork { setElevationLabelUnitsMetricLocked(isMetric) }
@@ -2087,6 +2104,7 @@ class MapRenderer(
                     demRootDirs = demRootDirs,
                     diskCacheRootDir = reliefOverlayCacheRootDir,
                     cacheNamespace = cacheNamespace,
+                    demDiskCache = DemDiskCache.shared(context),
                     onProcessingStateChanged = { publishReliefOverlayState() },
                 ).also { layer ->
                     // Keep above rendered map but below interactive overlays.
@@ -2116,7 +2134,12 @@ class MapRenderer(
 
     private fun getOrCreateLiveElevationSampler(): ReliefOverlayLayer? {
         if (liveElevationSampler == null) {
-            liveElevationSampler = ReliefOverlayLayer(demRootDir = demRootDir, demRootDirs = demRootDirs)
+            liveElevationSampler =
+                ReliefOverlayLayer(
+                    demRootDir = demRootDir,
+                    demRootDirs = demRootDirs,
+                    demDiskCache = DemDiskCache.shared(context),
+                )
         }
         return liveElevationSampler
     }

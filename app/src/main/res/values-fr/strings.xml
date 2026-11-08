@@ -1199,6 +1199,10 @@
     <string name="navigate_s">"S"</string>
     <string name="navigate_saving_poi">"Enregistrement du POI..."</string>
     <string name="navigate_slope_rendering_in_progress">"Rendu des pentes en cours"</string>
+    <string name="navigate_3d_terrain_loading">Chargement du terrain 3D</string>
+    <string name="navigate_3d_terrain_partial_error">Certaines tuiles de la carte 3D n’ont pas pu être chargées</string>
+    <string name="maps_3d_terrain_dem_required">Le terrain 3D nécessite des données d’altitude pour cette carte. Ouvre Cartes et touche DEM pour les télécharger.</string>
+    <string name="maps_terrain_features_disabled_no_dem">Aucune donnée d’altitude n’est disponible pour cette carte. Le terrain 3D, l’ombrage et les pentes ont été désactivés. Touche DEM pour les télécharger.</string>
     <string name="navigate_start_from_nearest_point">"Partir du point le plus proche ?"</string>
     <string name="navigate_stay_open">"Rester ouvert"</string>
     <string name="navigate_stay_uses_notifications_while_glancemap_remains_active">"Rester utilise les notifications tant que GlanceMap reste actif."</string>
@@ -2039,4 +2043,7 @@
     <string name="gpx_activity_profile_description_with_gaps">"Profil altimétrique, %1$s, de %2$s à %3$s ; les lignes grises indiquent des coupures"</string>
     <string name="settings_back_closes_app">"Retour ferme l’appli"</string>
     <string name="settings_close_directly_from_navigate">"Fermer directement depuis Naviguer"</string>
+    <string name="map_terrain_3d_experimental">3D - Bêta</string>
+    <string name="map_terrain_3d_hiking_theme">Thème randonnée 3D</string>
+    <string name="map_3d_viewing_angle">Angle de vue 3D</string>
 </resources>

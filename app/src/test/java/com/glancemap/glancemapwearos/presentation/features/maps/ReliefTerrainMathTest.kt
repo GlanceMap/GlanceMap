@@ -3,6 +3,7 @@ package com.glancemap.glancemapwearos.presentation.features.maps
 import com.glancemap.glancemapwearos.core.maps.DemSource
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
@@ -10,6 +11,14 @@ import java.io.File
 import kotlin.math.tan
 
 class ReliefTerrainMathTest {
+    @Test
+    fun primitiveInterpolationPreservesValuesAndVoidSamples() {
+        val tile = DemTileData(1, 2, shortArrayOf(100, DEM_VOID_SAMPLE, 200, 300))
+        assertEquals(200.0, interpolateDemElevationOrNaN(tile, 45, 6, 45.0, 6.0), 0.0)
+        assertEquals(200.0, interpolateDemElevationOrNaN(tile, 45, 6, 45.5, 6.5), 0.0)
+        assertTrue(interpolateDemElevationOrNaN(tile, 45, 6, 46.0, 7.0).isNaN())
+    }
+
     @get:Rule
     val temporaryFolder = TemporaryFolder()
 

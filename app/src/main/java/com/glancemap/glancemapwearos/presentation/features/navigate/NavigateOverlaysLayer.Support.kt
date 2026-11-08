@@ -1,7 +1,11 @@
 package com.glancemap.glancemapwearos.presentation.features.navigate
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -61,6 +65,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
@@ -111,6 +116,53 @@ internal fun BoxScope.PanningDistanceGuide(
     }
 }
 
+// Reuse the slope indicator layout and preserve its existing rendering behavior.
+
+/** Slope loading shorter than this shows no indicator, so quick loads do not flash it. */
+internal const val SLOPE_INDICATOR_DELAY_MS = 1_000L
+
+/**
+ * True once [active] has stayed true for [delayMillis], and false as soon as it turns false, so
+ * brief work shows nothing while slower work still shows its progress.
+ */
+@Composable
+internal fun rememberShownWhenSlow(
+    active: Boolean,
+    delayMillis: Long = SLOPE_INDICATOR_DELAY_MS,
+): Boolean {
+    var slow by remember { mutableStateOf(false) }
+    LaunchedEffect(active) {
+        slow = false
+        if (active) {
+            delay(delayMillis)
+            slow = true
+        }
+    }
+    return active && slow
+}
+
+/** Radius of the ring through the side control buttons, used to place the terrain indicator. */
+internal fun terrainIndicatorControlRadius(
+    maxWidth: Dp,
+    maxHeight: Dp,
+    sideButtonEdgePadding: Dp,
+    sideButtonSize: Dp,
+): Dp = minOf(maxWidth, maxHeight) / 2 - sideButtonEdgePadding - sideButtonSize / 2 - 1.dp
+
+/**
+ * Places the 3D and slope indicators at the same spot on the control ring, 30° below the tools
+ * button, when applied to an indicator aligned to the end of a full-size box.
+ */
+internal fun Modifier.terrainIndicatorRingOffset(
+    maxWidth: Dp,
+    controlRadius: Dp,
+): Modifier =
+    offset(
+        x = -(maxWidth / 2 - controlRadius * 0.8660254f - 24.dp),
+        y = controlRadius / 2,
+    )
+
+@Suppress("CyclomaticComplexMethod", "FunctionNaming", "LongMethod", "LongParameterList")
 @Composable
 internal fun BoxScope.SlopeOverlayStatusIndicator(
     visible: Boolean,
@@ -118,10 +170,13 @@ internal fun BoxScope.SlopeOverlayStatusIndicator(
     progressPercent: Int?,
     enabled: Boolean,
     screenSize: WearScreenSize,
-    sideButtonEdgePadding: Dp,
-    sideButtonSize: Dp,
     modifier: Modifier = Modifier,
+    terrain3d: Boolean = false,
+    renderError: Boolean = false,
+    onClick: (() -> Unit)? = null,
 ) {
+    val terrainError = terrain3d && renderError
+    val terrainWaitingForProgress = terrain3d && processing && progressPercent == null
     val slopeIndicatorButtonSize =
         when (screenSize) {
             WearScreenSize.LARGE -> 28.dp
@@ -134,65 +189,102 @@ internal fun BoxScope.SlopeOverlayStatusIndicator(
             WearScreenSize.MEDIUM -> 15.dp
             WearScreenSize.SMALL -> 14.dp
         }
-    val slopeIndicatorToolGap =
-        when (screenSize) {
-            WearScreenSize.LARGE -> 5.dp
-            WearScreenSize.MEDIUM -> 4.dp
-            WearScreenSize.SMALL -> 3.dp
-        }
-    val slopeIndicatorModifier =
-        modifier
-            .align(Alignment.CenterEnd)
-            .padding(end = sideButtonEdgePadding + sideButtonSize + slopeIndicatorToolGap)
+    val slopeIndicatorModifier = modifier.align(Alignment.CenterEnd)
 
     AnimatedVisibility(
-        visible = visible && enabled && processing,
+        visible = visible && enabled && (processing || terrain3d),
         enter = fadeIn(tween(120)),
         exit = fadeOut(tween(180)),
         modifier = slopeIndicatorModifier,
     ) {
-        val progress = (progressPercent ?: 0).coerceIn(0, 100)
+        val progress = if (terrain3d && !processing) 100 else (progressPercent ?: 0).coerceIn(0, 100)
         val sweepDeg by animateFloatAsState(
             targetValue = 360f * (progress / 100f),
             animationSpec = tween(durationMillis = 220),
             label = "slope_render_progress_sweep",
         )
+        val startAngle =
+            if (terrainWaitingForProgress && !terrainError) {
+                val transition = rememberInfiniteTransition(label = "terrain_loading")
+                val angle by transition.animateFloat(
+                    initialValue = -90f,
+                    targetValue = 270f,
+                    animationSpec = infiniteRepeatable(tween(1000, easing = LinearEasing)),
+                    label = "terrain_loading_angle",
+                )
+                angle
+            } else {
+                -90f
+            }
 
-        Box(
-            modifier =
-                Modifier
-                    .size(slopeIndicatorButtonSize)
-                    .background(Color.Black.copy(alpha = 0.7f), CircleShape),
-            contentAlignment = Alignment.Center,
-        ) {
-            Canvas(
+        val angleLabel = stringResource(R.string.map_3d_viewing_angle)
+        // The slope and 3D indicators share one 48 dp box so their rings land on the same spot.
+        val target =
+            if (onClick != null) {
+                Modifier.size(48.dp).clickable(role = Role.Button, onClickLabel = angleLabel, onClick = onClick)
+            } else {
+                Modifier.size(48.dp)
+            }
+        Box(modifier = target, contentAlignment = Alignment.Center) {
+            Box(
                 modifier =
                     Modifier
-                        .fillMaxSize()
-                        .padding(1.dp),
+                        .size(slopeIndicatorButtonSize)
+                        .background(Color.Black.copy(alpha = 0.7f), CircleShape),
+                contentAlignment = Alignment.Center,
             ) {
-                val ringStroke = (size.minDimension * 0.12f).coerceAtLeast(1.5f)
-                drawArc(
-                    color = Color.White.copy(alpha = 0.25f),
-                    startAngle = -90f,
-                    sweepAngle = 360f,
-                    useCenter = false,
-                    style = Stroke(width = ringStroke),
-                )
-                drawArc(
-                    color = Color(0xFFFFB300),
-                    startAngle = -90f,
-                    sweepAngle = sweepDeg,
-                    useCenter = false,
-                    style = Stroke(width = ringStroke, cap = StrokeCap.Round),
-                )
+                Canvas(
+                    modifier =
+                        Modifier
+                            .fillMaxSize()
+                            .padding(1.dp),
+                ) {
+                    val ringStroke = (size.minDimension * 0.12f).coerceAtLeast(1.5f)
+                    drawArc(
+                        color = Color.White.copy(alpha = 0.25f),
+                        startAngle = -90f,
+                        sweepAngle = 360f,
+                        useCenter = false,
+                        style = Stroke(width = ringStroke),
+                    )
+                    drawArc(
+                        color = if (terrainError) Color(0xFFE53935) else Color(0xFFFFB300),
+                        startAngle = startAngle,
+                        sweepAngle =
+                            when {
+                                terrainError -> 360f
+                                terrainWaitingForProgress -> 100f
+                                else -> sweepDeg
+                            },
+                        useCenter = false,
+                        style = Stroke(width = ringStroke, cap = StrokeCap.Round),
+                    )
+                }
+                if (terrain3d) {
+                    val description =
+                        stringResource(
+                            when {
+                                terrainError -> R.string.navigate_3d_terrain_partial_error
+                                processing -> R.string.navigate_3d_terrain_loading
+                                else -> R.string.map_terrain_3d_experimental
+                            },
+                        )
+                    Text(
+                        text = if (terrainError) "3D!" else "3D",
+                        modifier = Modifier.semantics { contentDescription = description },
+                        color = if (terrainError) Color(0xFFE53935) else Color(0xFFFFB300),
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
+                } else {
+                    Icon(
+                        imageVector = Icons.Default.Landscape,
+                        contentDescription = stringResource(R.string.navigate_slope_rendering_in_progress),
+                        modifier = Modifier.size(slopeIndicatorIconSize),
+                        tint = Color(0xFFFFB300),
+                    )
+                }
             }
-            Icon(
-                imageVector = Icons.Default.Landscape,
-                contentDescription = stringResource(R.string.navigate_slope_rendering_in_progress),
-                modifier = Modifier.size(slopeIndicatorIconSize),
-                tint = Color(0xFFFFB300),
-            )
         }
     }
 }
@@ -718,6 +810,15 @@ private enum class NavButtonTrustState {
     UNAVAILABLE,
 }
 
+internal enum class NavModeAction {
+    RECENTER,
+    TOGGLE_ORIENTATION,
+}
+
+internal fun navModeButtonAction(
+    navMode: NavMode,
+): NavModeAction = if (navMode == NavMode.PANNING) NavModeAction.RECENTER else NavModeAction.TOGGLE_ORIENTATION
+
 @Suppress("CyclomaticComplexMethod", "FunctionName", "FunctionNaming", "LongMethod", "LongParameterList")
 @Composable
 internal fun BoxScope.NavModeButtonOverlay(
@@ -740,6 +841,7 @@ internal fun BoxScope.NavModeButtonOverlay(
     onToggleOrientation: () -> Unit,
     navigationMarkerAnchorMode: String,
     isScreenInteractive: Boolean,
+    onTerrainRecenter: ((LatLong) -> Unit)? = null,
 ) {
     if (!visible) return
     val navIcon =
@@ -832,15 +934,21 @@ internal fun BoxScope.NavModeButtonOverlay(
                     onLongClickLabel = toggleAutoRecenterLabel,
                     hapticFeedbackEnabled = false,
                     onLongClick = {
-                        triggerHaptic()
-                        autoRecenterFeedback = !autoRecenterEnabled
-                        onToggleAutoRecenter()
+                        if (!isOfflineMode) {
+                            triggerHaptic()
+                            autoRecenterFeedback = !autoRecenterEnabled
+                            onToggleAutoRecenter()
+                        }
                     },
                     onClick = {
                         triggerHaptic()
-                        if (navMode == NavMode.PANNING) {
+                        if (navModeButtonAction(navMode) == NavModeAction.RECENTER) {
                             lastKnownLocation?.let {
-                                mapView.setCenterForNavigationMarker(it, navigationMarkerAnchorMode)
+                                if (onTerrainRecenter != null) {
+                                    onTerrainRecenter(it)
+                                } else {
+                                    mapView.setCenterForNavigationMarker(it, navigationMarkerAnchorMode)
+                                }
                             }
                             onRecenter()
                             onRecenterRequested()

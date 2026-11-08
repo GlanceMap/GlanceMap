@@ -1246,6 +1246,10 @@
     <string name="navigate_s">"S"</string>
     <string name="navigate_saving_poi">"Zapisywanie POI..."</string>
     <string name="navigate_slope_rendering_in_progress">"Renderowanie nachylenia"</string>
+    <string name="navigate_3d_terrain_loading">Ładowanie terenu 3D</string>
+    <string name="navigate_3d_terrain_partial_error">Nie udało się załadować niektórych kafelków mapy 3D</string>
+    <string name="maps_3d_terrain_dem_required">Teren 3D wymaga danych wysokościowych dla tej mapy. Otwórz Mapy i dotknij DEM, aby je pobrać.</string>
+    <string name="maps_terrain_features_disabled_no_dem">Brak danych wysokościowych dla tej mapy. Teren 3D, cieniowanie i nachylenie zostały wyłączone. Dotknij DEM, aby je pobrać.</string>
     <string name="navigate_start_from_nearest_point">"Zacząć od najbliższego punktu?"</string>
     <string name="navigate_stay_open">"Pozostaw otwarte"</string>
     <string name="navigate_stay_uses_notifications_while_glancemap_remains_active">"Zostań używa powiadomień, gdy GlanceMap pozostaje aktywne."</string>
@@ -2095,4 +2099,7 @@
     <string name="gpx_activity_profile_description_with_gaps">"Profil wysokości, %1$s, od %2$s do %3$s; szare linie oznaczają luki"</string>
     <string name="settings_back_closes_app">"Wstecz zamyka aplikację"</string>
     <string name="settings_close_directly_from_navigate">"Zamknij bezpośrednio z Nawigacji"</string>
+    <string name="map_terrain_3d_experimental">3D - Beta</string>
+    <string name="map_terrain_3d_hiking_theme">Turystyczny motyw 3D</string>
+    <string name="map_3d_viewing_angle">Kąt widzenia 3D</string>
 </resources>

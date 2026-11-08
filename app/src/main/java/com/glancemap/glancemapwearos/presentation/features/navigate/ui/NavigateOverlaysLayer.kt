@@ -7,9 +7,9 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -205,25 +205,6 @@ internal fun BoxScope.NavigateOverlaysLayer(
     var showRouteCompleteRecordingPrompt by remember(traceRecordingState.startedAtMillis) {
         mutableStateOf(false)
     }
-    val slopeIndicatorButtonSize =
-        when (screenSize) {
-            WearScreenSize.LARGE -> 28.dp
-            WearScreenSize.MEDIUM -> 26.dp
-            WearScreenSize.SMALL -> 24.dp
-        }
-    val slopeIndicatorToolGap =
-        when (screenSize) {
-            WearScreenSize.LARGE -> 5.dp
-            WearScreenSize.MEDIUM -> 4.dp
-            WearScreenSize.SMALL -> 3.dp
-        }
-    val showSlopeIndicatorAccessory = slopeOverlayToggleEnabled && slopeOverlayEnabled && slopeOverlayProcessing
-    val routeShortcutAccessoryWidth =
-        if (showSlopeIndicatorAccessory) {
-            slopeIndicatorButtonSize + slopeIndicatorToolGap
-        } else {
-            0.dp
-        }
     val suppressLiveMetricsForPoi = poiTapMessage != null || !mapChrome.shows(MapFocusControl.LIVE_METRICS)
     val suppressCompactGuidancePopup =
         shouldSuppressCompactGuidancePopup(
@@ -325,27 +306,20 @@ internal fun BoxScope.NavigateOverlaysLayer(
             },
         endInset =
             sideButtonEdgePadding +
-                (if (mapFocusMode) 48.dp else sideButtonSize + routeShortcutAccessoryWidth) + 8.dp,
+                (if (mapFocusMode) 48.dp else sideButtonSize) + 8.dp,
     )
 
-    SlopeOverlayStatusIndicator(
-        visible = slopeOverlayToggleEnabled,
-        processing = slopeOverlayProcessing,
-        progressPercent = slopeOverlayProgressPercent,
-        enabled = slopeOverlayEnabled,
-        screenSize = screenSize,
-        sideButtonEdgePadding = sideButtonEdgePadding,
-        sideButtonSize = if (mapFocusMode) 48.dp else sideButtonSize,
-        modifier =
-            Modifier.offset(
-                y =
-                    if (shortcutTrayExpanded && mapChrome.showToolsControl) {
-                        -(48.dp + slopeIndicatorButtonSize / 2 + 4.dp)
-                    } else {
-                        0.dp
-                    },
-            ),
-    )
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val controlRadius = terrainIndicatorControlRadius(maxWidth, maxHeight, sideButtonEdgePadding, sideButtonSize)
+        SlopeOverlayStatusIndicator(
+            visible = slopeOverlayToggleEnabled,
+            processing = rememberShownWhenSlow(slopeOverlayProcessing),
+            progressPercent = slopeOverlayProgressPercent,
+            enabled = slopeOverlayEnabled,
+            screenSize = screenSize,
+            modifier = Modifier.terrainIndicatorRingOffset(maxWidth, controlRadius),
+        )
+    }
 
     PanningLiveMetricsOverlay(
         navMode = navMode,

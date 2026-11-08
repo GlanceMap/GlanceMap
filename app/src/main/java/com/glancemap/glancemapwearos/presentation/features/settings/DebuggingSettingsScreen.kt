@@ -141,6 +141,7 @@ fun DebuggingSettingsScreen(
     val turnByTurnBrouterGuideBackEnabled by viewModel.turnByTurnBrouterGuideBackEnabled.collectAsState()
     val turnByTurnRouteStartBehavior by viewModel.turnByTurnRouteStartBehavior.collectAsState()
     val turnByTurnReverseSuggestionMode by viewModel.turnByTurnReverseSuggestionMode.collectAsState()
+    val terrainEnabled by viewModel.terrain3dEnabled.collectAsState()
     val recordingSampleIntervalSeconds by viewModel.recordingSampleIntervalSeconds.collectAsState()
     val recordingScreenOffSampleIntervalSeconds by viewModel.recordingScreenOffSampleIntervalSeconds.collectAsState()
     val recordingAutoPauseMode by viewModel.recordingAutoPauseMode.collectAsState()
@@ -536,6 +537,7 @@ fun DebuggingSettingsScreen(
                                                 keepAppOpen = keepAppOpen,
                                                 gpsInAmbientMode = gpsInAmbientMode,
                                                 gpsDebugTelemetry = captureWasEnabled,
+                                                terrainEnabled = terrainEnabled,
                                                 diagnosticsCaptureMode = diagnosticsCaptureMode,
                                                 gpsPassiveLocationExperiment = gpsPassiveLocationExperiment,
                                                 backButtonExitsNavigation = backButtonExitsNavigation,

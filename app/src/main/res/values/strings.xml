@@ -1169,6 +1169,10 @@
     <string name="navigate_s">"S"</string>
     <string name="navigate_saving_poi">"Saving POI..."</string>
     <string name="navigate_slope_rendering_in_progress">"Slope rendering in progress"</string>
+    <string name="navigate_3d_terrain_loading">Loading 3D terrain</string>
+    <string name="navigate_3d_terrain_partial_error">Some 3D map tiles could not be loaded</string>
+    <string name="maps_3d_terrain_dem_required">3D terrain needs elevation data for this map. Open Maps and tap DEM to download it.</string>
+    <string name="maps_terrain_features_disabled_no_dem">No elevation data is available for this map. 3D terrain, hill shading and slope overlay were turned off. Tap DEM to download it.</string>
     <string name="navigate_start_from_nearest_point">"Start from nearest point?"</string>
     <string name="navigate_stay_open">"Stay open"</string>
     <string name="navigate_stay_uses_notifications_while_glancemap_remains_active">"Stay uses notifications while GlanceMap remains active."</string>
@@ -2006,4 +2010,7 @@
     <string name="gpx_activity_profile_description_with_gaps">"Elevation profile, %1$s, %2$s to %3$s; grey lines indicate gaps"</string>
     <string name="settings_back_closes_app">"Back closes app"</string>
     <string name="settings_close_directly_from_navigate">"Close directly from Navigate"</string>
+    <string name="map_terrain_3d_experimental">3D - Beta</string>
+    <string name="map_terrain_3d_hiking_theme">3D hiking theme</string>
+    <string name="map_3d_viewing_angle">3D viewing angle</string>
 </resources>
