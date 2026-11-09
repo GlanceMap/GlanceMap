@@ -1452,6 +1452,8 @@
     <string name="recording_speed_avg">"Velocidad (media)"</string>
     <string name="recording_speed_max">"Velocidad (máx.)"</string>
     <string name="recording_start_anyway">"Iniciar igualmente"</string>
+    <string name="recording_battery_saver_on">"Ahorro de batería activado"</string>
+    <string name="recording_battery_saver_can_stop_gps_screen_off">"El ahorro de batería puede detener el GPS con la pantalla apagada y dejar huecos en tu ruta. Desactívalo para una grabación completa o empieza de todos modos."</string>
     <string name="recording_start_pending">"Iniciando REC…"</string>
     <string name="recording_this_recording_will_be_permanently_deleted_and_cannot_be_recovered">"Este registro será eliminado de forma permanente y no puede recuperarse."</string>
     <string name="recording_time_active">"Tiempo (Activo)"</string>

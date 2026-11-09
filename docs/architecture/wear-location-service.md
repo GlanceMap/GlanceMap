@@ -108,6 +108,14 @@ after Bluetooth was turned off. A phone reconnect returns to fused location at t
 check, for battery life and accuracy, as outside recordings; with Watch GPS only enabled
 the phone is never used. The extra checks' battery cost has not been measured.
 
+## Recording start with Battery Saver
+
+Some watches stop GPS while the screen is off when Battery Saver is on. After the existing
+sensor and GPS start checks, REC asks once ("Battery Saver on": Start anyway / Cancel)
+when `PowerManager.isPowerSaveMode` is true; an unknown state does not block REC. The
+choice is not remembered, and `recordingPowerSaveModeAtStart` still records the state in
+the GPX. Which watches actually stop GPS in this mode has not been measured.
+
 ## Recording GNSS evidence
 
 `GnssDiagnosticsCoordinator` registers its `GnssStatus` callback only while full diagnostics

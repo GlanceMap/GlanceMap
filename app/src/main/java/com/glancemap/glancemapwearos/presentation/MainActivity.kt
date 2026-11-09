@@ -171,6 +171,8 @@ class MainActivity : ComponentActivity() {
             val recordingStartWarning by appContainer.traceRecordingViewModel.startWarning.collectAsState()
             val recordingLocationStartWarning by
                 appContainer.traceRecordingViewModel.locationStartWarning.collectAsState()
+            val recordingBatterySaverStartWarning by
+                appContainer.traceRecordingViewModel.batterySaverStartWarning.collectAsState()
             val recordingStartLocationPending by
                 appContainer.traceRecordingViewModel.recordingStartLocationPending.collectAsState()
             val turnByTurnGuidanceSession by appContainer.gpxViewModel.turnByTurnGuidanceSession.collectAsState()
@@ -1260,6 +1262,29 @@ class MainActivity : ComponentActivity() {
                             stringResource(
                                 R.string.recording_current_gps_accuracy_is_too_low_recheck_or_start_anyway,
                             ),
+                        textAlign = TextAlign.Center,
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
+                WearActionDialog(
+                    visible = recordingBatterySaverStartWarning,
+                    title = stringResource(R.string.recording_battery_saver_on),
+                    onDismissRequest = appContainer.traceRecordingViewModel::cancelStartRecordingWithBatterySaver,
+                    buttons =
+                        listOf(
+                            WearActionDialogButton(
+                                text = stringResource(R.string.recording_start_anyway),
+                                onClick = appContainer.traceRecordingViewModel::startRecordingWithBatterySaver,
+                            ),
+                            WearActionDialogButton(
+                                text = stringResource(R.string.common_cancel),
+                                onClick = appContainer.traceRecordingViewModel::cancelStartRecordingWithBatterySaver,
+                                role = WearActionButtonRole.Secondary,
+                            ),
+                        ),
+                ) {
+                    Text(
+                        text = stringResource(R.string.recording_battery_saver_can_stop_gps_screen_off),
                         textAlign = TextAlign.Center,
                         style = MaterialTheme.typography.bodyMedium,
                     )

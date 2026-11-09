@@ -1398,6 +1398,8 @@
     <string name="recording_speed_avg">"Geschwindigkeit (Ø)"</string>
     <string name="recording_speed_max">"Geschwindigkeit (max.)"</string>
     <string name="recording_start_anyway">"Trotzdem starten"</string>
+    <string name="recording_battery_saver_on">"Energiesparmodus aktiv"</string>
+    <string name="recording_battery_saver_can_stop_gps_screen_off">"Der Energiesparmodus kann GPS bei ausgeschaltetem Bildschirm stoppen und Lücken in deinem Track verursachen. Schalte ihn für eine vollständige Aufzeichnung aus oder starte trotzdem."</string>
     <string name="recording_start_pending">"Starte REC…"</string>
     <string name="recording_this_recording_will_be_permanently_deleted_and_cannot_be_recovered">"Diese Aufzeichnung wird dauerhaft gelöscht und kann nicht wiederhergestellt werden."</string>
     <string name="recording_time_active">"Zeit (Aktiv)"</string>

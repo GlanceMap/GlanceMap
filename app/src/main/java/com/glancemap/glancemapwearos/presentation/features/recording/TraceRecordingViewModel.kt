@@ -118,6 +118,10 @@ class TraceRecordingViewModel(
             )
     private val _startWarning = MutableStateFlow<RecordingStartWarning?>(null)
     val startWarning: StateFlow<RecordingStartWarning?> = _startWarning.asStateFlow()
+    private val _batterySaverStartWarning = MutableStateFlow(false)
+
+    /** Battery Saver can stop GPS while the screen is off, so REC asks before starting with it on. */
+    val batterySaverStartWarning: StateFlow<Boolean> = _batterySaverStartWarning.asStateFlow()
     private val _locationStartWarning = MutableStateFlow<RecordingLocationStartWarning?>(null)
     val locationStartWarning: StateFlow<RecordingLocationStartWarning?> = _locationStartWarning.asStateFlow()
     private val _recordingStartLocationPending = MutableStateFlow(false)
@@ -474,6 +478,7 @@ class TraceRecordingViewModel(
         if (state.active || state.saving) return true
         return _startWarning.value != null ||
             _locationStartWarning.value != null ||
+            _batterySaverStartWarning.value ||
             pendingRecordingStartSource != null
     }
 
@@ -519,7 +524,7 @@ class TraceRecordingViewModel(
             return
         }
 
-        startRecordingNow()
+        startRecordingAfterBatterySaverPreflight()
     }
 
     private fun MutableSet<String>.addRecentlyAvailableAddress(address: String?) {
@@ -536,7 +541,7 @@ class TraceRecordingViewModel(
                 "unlinked=${warning.unlinkedDevices.size} disconnected=${warning.disconnectedDevices.size}",
         )
         if (ensureLocationReadyForRecordingStart(source = "external_sensor_warning_confirm")) {
-            startRecordingNow()
+            startRecordingAfterBatterySaverPreflight()
         }
     }
 
@@ -562,7 +567,7 @@ class TraceRecordingViewModel(
             settingsRepository.setRecordingDistanceSource(SettingsRepository.RECORDING_SENSOR_SOURCE_WATCH_GPS)
             settingsRepository.setRecordingStepsSource(SettingsRepository.RECORDING_SENSOR_SOURCE_WATCH_GPS)
             if (ensureLocationReadyForRecordingStart(source = "external_sensor_warning_use_watch")) {
-                startRecordingNow()
+                startRecordingAfterBatterySaverPreflight()
             }
         }
     }
@@ -611,6 +616,34 @@ class TraceRecordingViewModel(
                 intervalMs = sanitizedIntervalMs,
             )
         }
+    }
+
+    private fun startRecordingAfterBatterySaverPreflight() {
+        val powerSaveMode =
+            runtimeDependencies.applicationContext
+                ?.getSystemService(PowerManager::class.java)
+                ?.isPowerSaveMode
+        if (shouldWarnBatterySaverAtRecordingStart(powerSaveMode)) {
+            _batterySaverStartWarning.value = true
+            DebugTelemetry.log("TraceRecording", "event=battery_saver_start_warning")
+            return
+        }
+        startRecordingNow()
+    }
+
+    fun startRecordingWithBatterySaver() {
+        if (!_batterySaverStartWarning.value) return
+        _batterySaverStartWarning.value = false
+        val state = _uiState.value
+        if (state.active || state.saving) return
+        DebugTelemetry.log("TraceRecording", "event=battery_saver_start_warning_confirmed")
+        startRecordingNow()
+    }
+
+    fun cancelStartRecordingWithBatterySaver() {
+        if (!_batterySaverStartWarning.value) return
+        _batterySaverStartWarning.value = false
+        DebugTelemetry.log("TraceRecording", "event=battery_saver_start_warning_cancelled")
     }
 
     private fun startRecordingNow() {

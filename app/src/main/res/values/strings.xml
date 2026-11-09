@@ -1422,6 +1422,8 @@
     <string name="recording_speed_avg">"Speed (Avg)"</string>
     <string name="recording_speed_max">"Speed (Max)"</string>
     <string name="recording_start_anyway">"Start anyway"</string>
+    <string name="recording_battery_saver_on">"Battery Saver on"</string>
+    <string name="recording_battery_saver_can_stop_gps_screen_off">"Battery Saver can stop GPS while the screen is off, leaving gaps in your track. Turn it off for a complete recording, or start anyway."</string>
     <string name="recording_start_pending">"Starting REC…"</string>
     <string name="recording_this_recording_will_be_permanently_deleted_and_cannot_be_recovered">"This recording will be permanently deleted and cannot be recovered."</string>
     <string name="recording_time_active">"Time (Active)"</string>

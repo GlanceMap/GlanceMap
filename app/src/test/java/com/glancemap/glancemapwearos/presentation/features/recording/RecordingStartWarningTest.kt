@@ -169,4 +169,11 @@ class RecordingStartWarningTest {
             ),
         )
     }
+
+    @Test
+    fun onlyAConfirmedBatterySaverAsksBeforeStartingRec() {
+        assertTrue(shouldWarnBatterySaverAtRecordingStart(true))
+        assertFalse(shouldWarnBatterySaverAtRecordingStart(false))
+        assertFalse(shouldWarnBatterySaverAtRecordingStart(null))
+    }
 }
