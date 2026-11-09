@@ -2,8 +2,10 @@
 <resources>
     <string name="watch_whats_new_title">Neu in %1$s</string>
     <string-array name="watch_whats_new_notes">
-        <item>Verbesserte Zuverlässigkeit der Aktivitätsaufzeichnung, Trittfrequenzverarbeitung und Wiederherstellung der Herzfrequenz.</item>
-        <item>Verbesserte Downloads und Entpackung von Offline-Kartenpaketen, auch bei ausgeschaltetem Bildschirm.</item>
+        <item>Experimentelles 3D-Gelände und ein Wanderthema hinzugefügt.</item>
+        <item>Aufzeichnung von GPS-Lücken und Wechsel der Standortquelle verbessert.</item>
+        <item>Lange Beschriftungen auf der Uhr werden nun gescrollt.</item>
+        <item>Downloads und Entpackung von Offline-Kartenpaketen verbessert.</item>
         <item>Die Kartenansicht bleibt beim Wechsel zwischen Menüs und Dashboards erhalten.</item>
         <item>Verbesserte GPX-Höhenanzeige und zuverlässigere Übertragung.</item>
     </string-array>

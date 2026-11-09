@@ -2,8 +2,10 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
     <string name="watch_whats_new_title">Nowości w wersji %1$s</string>
     <string-array name="watch_whats_new_notes">
-        <item>Poprawiono niezawodność rejestrowania aktywności, obsługę kadencji i przywracanie pomiaru tętna.</item>
-        <item>Usprawniono pobieranie i rozpakowywanie pakietów map offline, także przy wyłączonym ekranie.</item>
+        <item>Dodano eksperymentalny teren 3D i motyw turystyczny.</item>
+        <item>Ulepszono zapisywanie przerw GPS i zmianę źródła lokalizacji.</item>
+        <item>Długie etykiety przewijają się na ekranach zegarka.</item>
+        <item>Usprawniono pobieranie i rozpakowywanie pakietów map offline.</item>
         <item>Widok mapy jest zachowywany podczas przechodzenia między menu i panelami.</item>
         <item>Poprawiono wyświetlanie wysokości GPX i niezawodność przesyłania.</item>
     </string-array>

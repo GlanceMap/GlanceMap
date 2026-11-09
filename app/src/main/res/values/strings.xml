@@ -1,8 +1,10 @@
 <resources>
     <string name="watch_whats_new_title">What’s new in %1$s</string>
     <string-array name="watch_whats_new_notes">
-        <item>Improved activity recording reliability, cadence handling, and heart-rate recovery.</item>
-        <item>Improved offline map bundle downloads and extraction, including when the screen is off.</item>
+        <item>Added experimental 3D terrain and a hiking theme.</item>
+        <item>Improved GPS gap recording and source switching.</item>
+        <item>Made long labels scroll on watch screens.</item>
+        <item>Improved offline map bundle downloads and extraction.</item>
         <item>Preserves the map view when moving between menus and dashboards.</item>
         <item>Improved GPX elevation display and transfer reliability.</item>
     </string-array>

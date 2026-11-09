@@ -2,8 +2,10 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
     <string name="watch_whats_new_title">Nouveautés de %1$s</string>
     <string-array name="watch_whats_new_notes">
-        <item>Fiabilité améliorée de l’enregistrement des activités, de la cadence et de la récupération de la fréquence cardiaque.</item>
-        <item>Téléchargement et extraction améliorés des packs de cartes hors ligne, même lorsque l’écran est éteint.</item>
+        <item>Ajout du terrain 3D expérimental et d’un thème de randonnée.</item>
+        <item>Amélioration de l’enregistrement des interruptions GPS et du changement de source de localisation.</item>
+        <item>Les libellés longs défilent sur les écrans de la montre.</item>
+        <item>Amélioration du téléchargement et de l’extraction des packs de cartes hors ligne.</item>
         <item>La vue de la carte est conservée lors du passage entre les menus et les tableaux de bord.</item>
         <item>Affichage de l’altitude GPX amélioré et transferts plus fiables.</item>
     </string-array>

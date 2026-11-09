@@ -2,8 +2,10 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
     <string name="watch_whats_new_title">Novità della versione %1$s</string>
     <string-array name="watch_whats_new_notes">
-        <item>Migliorata l’affidabilità della registrazione delle attività, della gestione della cadenza e del recupero della frequenza cardiaca.</item>
-        <item>Migliorati il download e l’estrazione dei pacchetti di mappe offline, anche a schermo spento.</item>
+        <item>Aggiunti il terreno 3D sperimentale e un tema escursionistico.</item>
+        <item>Migliorati la registrazione delle interruzioni GPS e il cambio della sorgente di posizione.</item>
+        <item>Le etichette lunghe scorrono sugli schermi dell’orologio.</item>
+        <item>Migliorati il download e l’estrazione dei pacchetti di mappe offline.</item>
         <item>La vista della mappa viene mantenuta passando tra menu e dashboard.</item>
         <item>Migliorata la visualizzazione dell’altitudine GPX e l’affidabilità dei trasferimenti.</item>
     </string-array>
