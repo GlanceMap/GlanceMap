@@ -39,6 +39,27 @@ class GpxSegmentParsingTest {
     }
 
     @Test
+    fun recordedGpsGapCountsItsCappedDistanceForwardAndReversed() {
+        val points =
+            listOf(
+                point(latitude = 0.0, longitude = 0.0),
+                point(latitude = 0.0, longitude = 0.001),
+                point(latitude = 0.0, longitude = 0.01, startsNewSegment = true)
+                    .copy(segmentStartReason = "GPS_GAP", gapDistanceMeters = 850.0),
+                point(latitude = 0.0, longitude = 0.011),
+            )
+        val sig = FileSig(lastModified = 0L, length = 0L)
+
+        val forward = buildProfile(sig = sig, pts = points)
+        val reversed = buildProfile(sig = sig, pts = reverseTrackPointsForProfile(points))
+
+        assertEquals(850.0, forward.segLen[1], 0.0)
+        assertEquals(850.0, reversed.segLen[1], 0.0)
+        assertEquals(forward.totalDistance, reversed.totalDistance, 0.001)
+        assertNull(reverseTrackPointsForProfile(points).first().gapDistanceMeters)
+    }
+
+    @Test
     fun importedFastestSpeedOnlyTrustsAnExplicitGeometryMethod() {
         assertNull(
             resolveImportedFastestSpeedMps(

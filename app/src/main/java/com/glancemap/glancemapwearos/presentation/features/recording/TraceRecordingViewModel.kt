@@ -1121,7 +1121,7 @@ class TraceRecordingViewModel(
             continuityRecoveryReason == RecordingSegmentStartReason.GPS_GAP &&
                 shouldStartRecordingGpsGapSegment(
                     previous = previousRecordedPoint,
-                    current = livePoint,
+                    current = livePoint.copy(effectiveAccuracyMeters = filterAccuracyMeters),
                     continuityGapMillis = continuityRecoveryGapMillis,
                     activityProfile = state.activityProfile,
                 )
@@ -1264,6 +1264,9 @@ class TraceRecordingViewModel(
                         startsNewSegment = startsNewSegment,
                         segmentStartReason = segmentStartReason,
                         locationQuality = locationQuality,
+                    ).withSegmentTransitionDistance(
+                        previous = currentState.points.lastOrNull(),
+                        activityProfile = currentState.activityProfile,
                     )
                 if (pendingSegmentStartReason == pendingSegmentStartReasonForPoint) {
                     pendingSegmentStartReason = null
@@ -1338,6 +1341,8 @@ class TraceRecordingViewModel(
                     recordingDistanceDiagnostics.record(segment = segment, estimate = distanceEstimate)
                 }
                 val addedDistance = distanceEstimate.distanceMeters
+                val pauseBridgeMeters = point.bridgedPauseDistanceMeters()
+                val updatedDistanceMeters = currentState.distanceMeters + addedDistance + pauseBridgeMeters
                 if (distanceEstimate.capped) {
                     continuityDistanceCapCount += 1
                     val suppressedMeters = watchGpsGeometricDelta - addedDistance
@@ -1379,7 +1384,7 @@ class TraceRecordingViewModel(
                         pointsRevision = currentState.pointsRevision + 1L,
                         pointsChangedFromIndex = canonicalAppend.firstChangedPointIndex,
                         latestLivePoint = point,
-                        distanceMeters = (currentState.distanceMeters + addedDistance).coerceAtLeast(0.0),
+                        distanceMeters = updatedDistanceMeters.coerceAtLeast(0.0),
                         gpsActiveDurationMillis = gpsActiveDurationMillis,
                         recordingGapCount = recordingGapCount,
                         recordingMaxGapMillis = recordingMaxGapMillis,
@@ -1400,7 +1405,7 @@ class TraceRecordingViewModel(
                         "TraceRecording",
                         {
                             "event=point points=$pointCount " +
-                                "distanceMeters=${(currentState.distanceMeters + addedDistance).toInt()} " +
+                                "distanceMeters=${updatedDistanceMeters.toInt()} " +
                                 "accuracyMeters=${point.accuracyMeters?.toInt() ?: -1} " +
                                 "filterAccuracyMeters=${filterAccuracyMeters?.toInt() ?: -1} " +
                                 "watchGpsAccuracyFloor=$watchGpsAccuracyFloorActive " +
@@ -2018,6 +2023,8 @@ class TraceRecordingViewModel(
         val smartElevationDiagnostics = hybridElevationFilter.diagnostics()
         val locationCallbackCount = recordingPointDensityTelemetry.snapshot().callbackReceivedCount
         val rejectedFixCount = qualityRejectedFixCount
+        val heldFixCount = qualityHeldFixCount
+        val motionSuppressedFixCount = suppressedJitterPointCount
         val countersScope = if (recordingRecoveredFromDraft) "since_recovery" else "session"
         val healthKindsAtSave = healthOwnedKinds.toSet()
         viewModelScope.launch {
@@ -2081,6 +2088,8 @@ class TraceRecordingViewModel(
                                         ).copy(
                                             recordingLocationCallbackCount = locationCallbackCount,
                                             recordingQualityRejectedFixCount = rejectedFixCount,
+                                            recordingQualityHeldFixCount = heldFixCount,
+                                            recordingMotionSuppressedFixCount = motionSuppressedFixCount,
                                             recordingCountersScope = countersScope,
                                         ),
                                 recordingMetadata = state.recordingMetadata,
@@ -3337,6 +3346,37 @@ class TraceRecordingViewModel(
 
     private fun effectiveSampleIntervalSeconds(): Int = sampleIntervalSeconds.takeIf { it > 0 } ?: SettingsRepository.DEFAULT_RECORDING_SAMPLE_INTERVAL_SECONDS
 }
+
+/**
+ * Distance across a segment start: a GPS gap counts its capped straight line, and a pause that
+ * resumes close enough to be drawn as one continuous line counts the straight line walked, as
+ * the saved track does. A pause shown with a grey connector still counts nothing.
+ */
+internal fun RecordedTracePoint.withSegmentTransitionDistance(
+    previous: RecordedTracePoint?,
+    activityProfile: String,
+): RecordedTracePoint {
+    if (previous == null || !startsNewSegment) return this
+    return when {
+        segmentStartReason == RecordingSegmentStartReason.GPS_GAP ->
+            copy(gapDistanceMeters = recordingGpsGapDistanceMeters(previous, this, activityProfile))
+        shouldVisuallyBridgeRecordedPause(previous, this) ->
+            copy(gapDistanceMeters = haversineMeters(previous.latLong, latLong))
+        else -> this
+    }
+}
+
+/** Live distance already adds GPS-gap distance through its continuity cap; a joined pause adds it here. */
+internal fun RecordedTracePoint.bridgedPauseDistanceMeters(): Double =
+    gapDistanceMeters
+        ?.takeIf {
+            it.isFinite() &&
+                it >= 0.0 &&
+                (
+                    segmentStartReason == RecordingSegmentStartReason.MANUAL_PAUSE ||
+                        segmentStartReason == RecordingSegmentStartReason.AUTO_PAUSE
+                )
+        } ?: 0.0
 
 internal fun recordingTrajectoryContinuityIntervalSeconds(
     effectiveIntervalMs: Long,

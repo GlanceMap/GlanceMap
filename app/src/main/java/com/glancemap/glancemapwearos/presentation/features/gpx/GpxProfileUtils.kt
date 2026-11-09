@@ -138,7 +138,7 @@ internal fun buildProfile(
 
         val d =
             if (b.startsNewSegment) {
-                0.0
+                b.countedGapDistanceMeters()
             } else {
                 haversine(
                     a.latLong.latitude,
@@ -167,12 +167,19 @@ internal fun buildProfile(
 internal fun reverseTrackPointsForProfile(points: List<TrackPoint>): List<TrackPoint> =
     points.asReversed().mapIndexed { reversedIndex, point ->
         val originalIndex = points.lastIndex - reversedIndex
+        val originalBoundary = points.getOrNull(originalIndex + 1)?.takeIf { it.startsNewSegment }
         point.copy(
-            startsNewSegment =
-                reversedIndex == 0 ||
-                    points.getOrNull(originalIndex + 1)?.startsNewSegment == true,
+            startsNewSegment = reversedIndex == 0 || originalBoundary != null,
+            // The counted gap moves with its boundary so a reversed track keeps the same length.
+            gapDistanceMeters = originalBoundary?.takeIf { reversedIndex != 0 }?.gapDistanceMeters,
         )
     }
+
+/** Distance across a segment boundary: a recorded GPS gap's counted distance, otherwise none. */
+internal fun TrackPoint.countedGapDistanceMeters(): Double {
+    val meters = gapDistanceMeters ?: return 0.0
+    return meters.takeIf { it.isFinite() && it >= 0.0 } ?: 0.0
+}
 
 internal fun readBestGpxTitle(file: File): String? = parseGpxData(file).title
 
@@ -260,6 +267,7 @@ internal fun parseGpxData(file: File): ParsedGpxData {
     var currentPowerWatts: Int? = null
     var currentPressureHpa: Double? = null
     var currentSegmentStartReason: String? = null
+    var currentGapDistanceMeters: Double? = null
     var currentDesc: String? = null
     var currentSym: String? = null
     var currentBrouterVoiceHint: String? = null
@@ -428,6 +436,7 @@ internal fun parseGpxData(file: File): ParsedGpxData {
                                 currentPowerWatts = null
                                 currentPressureHpa = null
                                 currentSegmentStartReason = null
+                                currentGapDistanceMeters = null
                                 currentDesc = null
                                 currentSym = null
                                 currentBrouterVoiceHint = null
@@ -493,6 +502,12 @@ internal fun parseGpxData(file: File): ParsedGpxData {
                             "segmentStartReason" -> {
                                 if (inGeometryPoint) {
                                     currentSegmentStartReason = parser.nextText()?.trim()?.takeIf { it.isNotBlank() }
+                                }
+                            }
+                            "gapDistanceMeters" -> {
+                                if (inGeometryPoint) {
+                                    currentGapDistanceMeters =
+                                        parser.nextTextDouble()?.takeIf { it.isFinite() && it >= 0.0 }
                                 }
                             }
                             "heartRateBpm" -> {
@@ -590,6 +605,8 @@ internal fun parseGpxData(file: File): ParsedGpxData {
                                                 elevation = currentElevation,
                                                 startsNewSegment = currentStartsNewSegment,
                                                 segmentStartReason = currentSegmentStartReason,
+                                                gapDistanceMeters =
+                                                    currentGapDistanceMeters.takeIf { currentStartsNewSegment },
                                                 hasTimestamp = currentHasTimestamp,
                                                 timeMillis = currentTimestampMillis,
                                                 accuracyMeters = currentAccuracyMeters,
@@ -611,6 +628,9 @@ internal fun parseGpxData(file: File): ParsedGpxData {
 
                                         if (currentPointIsTrack) {
                                             trackPoints += point
+                                            if (currentStartsNewSegment) {
+                                                trackDistance += point.countedGapDistanceMeters()
+                                            }
                                             lastTrackPoint?.takeUnless { currentStartsNewSegment }?.let { previous ->
                                                 trackDistance +=
                                                     haversine(
@@ -660,6 +680,7 @@ internal fun parseGpxData(file: File): ParsedGpxData {
                                 currentPowerWatts = null
                                 currentPressureHpa = null
                                 currentSegmentStartReason = null
+                                currentGapDistanceMeters = null
                                 currentDesc = null
                                 currentSym = null
                                 currentBrouterVoiceHint = null

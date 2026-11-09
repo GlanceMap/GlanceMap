@@ -167,6 +167,7 @@ private object TraceRecordingDraftJson {
             barometricPressureHpa = optionalDouble("barometricPressureHpa"),
             startsNewSegment = optBoolean("startsNewSegment", false),
             segmentStartReason = optionalString("segmentStartReason"),
+            gapDistanceMeters = optionalDouble("gapDistanceMeters"),
             trajectoryFinalized = optBoolean("trajectoryFinalized", false),
             locationQuality = optJSONObject("locationQuality")?.toRecordedLocationQuality(),
         )
@@ -225,6 +226,7 @@ private fun RecordedTracePoint.toJson(): JSONObject =
         .put("barometricPressureHpa", barometricPressureHpa ?: JSONObject.NULL)
         .put("startsNewSegment", startsNewSegment)
         .put("segmentStartReason", segmentStartReason ?: JSONObject.NULL)
+        .put("gapDistanceMeters", gapDistanceMeters ?: JSONObject.NULL)
         .put("trajectoryFinalized", trajectoryFinalized)
         .put("locationQuality", locationQuality?.toJson() ?: JSONObject.NULL)
 

@@ -167,6 +167,35 @@ class RecordingAutoResumeRecoveryTest {
         assertEquals(listOf(0, 4, 5), buffer.recover(SettingsRepository.ACTIVITY_PROFILE_BIKE).map { it.value })
     }
 
+    /**
+     * 2026-09-27 field pattern: the hiker stops, walks off again, and auto-resume is only
+     * confirmed ~40 m later. Replaying the buffered restart must start the resumed segment
+     * near the stop so the saved GPX keeps one visually continuous track.
+     */
+    @Test
+    fun lateWalkingResumeConfirmationStillBridgesThePauseInTheSavedTrack() {
+        val beforePause = walkingFix(-1, 0, 0.0).point
+        val buffer = RecordingAutoResumeRecoveryBuffer<Int>()
+        // Stationary drift while paused, then a 1.2 m/s restart sampled every 12 s.
+        listOf(1.5, 2.0, 1.0, 15.0, 29.0, 43.0).forEachIndexed { index, meters ->
+            buffer.offer(walkingFix(index, 120_000L + index * 12_000L, meters), eligible = true)
+        }
+
+        val recovered = buffer.recover(SettingsRepository.ACTIVITY_PROFILE_HIKE).map { it.point }
+        assertTrue(recovered.isNotEmpty())
+        val resumed =
+            recovered.mapIndexed { index, point ->
+                if (index == 0) {
+                    point.copy(startsNewSegment = true, segmentStartReason = RecordingSegmentStartReason.AUTO_PAUSE)
+                } else {
+                    point
+                }
+            }
+
+        assertTrue(haversineMeters(beforePause.latLong, resumed.first().latLong) <= 30.0)
+        assertEquals(1, recordedTraceSegments(listOf(beforePause) + resumed).size)
+    }
+
     @Test
     fun sourceChangeAndExplicitClearCannotBridgePauseOrSavedSession() {
         val buffer = RecordingAutoResumeRecoveryBuffer<Int>()
@@ -176,6 +205,14 @@ class RecordingAutoResumeRecoveryTest {
         buffer.clear()
         buffer.offer(fix(2, 20_000, 40.0), eligible = false)
         assertTrue(buffer.recover(SettingsRepository.ACTIVITY_PROFILE_BIKE).isEmpty())
+    }
+
+    private fun walkingFix(
+        value: Int,
+        millis: Long,
+        meters: Double,
+    ) = fix(value, millis, meters).let { sample ->
+        sample.copy(point = sample.point.copy(speedMps = 1.2f, accuracyMeters = 8f, effectiveAccuracyMeters = 8f))
     }
 
     private fun fix(

@@ -19,6 +19,11 @@ data class RecordedTracePoint(
     val barometricPressureHpa: Double? = null,
     val startsNewSegment: Boolean = false,
     val segmentStartReason: String? = null,
+    /**
+     * Distance counted across a GPS-gap segment boundary: the straight line, capped at a
+     * believable speed. Written on the first point of a `GPS_GAP` segment; pauses have none.
+     */
+    val gapDistanceMeters: Double? = null,
     val locationQuality: RecordedLocationQuality? = null,
     /** Internal fixed-lag provenance; it is not written to GPX. */
     val trajectoryFinalized: Boolean = false,

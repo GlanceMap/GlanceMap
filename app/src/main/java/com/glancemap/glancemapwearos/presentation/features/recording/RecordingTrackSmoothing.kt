@@ -187,7 +187,7 @@ private fun recordingLastLegDistance(
 internal fun recordingCanonicalPathDistance(points: List<RecordedTracePoint>): Double =
     points.zipWithNext().sumOf { (before, after) ->
         if (after.startsNewSegment) {
-            0.0
+            after.gapDistanceMeters?.takeIf { it.isFinite() && it >= 0.0 } ?: 0.0
         } else {
             haversineMeters(before.latLong, after.latLong)
         }

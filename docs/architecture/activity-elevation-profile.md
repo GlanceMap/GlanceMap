@@ -6,8 +6,11 @@ through the existing signature-aware profile cache on the IO dispatcher. The
 loader does not open the full-screen profile or compute route ETA.
 
 The distance axis uses the canonical cumulative distance from the saved,
-corrected GPX geometry, matching activity details. Segment transitions add no
-distance. Their known elevation endpoints are connected in grey; missing
+corrected GPX geometry, matching activity details. Pause and recovery segment
+transitions add no distance (a pause joined into one continuous line is not a segment
+transition in the saved file). A recorded GPS-gap transition adds its saved
+`gmap:gapDistanceMeters` (the capped straight line counted live); files without it add
+none. Transitions' known elevation endpoints are connected in grey; missing
 elevations also produce grey connections rather than fabricated samples.
 
 Display reduction preserves the first/last samples, global extrema, bucket

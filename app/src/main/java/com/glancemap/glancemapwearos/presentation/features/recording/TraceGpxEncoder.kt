@@ -82,7 +82,7 @@ internal fun startsRecordedTraceSegment(
     point: RecordedTracePoint,
 ): Boolean = previous != null && point.startsNewSegment && !shouldVisuallyBridgeRecordedPause(previous, point)
 
-private fun shouldVisuallyBridgeRecordedPause(
+internal fun shouldVisuallyBridgeRecordedPause(
     previous: RecordedTracePoint,
     resumed: RecordedTracePoint,
 ): Boolean {
@@ -151,6 +151,8 @@ data class RecordedTraceSummary(
     val smartElevationGpsFallbackPointCount: Long? = null,
     val recordingLocationCallbackCount: Int? = null,
     val recordingQualityRejectedFixCount: Int? = null,
+    val recordingQualityHeldFixCount: Int? = null,
+    val recordingMotionSuppressedFixCount: Int? = null,
     val recordingCountersScope: String? = null,
     val heartRateCoveredSeconds: Double? = null,
     val cadenceAverageMethod: String? = null,
@@ -165,6 +167,12 @@ private fun StringWriter.writeRecordingSummaryExtensions(summary: RecordedTraceS
     }
     summary.recordingQualityRejectedFixCount?.takeIf { it >= 0 }?.let {
         textTag("gmap:recordingQualityRejectedFixCount", it.toString())
+    }
+    summary.recordingQualityHeldFixCount?.takeIf { it >= 0 }?.let {
+        textTag("gmap:recordingQualityHeldFixCount", it.toString())
+    }
+    summary.recordingMotionSuppressedFixCount?.takeIf { it >= 0 }?.let {
+        textTag("gmap:recordingMotionSuppressedFixCount", it.toString())
     }
     summary.recordingCountersScope?.takeIf { it.isNotBlank() }?.let {
         textTag("gmap:recordingCountersScope", it)
@@ -365,6 +373,9 @@ private fun StringWriter.writePointExtensions(point: RecordedTracePoint) {
         }
         segmentStartReason?.let {
             textTag("gmap:segmentStartReason", it)
+        }
+        point.gapDistanceMeters?.takeIf { it.isFinite() && it >= 0.0 }?.let {
+            textTag("gmap:gapDistanceMeters", formatDouble(it))
         }
         point.locationQuality?.let { writeLocationQualityExtensions(it) }
         heartRateBpm?.takeIf { it in 1..255 }?.let {

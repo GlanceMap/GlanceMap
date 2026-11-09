@@ -47,6 +47,31 @@ class GpxDistanceParsingTest {
     }
 
     @Test
+    fun recordedGpsGapCountsItsSavedCappedDistance() {
+        val parsed =
+            parse(
+                recordingMetadata +
+                    """
+                    <trk>
+                      <trkseg><trkpt lat="0" lon="0"/><trkpt lat="0" lon="0.001"/></trkseg>
+                      <trkseg>
+                        <trkpt lat="0" lon="0.01"><extensions>
+                          <gmap:segmentStartReason>GPS_GAP</gmap:segmentStartReason>
+                          <gmap:gapDistanceMeters>850.00</gmap:gapDistanceMeters>
+                        </extensions></trkpt>
+                        <trkpt lat="0" lon="0.011"/>
+                      </trkseg>
+                    </trk>
+                    """.trimIndent(),
+            )
+        val profile = buildProfile(FileSig(0L, 0L), parsed.points)
+
+        assertEquals(850.0, requireNotNull(parsed.points[2].gapDistanceMeters), 0.0)
+        assertEquals(850.0, profile.segLen[1], 0.0)
+        assertEquals(profile.totalDistance, parsed.totalDistance, 0.001)
+    }
+
+    @Test
     fun brouterImportUsesGeometryWithoutActivityMetadata() {
         val parsed = parse(track(), creator = "BRouter-1.7.8")
         val profile = buildProfile(FileSig(0L, 0L), parsed.points)

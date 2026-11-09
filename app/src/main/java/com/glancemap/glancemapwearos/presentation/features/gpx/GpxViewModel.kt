@@ -2072,6 +2072,7 @@ private fun List<TrackPoint>.toRecordedTracePoints(): List<RecordedTracePoint> =
             speedMps = point.speedMps,
             startsNewSegment = point.startsNewSegment,
             segmentStartReason = point.segmentStartReason,
+            gapDistanceMeters = point.gapDistanceMeters,
             heartRateBpm = point.heartRateBpm,
             stepCount = point.stepCount,
             cadenceSpm = point.cadenceSpm,

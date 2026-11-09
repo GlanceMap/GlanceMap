@@ -66,6 +66,44 @@ class TraceGpxEncoderTest {
         assertEquals(2, "<trkseg>".toRegex().findAll(xml).count())
         assertEquals(listOf(2, 1), recordedTraceSegments(points).map(List<RecordedTracePoint>::size))
         assertTrue(xml.contains("<gmap:segmentStartReason>GPS_GAP</gmap:segmentStartReason>"))
+        assertFalse(xml.contains("<gmap:gapDistanceMeters>"))
+        val withGapDistance =
+            encodeRecordedTraceAsGpx(
+                title = "Counted gap",
+                points = points.take(2) + points[2].copy(gapDistanceMeters = 123.456),
+            ).toString(Charsets.UTF_8)
+        assertTrue(withGapDistance.contains("<gmap:gapDistanceMeters>123.46</gmap:gapDistanceMeters>"))
+    }
+
+    @Test
+    fun summaryExplainsDeliveredFixesThatDidNotBecomePoints() {
+        val summary =
+            recordingSummary(SettingsRepository.RECORDING_SENSOR_SOURCE_WATCH_GPS).copy(
+                recordingLocationCallbackCount = 77,
+                recordingQualityRejectedFixCount = 0,
+                recordingQualityHeldFixCount = 5,
+                recordingMotionSuppressedFixCount = 7,
+                recordingCountersScope = "session",
+            )
+        val xml =
+            encodeRecordedTraceAsGpx(
+                title = "Fix accounting",
+                points = listOf(recordedPoint(latitude = 45.0, longitude = 6.0, timeMillis = 1_000L)),
+                summary = summary,
+            ).toString(Charsets.UTF_8)
+        val unknown =
+            encodeRecordedTraceAsGpx(
+                title = "Unknown counters",
+                points = listOf(recordedPoint(latitude = 45.0, longitude = 6.0, timeMillis = 1_000L)),
+                summary = recordingSummary(SettingsRepository.RECORDING_SENSOR_SOURCE_WATCH_GPS),
+            ).toString(Charsets.UTF_8)
+
+        assertSummaryExtension(xml, "recordingLocationCallbackCount", "77")
+        assertSummaryExtension(xml, "recordingQualityRejectedFixCount", "0")
+        assertSummaryExtension(xml, "recordingQualityHeldFixCount", "5")
+        assertSummaryExtension(xml, "recordingMotionSuppressedFixCount", "7")
+        assertFalse(unknown.contains("<gmap:recordingQualityHeldFixCount>"))
+        assertFalse(unknown.contains("<gmap:recordingMotionSuppressedFixCount>"))
     }
 
     @Test
