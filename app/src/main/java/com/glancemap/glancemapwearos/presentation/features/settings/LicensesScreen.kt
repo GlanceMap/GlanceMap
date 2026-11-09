@@ -3,6 +3,7 @@ package com.glancemap.glancemapwearos.presentation.features.settings
 import android.content.Context
 import androidx.annotation.RawRes
 import androidx.annotation.StringRes
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -14,6 +15,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringArrayResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -40,6 +42,7 @@ fun LicensesScreen(onOpenGeneralSettings: () -> Unit) {
             expandedBottom = 68.dp,
         )
     var selectedDocument by remember { mutableStateOf<LicenseDocument?>(null) }
+    var showChangelog by remember { mutableStateOf(false) }
 
     WearSettingsListScreen(listTokens = listTokens, horizontalAlignment = Alignment.CenterHorizontally) {
         item {
@@ -69,22 +72,29 @@ fun LicensesScreen(onOpenGeneralSettings: () -> Unit) {
                 textAlign = TextAlign.Center,
             )
         }
+        item {
+            SettingsPickerChip(
+                label = stringResource(R.string.changelog_title),
+                onClick = { showChangelog = true },
+            )
+        }
         items(LICENSE_DOCUMENTS) { document ->
             Chip(
                 modifier = Modifier.fillMaxWidth(),
                 label = {
                     WearText(
                         text = stringResource(document.labelRes),
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth().basicMarquee(),
                         textAlign = TextAlign.Start,
-                        overflow = TextOverflow.Ellipsis,
+                        overflow = TextOverflow.Visible,
                         maxLines = 1,
                     )
                 },
                 secondaryLabel = {
                     WearText(
                         text = stringResource(document.secondaryLabelRes),
-                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.basicMarquee(),
+                        overflow = TextOverflow.Visible,
                         maxLines = 1,
                     )
                 },
@@ -96,11 +106,37 @@ fun LicensesScreen(onOpenGeneralSettings: () -> Unit) {
         }
     }
 
+    if (showChangelog) {
+        ChangelogDialog(onDismiss = { showChangelog = false })
+    }
+
     selectedDocument?.let { document ->
         LicenseDocumentDialog(
             document = document,
             onDismiss = { selectedDocument = null },
         )
+    }
+}
+
+@Composable
+@Suppress("FunctionNaming")
+private fun ChangelogDialog(onDismiss: () -> Unit) {
+    val notes = stringArrayResource(R.array.changelog_1_3_0_notes)
+    WearInfoDialog(
+        visible = true,
+        title = stringResource(R.string.changelog_title),
+        onDismiss = onDismiss,
+    ) {
+        item {
+            Text(text = "1.3.0", style = MaterialTheme.typography.titleMedium)
+        }
+        items(notes.size) { index ->
+            Text(
+                text = "• ${notes[index]}",
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
     }
 }
 

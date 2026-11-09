@@ -1,0 +1,9 @@
+<resources>
+    <string name="changelog_title">Cronologia delle modifiche</string>
+    <string-array name="changelog_1_3_0_notes">
+        <item>Migliorata l’affidabilità della registrazione delle attività, della gestione della cadenza e del recupero della frequenza cardiaca.</item>
+        <item>Migliorati il download e l’estrazione dei pacchetti di mappe offline, anche a schermo spento.</item>
+        <item>La vista della mappa viene mantenuta passando tra menu e dashboard.</item>
+        <item>Migliorata la visualizzazione dell’altitudine GPX e l’affidabilità dei trasferimenti.</item>
+    </string-array>
+</resources>

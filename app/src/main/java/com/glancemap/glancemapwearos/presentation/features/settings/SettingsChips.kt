@@ -2,6 +2,7 @@
 
 package com.glancemap.glancemapwearos.presentation.features.settings
 
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -68,10 +69,10 @@ internal fun SettingsToggleChip(
         label = {
             Text(
                 text = label,
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().basicMarquee(),
                 textAlign = TextAlign.Start,
-                overflow = TextOverflow.Ellipsis,
-                maxLines = if (secondaryLabel != null) 1 else 2,
+                overflow = TextOverflow.Visible,
+                maxLines = 1,
             )
         },
         secondaryLabel =
@@ -79,7 +80,8 @@ internal fun SettingsToggleChip(
                 {
                     Text(
                         text = text,
-                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.basicMarquee(),
+                        overflow = TextOverflow.Visible,
                         maxLines = 1,
                     )
                 }
@@ -119,10 +121,10 @@ internal fun SettingsPickerChip(
             label = {
                 Text(
                     text = label,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().basicMarquee(),
                     textAlign = TextAlign.Start,
-                    overflow = TextOverflow.Ellipsis,
-                    maxLines = if (secondaryLabel != null) 1 else 2,
+                    overflow = TextOverflow.Visible,
+                    maxLines = 1,
                 )
             },
             secondaryLabel =
@@ -130,7 +132,8 @@ internal fun SettingsPickerChip(
                     {
                         Text(
                             text = text,
-                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.basicMarquee(),
+                            overflow = TextOverflow.Visible,
                             maxLines = 1,
                         )
                     }
@@ -161,10 +164,10 @@ internal fun SettingsPickerChip(
             label = {
                 Text(
                     text = label,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().basicMarquee(),
                     textAlign = TextAlign.Center,
-                    overflow = TextOverflow.Ellipsis,
-                    maxLines = if (secondaryLabel != null) 1 else 2,
+                    overflow = TextOverflow.Visible,
+                    maxLines = 1,
                 )
             },
             secondaryLabel =
@@ -172,7 +175,8 @@ internal fun SettingsPickerChip(
                     {
                         Text(
                             text = text,
-                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.basicMarquee(),
+                            overflow = TextOverflow.Visible,
                             maxLines = 1,
                         )
                     }
@@ -214,10 +218,10 @@ internal fun SettingsSectionChip(
         label = {
             Text(
                 text = label,
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().basicMarquee(),
                 textAlign = TextAlign.Start,
-                overflow = TextOverflow.Ellipsis,
-                maxLines = if (secondaryLabel != null) 1 else 2,
+                overflow = TextOverflow.Visible,
+                maxLines = 1,
             )
         },
         secondaryLabel =
@@ -225,7 +229,8 @@ internal fun SettingsSectionChip(
                 {
                     Text(
                         text = text,
-                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.basicMarquee(),
+                        overflow = TextOverflow.Visible,
                         maxLines = 1,
                     )
                 }
@@ -277,7 +282,12 @@ internal fun DownloadSettingsSectionChip(
                     modifier = Modifier.size(ChipDefaults.IconSize),
                     tint = Color.White,
                 )
-                Text(stringResource(R.string.settings_settings))
+                Text(
+                    text = stringResource(R.string.settings_settings),
+                    modifier = Modifier.weight(1f).basicMarquee(),
+                    maxLines = 1,
+                    overflow = TextOverflow.Visible,
+                )
             }
         },
         icon = {

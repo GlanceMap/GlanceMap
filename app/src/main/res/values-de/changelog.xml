@@ -1,0 +1,9 @@
+<resources>
+    <string name="changelog_title">Änderungsprotokoll</string>
+    <string-array name="changelog_1_3_0_notes">
+        <item>Verbesserte Zuverlässigkeit der Aktivitätsaufzeichnung, Trittfrequenzverarbeitung und Wiederherstellung der Herzfrequenz.</item>
+        <item>Verbesserte Downloads und Entpackung von Offline-Kartenpaketen, auch bei ausgeschaltetem Bildschirm.</item>
+        <item>Die Kartenansicht bleibt beim Wechsel zwischen Menüs und Dashboards erhalten.</item>
+        <item>Verbesserte GPX-Höhenanzeige und zuverlässigere Übertragung.</item>
+    </string-array>
+</resources>

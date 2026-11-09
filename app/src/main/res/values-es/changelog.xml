@@ -1,0 +1,9 @@
+<resources>
+    <string name="changelog_title">Registro de cambios</string>
+    <string-array name="changelog_1_3_0_notes">
+        <item>Mayor fiabilidad de la grabación de actividades, el manejo de la cadencia y la recuperación de la frecuencia cardíaca.</item>
+        <item>Mejoras en la descarga y extracción de paquetes de mapas sin conexión, incluso con la pantalla apagada.</item>
+        <item>La vista del mapa se conserva al cambiar entre menús y paneles.</item>
+        <item>Mejor visualización de la altitud GPX y mayor fiabilidad de las transferencias.</item>
+    </string-array>
+</resources>

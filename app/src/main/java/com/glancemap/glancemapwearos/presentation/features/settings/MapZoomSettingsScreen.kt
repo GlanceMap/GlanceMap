@@ -3,6 +3,7 @@
 package com.glancemap.glancemapwearos.presentation.features.settings
 
 import android.content.res.Resources
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material.icons.Icons
@@ -156,9 +157,10 @@ private fun ScaleDistanceSetting(
     ) {
         Text(
             stringResource(R.string.settings_label_value, label, scaleText),
+            modifier = Modifier.basicMarquee(),
             style = MaterialTheme.typography.titleMedium,
             maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
+            overflow = TextOverflow.Visible,
         )
         Slider(
             value = internalValue,

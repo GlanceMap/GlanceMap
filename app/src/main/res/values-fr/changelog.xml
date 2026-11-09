@@ -1,0 +1,9 @@
+<resources>
+    <string name="changelog_title">Historique des modifications</string>
+    <string-array name="changelog_1_3_0_notes">
+        <item>Fiabilité améliorée de l’enregistrement des activités, de la cadence et de la récupération de la fréquence cardiaque.</item>
+        <item>Téléchargement et extraction améliorés des packs de cartes hors ligne, même lorsque l’écran est éteint.</item>
+        <item>La vue de la carte est conservée lors du passage entre les menus et les tableaux de bord.</item>
+        <item>Affichage de l’altitude GPX amélioré et transferts plus fiables.</item>
+    </string-array>
+</resources>

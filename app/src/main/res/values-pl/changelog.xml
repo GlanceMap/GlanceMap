@@ -1,0 +1,9 @@
+<resources>
+    <string name="changelog_title">Historia zmian</string>
+    <string-array name="changelog_1_3_0_notes">
+        <item>Poprawiono niezawodność rejestrowania aktywności, obsługę kadencji i przywracanie pomiaru tętna.</item>
+        <item>Usprawniono pobieranie i rozpakowywanie pakietów map offline, także przy wyłączonym ekranie.</item>
+        <item>Widok mapy jest zachowywany podczas przechodzenia między menu i panelami.</item>
+        <item>Poprawiono wyświetlanie wysokości GPX i niezawodność przesyłania.</item>
+    </string-array>
+</resources>

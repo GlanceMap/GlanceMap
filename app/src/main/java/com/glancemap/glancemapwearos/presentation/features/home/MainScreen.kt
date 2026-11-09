@@ -3,6 +3,7 @@
 package com.glancemap.glancemapwearos.presentation.features.home
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -475,8 +476,9 @@ private fun HomeActionButton(
             Spacer(Modifier.size(if (compact) 4.dp else ButtonDefaults.IconSpacing))
             Text(
                 text = label,
+                modifier = Modifier.basicMarquee(),
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+                overflow = TextOverflow.Visible,
             )
         } else {
             Box(

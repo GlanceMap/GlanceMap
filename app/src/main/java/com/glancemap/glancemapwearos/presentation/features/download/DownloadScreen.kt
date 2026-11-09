@@ -792,19 +792,21 @@ private fun DownloadHeader(
                 cappedFontScale(maxFontScale = 1f) {
                     Text(
                         text = stringResource(R.string.common_download),
+                        modifier = Modifier.basicMarquee(),
                         style = MaterialTheme.typography.titleSmall,
                         textAlign = TextAlign.Center,
                         maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
+                        overflow = TextOverflow.Visible,
                     )
                 }
             } else {
                 Text(
                     text = stringResource(R.string.common_download),
+                    modifier = Modifier.basicMarquee(),
                     style = MaterialTheme.typography.titleMedium,
                     textAlign = TextAlign.Center,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                    overflow = TextOverflow.Visible,
                 )
             }
             Row(
@@ -862,8 +864,8 @@ private fun DownloadHeader(
                             color = MaterialTheme.colorScheme.primary,
                             textAlign = TextAlign.Center,
                             maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.padding(top = 6.dp),
+                            overflow = TextOverflow.Visible,
+                            modifier = Modifier.padding(top = 6.dp).basicMarquee(),
                         )
                     }
                 } else {
@@ -963,8 +965,9 @@ private fun DownloadActionButton(
         Spacer(Modifier.size(ButtonDefaults.IconSpacing))
         Text(
             text = label,
+            modifier = Modifier.basicMarquee(),
             maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
+            overflow = TextOverflow.Visible,
         )
     }
 }
@@ -1035,7 +1038,6 @@ private fun InstalledBundleRow(
         label = bundle.areaLabel,
         enabled = enabled,
         secondaryLabel = installedBundleSubtitle(bundle, resources = resources),
-        secondaryMarquee = true,
         icon =
             when {
                 refreshMode && refreshSelected -> Icons.Filled.Check
@@ -1186,7 +1188,6 @@ internal fun DownloadChip(
     onClick: () -> Unit,
     selected: Boolean = false,
     warning: Boolean = false,
-    secondaryMarquee: Boolean = false,
     enabled: Boolean = true,
 ) {
     Chip(
@@ -1195,16 +1196,17 @@ internal fun DownloadChip(
         label = {
             Text(
                 text = label,
+                modifier = Modifier.basicMarquee(),
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+                overflow = TextOverflow.Visible,
             )
         },
         secondaryLabel = {
             Text(
                 text = secondaryLabel,
-                modifier = if (secondaryMarquee) Modifier.basicMarquee() else Modifier,
+                modifier = Modifier.basicMarquee(),
                 maxLines = 1,
-                overflow = if (secondaryMarquee) TextOverflow.Visible else TextOverflow.Ellipsis,
+                overflow = TextOverflow.Visible,
             )
         },
         icon = {

@@ -196,11 +196,16 @@ private fun WearActionSurface(
                         content = content,
                     )
                 }
-                ScrollIndicator(state = scrollState, modifier = Modifier.align(Alignment.CenterEnd))
+                if (pinnedButton == null) {
+                    ScrollIndicator(state = scrollState, modifier = Modifier.align(Alignment.CenterEnd))
+                }
             }
             if (pinnedButton != null) {
                 WearPinnedActionButton(pinnedButton, metrics)
             }
+        }
+        if (pinnedButton != null) {
+            WearScreenEdgeScrollIndicator(scrollState = scrollState)
         }
     }
 }

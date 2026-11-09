@@ -1,5 +1,6 @@
 package com.glancemap.glancemapwearos.presentation.features.settings
 
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -74,16 +75,17 @@ internal fun AdaptiveSettingsShortcutChip(
         label = {
             Text(
                 text = if (useCompactLabels) compactLabel else standardLabel,
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().basicMarquee(),
                 textAlign = TextAlign.Start,
-                overflow = TextOverflow.Ellipsis,
+                overflow = TextOverflow.Visible,
                 maxLines = 1,
             )
         },
         secondaryLabel = {
             Text(
                 text = if (useCompactLabels) compactSecondaryLabel else standardSecondaryLabel,
-                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.basicMarquee(),
+                overflow = TextOverflow.Visible,
                 maxLines = 1,
             )
         },
