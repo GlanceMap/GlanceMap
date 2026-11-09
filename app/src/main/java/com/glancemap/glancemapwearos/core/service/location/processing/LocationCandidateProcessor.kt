@@ -98,7 +98,7 @@ internal class LocationCandidateProcessor(
                 activityStateChanged = false,
             )
         }
-        if (!location.accuracy.isFinite() || location.accuracy > acceptance.maxAccuracyM) {
+        if (acceptance.rejectsAccuracy(location.accuracy)) {
             telemetry.logAccuracyFixDropped(
                 nowElapsedMs = nowElapsedMs,
                 activityState = activityTracker.state,
@@ -175,7 +175,7 @@ internal class LocationCandidateProcessor(
                 activityStateChanged = false,
             )
         }
-        if (!location.accuracy.isFinite() || location.accuracy > acceptance.maxAccuracyM) {
+        if (acceptance.rejectsAccuracy(location.accuracy)) {
             telemetry.logAccuracyFixDropped(
                 nowElapsedMs = nowElapsedMs,
                 activityState = activityTracker.state,
@@ -303,7 +303,7 @@ internal class LocationCandidateProcessor(
             )
         }
 
-        if (!location.accuracy.isFinite() || location.accuracy > acceptance.maxAccuracyM) {
+        if (acceptance.rejectsAccuracy(location.accuracy)) {
             telemetry.onFilteredByAccuracy(
                 nowElapsedMs = nowElapsedMs,
                 activityState = activityTracker.state,

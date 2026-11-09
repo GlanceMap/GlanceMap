@@ -8,6 +8,7 @@ import com.glancemap.glancemapwearos.core.service.location.policy.LocationSource
 import com.glancemap.glancemapwearos.core.service.location.telemetry.LocationServiceTelemetry
 import com.google.android.gms.location.Priority
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -752,6 +753,103 @@ class SelfHealFailoverCoordinatorTest {
         assertEquals(30_000L, resolveWatchGpsRecoveryStaleThresholdMs(10_000L))
         assertTrue(isWatchGpsRecoveryCooldownActive(60_000L, 1_000L))
         assertFalse(isWatchGpsRecoveryCooldownActive(61_000L, 1_000L))
+    }
+
+    @Test
+    fun recordingReturnsToThePhoneAsSoonAsItReconnects() {
+        val telemetry = LocationServiceTelemetry(tag = "LocTelemetryTest", summaryIntervalMs = 60_000L)
+        DebugTelemetry.setEnabledFromCaptureSettings(false)
+        val engine = LocationEngine(telemetry)
+        engine.markRequestApplied(interactiveAutoFusedRequestSpec())
+        var requestRefreshes = 0
+        val coordinator =
+            SelfHealFailoverCoordinator(
+                serviceScope = CoroutineScope(SupervisorJob()),
+                isServiceActive = { true },
+                engine = engine,
+                telemetry = telemetry,
+                requestLocationUpdateIfNeeded = { requestRefreshes += 1 },
+                requestImmediateLocation = {},
+                trackingEnabled = { true },
+                ambientModeActive = { true },
+                backgroundGpsEnabled = { true },
+                hasFinePermission = { true },
+                hasCoarsePermission = { true },
+                watchGpsOnly = { false },
+                passiveLocationExperiment = { false },
+                phoneConnected = { false },
+                watchGpsAvailable = { true },
+                lastAnyAcceptedFixAtElapsedMs = { 40_000L },
+                lastCallbackAcceptedFixAtElapsedMs = { 40_000L },
+                lastRequestAppliedAtElapsedMs = { 1_000L },
+                expectedIntervalMs = { 10_000L },
+                strictFreshMaxAgeMs = { 20_000L },
+                recordingActive = { true },
+            )
+
+        // Bluetooth drops silently during a recording: watch GPS takes over.
+        coordinator.onPhoneConnectionStateChecked(phoneConnected = false, nowElapsedMs = 5_000L)
+        engine.markRequestApplied(interactiveWatchGpsRequestSpec())
+        assertTrue(coordinator.isAutoFusedFallbackToWatchGps())
+
+        // The phone returns while watch GPS is still delivering: phone location is used again
+        // for battery life and accuracy.
+        coordinator.onPhoneConnectionStateChecked(phoneConnected = true, nowElapsedMs = 45_000L)
+        assertFalse(coordinator.isAutoFusedFallbackToWatchGps())
+        assertEquals(LocationSourceMode.AUTO_FUSED, coordinator.currentLocationSourceMode())
+        assertEquals(2, requestRefreshes)
+    }
+
+    @Test
+    fun fusedWatchChipAccuracyChecksThePhoneImmediatelyAndRateLimitsRepeats() {
+        val telemetry = LocationServiceTelemetry(tag = "LocTelemetryTest", summaryIntervalMs = 60_000L)
+        DebugTelemetry.setEnabledFromCaptureSettings(false)
+        val engine = LocationEngine(telemetry)
+        engine.markRequestApplied(interactiveAutoFusedRequestSpec())
+        var phoneChecks = 0
+        val coordinator =
+            SelfHealFailoverCoordinator(
+                serviceScope = CoroutineScope(Dispatchers.Unconfined),
+                isServiceActive = { true },
+                engine = engine,
+                telemetry = telemetry,
+                requestLocationUpdateIfNeeded = {},
+                requestImmediateLocation = {},
+                trackingEnabled = { true },
+                ambientModeActive = { true },
+                backgroundGpsEnabled = { true },
+                hasFinePermission = { true },
+                hasCoarsePermission = { true },
+                watchGpsOnly = { false },
+                passiveLocationExperiment = { false },
+                phoneConnected = { true },
+                watchGpsAvailable = { true },
+                checkPhoneConnection = {
+                    phoneChecks += 1
+                    true
+                },
+                lastAnyAcceptedFixAtElapsedMs = { 1_000L },
+                lastCallbackAcceptedFixAtElapsedMs = { 1_000L },
+                lastRequestAppliedAtElapsedMs = { 1_000L },
+                expectedIntervalMs = { 10_000L },
+                strictFreshMaxAgeMs = { 20_000L },
+                recordingActive = { true },
+            )
+
+        coordinator.recheckPhoneConnectionNow(nowElapsedMs = 10_000L)
+        coordinator.recheckPhoneConnectionNow(nowElapsedMs = 12_999L)
+        coordinator.recheckPhoneConnectionNow(nowElapsedMs = 13_000L)
+
+        assertEquals(2, phoneChecks)
+        assertFalse(coordinator.isAutoFusedFallbackToWatchGps())
+    }
+
+    @Test
+    fun recordingRechecksThePhoneLinkMoreOften() {
+        assertTrue(isPhoneConnectionRecheckDue(11_000L, lastRecheckAtElapsedMs = 1_000L, intervalMs = 10_000L))
+        assertFalse(isPhoneConnectionRecheckDue(10_999L, lastRecheckAtElapsedMs = 1_000L, intervalMs = 10_000L))
+        assertTrue(isAutoFusedPhoneRecheckEligible(true, autoFusedActive = false, watchGpsOnly = false))
+        assertFalse(isAutoFusedPhoneRecheckEligible(true, autoFusedActive = false, watchGpsOnly = true))
     }
 
     private fun interactiveWatchGpsRequestSpec(): RequestSpec =

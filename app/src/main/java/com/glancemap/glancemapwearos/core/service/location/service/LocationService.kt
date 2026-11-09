@@ -46,7 +46,10 @@ import com.glancemap.glancemapwearos.core.service.location.config.TELEMETRY_SUMM
 import com.glancemap.glancemapwearos.core.service.location.config.TELEMETRY_TAG
 import com.glancemap.glancemapwearos.core.service.location.config.WAKE_BURST_START_DEBOUNCE_MS
 import com.glancemap.glancemapwearos.core.service.location.config.WATCH_GPS_AUTO_FALLBACK_INTERACTIVE_MAX_ACCURACY_M
+import com.glancemap.glancemapwearos.core.service.location.config.WATCH_GPS_FLOOR_MAX_ACCEPTED_ACCURACY_M
 import com.glancemap.glancemapwearos.core.service.location.config.WATCH_GPS_MAX_ACCEPTED_ACCURACY_M
+import com.glancemap.glancemapwearos.core.service.location.config.WatchGpsConstantAccuracy
+import com.glancemap.glancemapwearos.core.service.location.config.isKnownWatchGpsAccuracyFloor
 import com.glancemap.glancemapwearos.core.service.location.engine.LocationEngine
 import com.glancemap.glancemapwearos.core.service.location.engine.RequestSpec
 import com.glancemap.glancemapwearos.core.service.location.model.LocationPermissionChecker
@@ -239,6 +242,7 @@ class LocationService : Service() {
                     expectedIntervalMs = expectedIntervalMs,
                 )
             },
+            recordingActive = { isRecordingRuntimeReason(latestRuntimeReason) },
         )
     }
     private val gnssDiagnosticsCoordinator by lazy {
@@ -583,6 +587,7 @@ class LocationService : Service() {
 
                 override fun onLocations(event: LocationUpdateEvent) {
                     ScreenOffActivityDiagnostics.recordLocationCallback()
+                    observeWatchChipAccuracy(event)
                     val callbackStartedAtElapsedMs =
                         if (latestGpsDebugTelemetry) {
                             RecordingScreenOffDiagnostics.start()
@@ -602,6 +607,30 @@ class LocationService : Service() {
                     }
                 }
             }
+    }
+
+    /**
+     * Learns a stuck watch-chip accuracy before any filtering, so a placeholder above the
+     * acceptance limits is still recognised. A fused fix carrying that placeholder means fused
+     * location fell back to the watch chip, so the phone link is checked right away.
+     */
+    private fun observeWatchChipAccuracy(event: LocationUpdateEvent) {
+        val nowElapsedMs = SystemClock.elapsedRealtime()
+        event.candidates.forEach { location ->
+            val accuracy = location.accuracy.takeIf { location.hasAccuracy() } ?: return@forEach
+            if (location.provider == LocationManager.GPS_PROVIDER) {
+                val fixElapsedMs = (location.elapsedRealtimeNanos / 1_000_000L).takeIf { it > 0L } ?: nowElapsedMs
+                if (WatchGpsConstantAccuracy.observe(accuracy, fixElapsedMs)) {
+                    telemetry.logWatchGpsConstantAccuracyLearned(accuracy)
+                }
+            } else if (
+                event.origin == LocationSourceMode.AUTO_FUSED &&
+                latestPhoneConnected != false &&
+                isKnownWatchGpsAccuracyFloor(accuracy)
+            ) {
+                selfHealFailoverCoordinator.recheckPhoneConnectionNow(nowElapsedMs)
+            }
+        }
     }
 
     fun requestImmediateLocation(source: String = "service_unknown") {
@@ -1322,10 +1351,17 @@ class LocationService : Service() {
                 watchGpsAutoFallbackInteractiveMaxAccuracyM =
                 WATCH_GPS_AUTO_FALLBACK_INTERACTIVE_MAX_ACCURACY_M,
             )
-        return LocationFixPolicy.adaptAcceptanceForSourceMode(
-            policy = basePolicy,
+        val sourcePolicy =
+            LocationFixPolicy.adaptAcceptanceForSourceMode(
+                policy = basePolicy,
+                sourceMode = sourceMode,
+                watchGpsMaxAccuracyM = watchGpsMaxAccuracyM,
+            )
+        return LocationFixPolicy.allowKnownWatchGpsFloor(
+            policy = sourcePolicy,
             sourceMode = sourceMode,
-            watchGpsMaxAccuracyM = watchGpsMaxAccuracyM,
+            phoneConnected = latestPhoneConnected,
+            floorMaxAccuracyM = WATCH_GPS_FLOOR_MAX_ACCEPTED_ACCURACY_M,
         )
     }
 

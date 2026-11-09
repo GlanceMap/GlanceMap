@@ -3336,11 +3336,10 @@ class TraceRecordingViewModel(
 
     private fun isGpsSamplingEnabled(): Boolean = sampleIntervalSeconds != SettingsRepository.RECORDING_SAMPLE_INTERVAL_DISABLED_SECONDS
 
-    private fun isKnownWatchGpsAccuracyFloorActive(rawAccuracyMeters: Float?): Boolean =
-        latestGpsSignalSnapshot.watchGpsOnlyActive &&
-            !latestGpsSignalSnapshot.watchGpsDegraded &&
-            latestGpsSignalSnapshot.activeSourceModeValue == LocationSourceMode.WATCH_GPS.telemetryValue &&
-            isKnownWatchGpsAccuracyFloor(rawAccuracyMeters)
+    private fun isKnownWatchGpsAccuracyFloorActive(rawAccuracyMeters: Float?): Boolean {
+        val snapshot = latestGpsSignalSnapshot
+        return isRecordingKnownWatchGpsAccuracyFloor(snapshot, rawAccuracyMeters)
+    }
 
     private fun recordingActivityProfile(): String = _uiState.value.activityProfile
 
@@ -3377,6 +3376,23 @@ internal fun RecordedTracePoint.bridgedPauseDistanceMeters(): Double =
                         segmentStartReason == RecordingSegmentStartReason.AUTO_PAUSE
                 )
         } ?: 0.0
+
+/**
+ * The fixed 125 m value comes from the watch's own GNSS chip, either through watch GPS or
+ * through fused location while the phone is gone (the location service only accepts it from
+ * fused location when the phone is not confirmed connected).
+ */
+internal fun isRecordingKnownWatchGpsAccuracyFloor(
+    snapshot: GpsSignalSnapshot,
+    rawAccuracyMeters: Float?,
+): Boolean {
+    if (!isKnownWatchGpsAccuracyFloor(rawAccuracyMeters)) return false
+    return when (snapshot.activeSourceModeValue) {
+        LocationSourceMode.WATCH_GPS.telemetryValue -> snapshot.watchGpsOnlyActive && !snapshot.watchGpsDegraded
+        LocationSourceMode.AUTO_FUSED.telemetryValue -> true
+        else -> false
+    }
+}
 
 internal fun recordingTrajectoryContinuityIntervalSeconds(
     effectiveIntervalMs: Long,

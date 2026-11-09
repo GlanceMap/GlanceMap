@@ -36,6 +36,7 @@ internal class SelfHealFailoverCoordinator(
     private val expectedIntervalMs: () -> Long,
     private val strictFreshMaxAgeMs: () -> Long,
     private val requestWatchGpsRecovery: (Long, Long, Long) -> Boolean = { _, _, _ -> false },
+    private val recordingActive: () -> Boolean = { false },
 ) {
     private var autoFusedPoorAccuracyStreak: Int = 0
     private var autoFusedFallbackToWatchGps: Boolean = false
@@ -60,6 +61,26 @@ internal class SelfHealFailoverCoordinator(
             forceAutoFusedFallbackToWatchGps("phone_disconnected", nowElapsedMs)
         ) {
             requestLocationUpdateIfNeeded()
+        }
+    }
+
+    /**
+     * Checks the phone link now instead of at the next scheduled check. Used when fused location
+     * reports the watch chip's placeholder accuracy, which means the phone is probably gone.
+     */
+    fun recheckPhoneConnectionNow(nowElapsedMs: Long = SystemClock.elapsedRealtime()) {
+        if (watchGpsOnly() || autoFusedFallbackToWatchGps) return
+        val due =
+            isPhoneConnectionRecheckDue(
+                nowElapsedMs = nowElapsedMs,
+                lastRecheckAtElapsedMs = lastPhoneConnectionRecheckAtElapsedMs,
+                intervalMs = IMMEDIATE_PHONE_RECHECK_MIN_GAP_MS,
+            )
+        if (!due) return
+        lastPhoneConnectionRecheckAtElapsedMs = nowElapsedMs
+        telemetry.logPhoneConnectionRecheckRequested(reason = "fused_watch_chip_accuracy")
+        serviceScope.launch {
+            checkPhoneConnection()?.let { connected -> onPhoneConnectionStateChecked(connected, nowElapsedMs) }
         }
     }
 
@@ -602,15 +623,24 @@ internal class SelfHealFailoverCoordinator(
     }
 
     private suspend fun maybeRecheckPhoneConnection(nowElapsedMs: Long) {
-        if (
-            !shouldRecheckAutoFusedPhoneConnection(
+        val eligible =
+            isAutoFusedPhoneRecheckEligible(
                 fallbackToWatchGps = autoFusedFallbackToWatchGps,
                 autoFusedActive = engine.currentSourceModeOrNull() == LocationSourceMode.AUTO_FUSED,
                 watchGpsOnly = watchGpsOnly(),
+            )
+        val due =
+            isPhoneConnectionRecheckDue(
                 nowElapsedMs = nowElapsedMs,
                 lastRecheckAtElapsedMs = lastPhoneConnectionRecheckAtElapsedMs,
+                intervalMs =
+                    if (recordingActive()) {
+                        RECORDING_PHONE_CONNECTION_RECHECK_INTERVAL_MS
+                    } else {
+                        AUTO_FUSED_PHONE_CONNECTION_RECHECK_INTERVAL_MS
+                    },
             )
-        ) {
+        if (!eligible || !due) {
             return
         }
         lastPhoneConnectionRecheckAtElapsedMs = nowElapsedMs
@@ -632,11 +662,11 @@ internal fun shouldRecheckAutoFusedPhoneConnection(
     nowElapsedMs: Long,
     lastRecheckAtElapsedMs: Long,
 ): Boolean =
-    (fallbackToWatchGps || autoFusedActive) &&
-        !watchGpsOnly &&
-        (
-            lastRecheckAtElapsedMs <= 0L ||
-                nowElapsedMs - lastRecheckAtElapsedMs >= AUTO_FUSED_PHONE_CONNECTION_RECHECK_INTERVAL_MS
+    isAutoFusedPhoneRecheckEligible(fallbackToWatchGps, autoFusedActive, watchGpsOnly) &&
+        isPhoneConnectionRecheckDue(
+            nowElapsedMs = nowElapsedMs,
+            lastRecheckAtElapsedMs = lastRecheckAtElapsedMs,
+            intervalMs = AUTO_FUSED_PHONE_CONNECTION_RECHECK_INTERVAL_MS,
         )
 
 internal enum class AutoFusedNoFixRecoveryAction {
@@ -717,3 +747,9 @@ private const val AUTO_FUSED_NO_FIX_RECOVERY_SOURCE = "auto_fused_no_fix_recover
 private const val BACKGROUND_AUTO_FUSED_NO_FIX_FAILOVER_MIN_GAP_MS = 20_000L
 private const val BACKGROUND_AUTO_FUSED_NO_FIX_FAILOVER_INTERVAL_MULTIPLIER = 3L
 private const val AUTO_FUSED_PHONE_CONNECTION_RECHECK_INTERVAL_MS = 30_000L
+
+// Recording notices a silent phone disconnect (for example Bluetooth turned off) sooner.
+private const val RECORDING_PHONE_CONNECTION_RECHECK_INTERVAL_MS = 10_000L
+
+// Rate limit for checks triggered by fused fixes carrying the watch chip's placeholder accuracy.
+private const val IMMEDIATE_PHONE_RECHECK_MIN_GAP_MS = 3_000L
