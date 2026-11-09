@@ -3,6 +3,8 @@ package com.glancemap.glancemapwearos.presentation.features.recording
 import android.location.Location
 import android.os.Build
 import com.glancemap.glancemapwearos.BuildConfig
+import com.glancemap.glancemapwearos.core.service.location.model.gnssSatellitesUsed
+import com.glancemap.glancemapwearos.core.service.location.model.gnssUsedCn0AvgDbHz
 import org.json.JSONObject
 
 /** Captured once at recording start; legacy drafts leave this unknown. */
@@ -88,6 +90,10 @@ data class RecordedLocationQuality(
     val verticalAccuracyMeters: Float? = null,
     val speedAccuracyMps: Float? = null,
     val ageMillis: Long? = null,
+    /** Satellites the GNSS chip used for this direct watch-GPS fix; unknown for fused fixes. */
+    val gnssSatellitesUsed: Int? = null,
+    /** Mean C/N0 of those satellites, dB-Hz. */
+    val gnssUsedCn0AvgDbHz: Float? = null,
 )
 
 internal fun Location.recordingLocationQuality(
@@ -102,6 +108,8 @@ internal fun Location.recordingLocationQuality(
         ageMillis =
             (nowElapsedMillis - elapsedRealtimeNanos / 1_000_000L)
                 .takeIf { elapsedRealtimeNanos > 0L && it >= 0L },
+        gnssSatellitesUsed = gnssSatellitesUsed(),
+        gnssUsedCn0AvgDbHz = gnssUsedCn0AvgDbHz(),
     )
 
 internal fun RecordedLocationQuality.toJson(): JSONObject =
@@ -111,6 +119,8 @@ internal fun RecordedLocationQuality.toJson(): JSONObject =
         .put("verticalAccuracyMeters", verticalAccuracyMeters?.takeIf { it.isFinite() && it >= 0f } ?: JSONObject.NULL)
         .put("speedAccuracyMps", speedAccuracyMps?.takeIf { it.isFinite() && it >= 0f } ?: JSONObject.NULL)
         .put("ageMillis", ageMillis?.takeIf { it >= 0L } ?: JSONObject.NULL)
+        .put("gnssSatellitesUsed", gnssSatellitesUsed?.takeIf { it > 0 } ?: JSONObject.NULL)
+        .put("gnssUsedCn0AvgDbHz", gnssUsedCn0AvgDbHz?.takeIf { it.isFinite() && it > 0f } ?: JSONObject.NULL)
 
 internal fun JSONObject.toRecordedLocationQuality(): RecordedLocationQuality =
     RecordedLocationQuality(
@@ -119,6 +129,8 @@ internal fun JSONObject.toRecordedLocationQuality(): RecordedLocationQuality =
         verticalAccuracyMeters = optDouble("verticalAccuracyMeters").toFloat().takeIf { it.isFinite() && it >= 0f },
         speedAccuracyMps = optDouble("speedAccuracyMps").toFloat().takeIf { it.isFinite() && it >= 0f },
         ageMillis = optLong("ageMillis", -1L).takeIf { it >= 0L },
+        gnssSatellitesUsed = optInt("gnssSatellitesUsed", -1).takeIf { it > 0 },
+        gnssUsedCn0AvgDbHz = optDouble("gnssUsedCn0AvgDbHz").toFloat().takeIf { it.isFinite() && it > 0f },
     )
 
 private fun JSONObject.metadataString(key: String): String? =

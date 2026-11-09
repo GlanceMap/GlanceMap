@@ -396,6 +396,10 @@ private fun StringWriter.writeLocationQualityExtensions(quality: RecordedLocatio
         textTag("gmap:gpsSpeedAccuracyMps", formatFloat(it))
     }
     quality.ageMillis?.takeIf { it >= 0L }?.let { textTag("gmap:locationAgeMillis", it.toString()) }
+    quality.gnssSatellitesUsed?.takeIf { it > 0 }?.let { textTag("gmap:gnssSatellitesUsed", it.toString()) }
+    quality.gnssUsedCn0AvgDbHz?.takeIf { it.isFinite() && it > 0f }?.let {
+        textTag("gmap:gnssUsedCn0AvgDbHz", formatFloat(it))
+    }
 }
 
 private fun StringWriter.textTag(

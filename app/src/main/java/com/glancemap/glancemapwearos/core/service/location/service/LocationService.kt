@@ -55,6 +55,8 @@ import com.glancemap.glancemapwearos.core.service.location.engine.RequestSpec
 import com.glancemap.glancemapwearos.core.service.location.model.LocationPermissionChecker
 import com.glancemap.glancemapwearos.core.service.location.model.LocationPermissionSnapshot
 import com.glancemap.glancemapwearos.core.service.location.model.LocationScreenState
+import com.glancemap.glancemapwearos.core.service.location.model.attachGnssFixQuality
+import com.glancemap.glancemapwearos.core.service.location.model.gnssFixQualityForFix
 import com.glancemap.glancemapwearos.core.service.location.model.isInteractive
 import com.glancemap.glancemapwearos.core.service.location.model.isNonInteractive
 import com.glancemap.glancemapwearos.core.service.location.model.resolveLocationTimingProfile
@@ -1602,6 +1604,12 @@ class LocationService : Service() {
             reason == NavigationRuntimeDemandReason.RECORDING_GUIDANCE
 
     private fun publishAcceptedLocation(location: Location) {
+        if (location.provider == LocationManager.GPS_PROVIDER) {
+            gnssFixQualityForFix(
+                quality = gnssDiagnosticsCoordinator.latestFixQuality,
+                fixElapsedRealtimeMs = location.elapsedRealtimeNanos / 1_000_000L,
+            )?.let(location::attachGnssFixQuality)
+        }
         _currentLocation.value = location
         if (!_acceptedLocationEvents.tryEmit(location)) {
             DebugTelemetry.log(

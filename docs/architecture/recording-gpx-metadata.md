@@ -30,9 +30,18 @@ preserved by track copies and draft persistence, and exported as:
 | `gpsVerticalAccuracyMeters` | Vertical uncertainty of the input location, metres |
 | `gpsSpeedAccuracyMps` | Speed uncertainty of the input location, metres/second |
 | `locationAgeMillis` | Delivery age calculated from monotonic timestamps, milliseconds |
+| `gnssSatellitesUsed` | Satellites the GNSS chip used for a direct watch-GPS fix |
+| `gnssUsedCn0AvgDbHz` | Mean C/N0 of those satellites, dB-Hz |
 
 These uncertainties describe the input location, not the subsequently processed
-elevation or speed. Unknown/future monotonic timestamps have no exported age.
+elevation or speed. The GNSS values come from the latest `GnssStatus` report taken within 3 s of
+the fix. They are written only when diagnostics capture was on during the recording,
+and are omitted for fused/phone fixes and when no matching report exists.
+Some watches (OnePlus OPWWE251) report fixed placeholder uncertainties for direct
+watch GPS (125 m horizontal, 250 m vertical, 25 m/s speed), and recording currently
+filters those fixes with an assumed 18 m. The satellite values are recorded to
+calibrate a measured replacement, for example from a walk with a phone recording in
+parallel; no recording decision reads them yet. Unknown/future monotonic timestamps have no exported age.
 Existing raw/effective horizontal accuracy, elevation source, speed, pressure,
 sensor data, segment reasons and processing versions retain their meanings.
 No satellite count, fix type or DOP is fabricated from accuracy in metres.

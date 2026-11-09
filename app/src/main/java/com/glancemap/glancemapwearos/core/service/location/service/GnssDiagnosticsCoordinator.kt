@@ -6,6 +6,7 @@ import android.location.LocationManager
 import android.os.Handler
 import android.os.SystemClock
 import com.glancemap.glancemapwearos.core.service.diagnostics.GnssDiagnostics
+import com.glancemap.glancemapwearos.core.service.location.model.GnssFixQuality
 import com.glancemap.glancemapwearos.core.service.location.model.GpsSignalSnapshot
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -50,6 +51,11 @@ internal class GnssDiagnosticsCoordinator(
     @Volatile
     private var firstFixTtffMs: Int? = null
 
+    /** Latest used-satellite evidence, read by the service when it accepts a watch-GPS fix. */
+    @Volatile
+    var latestFixQuality: GnssFixQuality? = null
+        private set
+
     @Volatile
     private var latestAcquisitionState: GnssAcquisitionState = GnssAcquisitionState.NO_RADIO_SIGNAL
 
@@ -65,7 +71,7 @@ internal class GnssDiagnosticsCoordinator(
     fun update(enabled: Boolean) {
         if (!enabled) {
             lastPolicyDisabledSignature = null
-            unregister(reason = "debug_disabled")
+            unregister(reason = "collector_disabled")
             return
         }
 
@@ -156,6 +162,8 @@ internal class GnssDiagnosticsCoordinator(
                     var cn0Count = 0
                     var cn0Sum = 0f
                     var cn0Max = Float.NEGATIVE_INFINITY
+                    var usedCn0Count = 0
+                    var usedCn0Sum = 0f
                     var carrierFrequencySatelliteCount = 0
                     var l1SatelliteCount = 0
                     var l5SatelliteCount = 0
@@ -168,8 +176,13 @@ internal class GnssDiagnosticsCoordinator(
                     var unknownCount = 0
 
                     for (index in 0 until satellites) {
+                        val satelliteCn0 = status.getCn0DbHz(index)
                         if (status.usedInFix(index)) {
                             usedInFix += 1
+                            if (satelliteCn0.isFinite() && satelliteCn0 > 0f) {
+                                usedCn0Count += 1
+                                usedCn0Sum += satelliteCn0
+                            }
                         }
                         if (status.hasAlmanacData(index)) {
                             almanacSatelliteCount += 1
@@ -186,7 +199,7 @@ internal class GnssDiagnosticsCoordinator(
                             GnssStatus.CONSTELLATION_SBAS -> sbasCount += 1
                             else -> unknownCount += 1
                         }
-                        val cn0 = status.getCn0DbHz(index)
+                        val cn0 = satelliteCn0
                         if (cn0.isFinite() && cn0 > 0f) {
                             cn0Count += 1
                             signalSatelliteCount += 1
@@ -207,6 +220,12 @@ internal class GnssDiagnosticsCoordinator(
                         }
                     }
 
+                    latestFixQuality =
+                        GnssFixQuality(
+                            satellitesUsedInFix = usedInFix,
+                            usedCn0AvgDbHz = if (usedCn0Count > 0) usedCn0Sum / usedCn0Count else null,
+                            statusElapsedRealtimeMs = nowElapsedMs,
+                        )
                     latestAcquisitionState =
                         resolveGnssAcquisitionState(
                             signalSatelliteCount = signalSatelliteCount,
@@ -351,6 +370,7 @@ internal class GnssDiagnosticsCoordinator(
         firstUsedInFixAtElapsedMs = 0L
         firstFixTtffMs = null
         latestAcquisitionState = GnssAcquisitionState.NO_RADIO_SIGNAL
+        latestFixQuality = null
         lastUsedZeroWithFreshLocationAtElapsedMs = 0L
         lastSignalsWithoutFreshLocationAtElapsedMs = 0L
     }

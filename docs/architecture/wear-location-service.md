@@ -108,6 +108,15 @@ after Bluetooth was turned off. A phone reconnect returns to fused location at t
 check, for battery life and accuracy, as outside recordings; with Watch GPS only enabled
 the phone is never used. The extra checks' battery cost has not been measured.
 
+## Recording GNSS evidence
+
+`GnssDiagnosticsCoordinator` registers its `GnssStatus` callback only while full diagnostics
+capture is on, and only while the source is watch GPS (auto-fused keeps it off). The service
+then attaches the latest used-satellite count and mean C/N0 to an accepted `gps`-provider fix
+when the status report is within 3 s of the fix time, and a recording stores them per point.
+Without diagnostics capture no callback is registered and points carry no GNSS values, so
+normal recordings have no added GNSS-status cost.
+
 ## Global diagnostics capture
 
 The application scope observes the persisted capture enable/mode and owns the global DebugTelemetry
