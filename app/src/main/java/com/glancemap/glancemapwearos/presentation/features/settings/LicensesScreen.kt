@@ -73,31 +73,16 @@ fun LicensesScreen(onOpenGeneralSettings: () -> Unit) {
             )
         }
         item {
-            SettingsPickerChip(
+            LegalDocumentChip(
                 label = stringResource(R.string.changelog_title),
+                secondaryLabel = stringResource(R.string.watch_whats_new_title, "1.3.0"),
                 onClick = { showChangelog = true },
             )
         }
         items(LICENSE_DOCUMENTS) { document ->
-            Chip(
-                modifier = Modifier.fillMaxWidth(),
-                label = {
-                    WearText(
-                        text = stringResource(document.labelRes),
-                        modifier = Modifier.fillMaxWidth().basicMarquee(),
-                        textAlign = TextAlign.Start,
-                        overflow = TextOverflow.Visible,
-                        maxLines = 1,
-                    )
-                },
-                secondaryLabel = {
-                    WearText(
-                        text = stringResource(document.secondaryLabelRes),
-                        modifier = Modifier.basicMarquee(),
-                        overflow = TextOverflow.Visible,
-                        maxLines = 1,
-                    )
-                },
+            LegalDocumentChip(
+                label = stringResource(document.labelRes),
+                secondaryLabel = stringResource(document.secondaryLabelRes),
                 onClick = { selectedDocument = document },
             )
         }
@@ -120,6 +105,36 @@ fun LicensesScreen(onOpenGeneralSettings: () -> Unit) {
 
 @Composable
 @Suppress("FunctionNaming")
+private fun LegalDocumentChip(
+    label: String,
+    secondaryLabel: String,
+    onClick: () -> Unit,
+) {
+    Chip(
+        modifier = Modifier.fillMaxWidth(),
+        label = {
+            WearText(
+                text = label,
+                modifier = Modifier.fillMaxWidth().basicMarquee(),
+                textAlign = TextAlign.Start,
+                overflow = TextOverflow.Visible,
+                maxLines = 1,
+            )
+        },
+        secondaryLabel = {
+            WearText(
+                text = secondaryLabel,
+                modifier = Modifier.basicMarquee(),
+                overflow = TextOverflow.Visible,
+                maxLines = 1,
+            )
+        },
+        onClick = onClick,
+    )
+}
+
+@Composable
+@Suppress("FunctionNaming")
 private fun ChangelogDialog(onDismiss: () -> Unit) {
     val notes = stringArrayResource(R.array.changelog_1_3_0_notes)
     WearInfoDialog(
@@ -137,6 +152,7 @@ private fun ChangelogDialog(onDismiss: () -> Unit) {
                 modifier = Modifier.fillMaxWidth(),
             )
         }
+        item { Spacer(modifier = Modifier.height(48.dp)) }
     }
 }
 
@@ -258,6 +274,7 @@ private fun LicenseDocumentDialog(
                 modifier = Modifier.fillMaxWidth(),
             )
         }
+        item { Spacer(modifier = Modifier.height(48.dp)) }
     }
 }
 
