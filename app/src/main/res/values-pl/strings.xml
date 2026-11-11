@@ -2,12 +2,12 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
     <string name="watch_whats_new_title">Nowości w wersji %1$s</string>
     <string-array name="watch_whats_new_notes">
+        <item>Dodano języki francuski, niemiecki, hiszpański, włoski i polski wraz z wyborem języka.</item>
+        <item>Dodano pełnoekranowe sterowanie mapą i skrót automatycznego ponownego wyśrodkowania.</item>
         <item>Dodano eksperymentalny teren 3D i motyw turystyczny.</item>
-        <item>Ulepszono zapisywanie przerw GPS i zmianę źródła lokalizacji.</item>
-        <item>Długie etykiety przewijają się na ekranach zegarka.</item>
-        <item>Usprawniono pobieranie i rozpakowywanie pakietów map offline.</item>
-        <item>Widok mapy jest zachowywany podczas przechodzenia między menu i panelami.</item>
-        <item>Poprawiono wyświetlanie wysokości GPX i niezawodność przesyłania.</item>
+        <item>Dodano obsługę własnych motywów Mapsforge wysyłanych z telefonu.</item>
+        <item>Usprawniono ciągłość nagrywania, obsługę przerw GPS i przywracanie czujników.</item>
+        <item>Usprawniono pobieranie i rozpakowywanie map offline.</item>
     </string-array>
     <string name="glancemap_state_on">"Wł."</string>
     <string name="glancemap_state_off">"Wył."</string>

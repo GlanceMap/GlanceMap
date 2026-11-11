@@ -19,13 +19,18 @@
     <string name="whats_new_feature_request_body">Hi GlanceMap team,\n\nI’d like to suggest:\n\n\nWhy it would help:\n</string>
 
     <string-array name="whats_new_1_3_0_phone">
-        <item>Added a What’s New screen to keep you informed about each release.</item>
+        <item>Added a What’s New screen with release history and feature suggestions.</item>
+        <item>Added support for sending custom Mapsforge themes to the watch.</item>
+        <item>Added integrity checks for watch–phone file transfers.</item>
+        <item>Improved notifications for files and diagnostics received from the watch.</item>
     </string-array>
     <string-array name="whats_new_1_3_0_watch">
-        <item>Improved activity recording reliability, cadence handling and heart-rate recovery.</item>
-        <item>Improved offline map bundle downloads and extraction, including when the screen is off.</item>
-        <item>Preserves the map view when moving between menus and dashboards.</item>
-        <item>Improved GPX elevation display and transfer reliability.</item>
+        <item>Added French, German, Spanish, Italian and Polish, with language selection.</item>
+        <item>Added fullscreen map controls and an auto-recenter shortcut.</item>
+        <item>Added experimental 3D terrain and a hiking theme.</item>
+        <item>Added support for custom Mapsforge themes sent from the phone.</item>
+        <item>Improved recording continuity, GPS gap handling and sensor recovery.</item>
+        <item>Improved offline map downloads and extraction.</item>
     </string-array>
 
     <string-array name="whats_new_1_2_3_phone">

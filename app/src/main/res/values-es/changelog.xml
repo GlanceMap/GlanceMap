@@ -1,9 +1,86 @@
 <resources>
     <string name="changelog_title">Registro de cambios</string>
     <string-array name="changelog_1_3_0_notes">
-        <item>Mayor fiabilidad de la grabación de actividades, el manejo de la cadencia y la recuperación de la frecuencia cardíaca.</item>
-        <item>Mejoras en la descarga y extracción de paquetes de mapas sin conexión, incluso con la pantalla apagada.</item>
-        <item>La vista del mapa se conserva al cambiar entre menús y paneles.</item>
-        <item>Mejor visualización de la altitud GPX y mayor fiabilidad de las transferencias.</item>
+        <item>Añadidos francés, alemán, español, italiano y polaco, con selección de idioma.</item>
+        <item>Añadidos controles de mapa a pantalla completa y un acceso directo al recentrado automático.</item>
+        <item>Añadidos terreno 3D experimental y un tema de senderismo.</item>
+        <item>Añadida compatibilidad con temas Mapsforge personalizados enviados desde el teléfono.</item>
+        <item>Mejoradas la continuidad de la grabación, la gestión de interrupciones GPS y la recuperación de sensores.</item>
+        <item>Mejoradas la descarga y extracción de mapas sin conexión.</item>
+    </string-array>
+
+    <string-array name="changelog_1_2_3_notes">
+        <item>Mejorados el inicio, la visualización y la navegación del mapa.</item>
+        <item>Mejorado el comportamiento de la brújula tras la suspensión y ante interferencias magnéticas.</item>
+        <item>Rotación de la brújula y navegación más fluidas.</item>
+        <item>La posición del mapa se conserva al volver del menú.</item>
+        <item>Mejorado el rendimiento de POI, GPX y grabación.</item>
+        <item>Mensajes más claros al iniciar, localizar y cuando no hay mapa activo.</item>
+        <item>Añadida compatibilidad con relojes Wear OS antiguos con Android 9 y 10.</item>
+    </string-array>
+    <string-array name="changelog_1_2_2_notes">
+        <item>Brújula y guía giro a giro más fiables, incluso después de pausas.</item>
+        <item>Grabación más fluida y distancia y velocidad más coherentes.</item>
+        <item>Zoom con dos dedos, acciones con pulsación larga y progreso de ruta más claro.</item>
+        <item>Mejor gestión del terreno y perfiles de altitud con tu ubicación.</item>
+        <item>Transferencias reloj–teléfono y carga de mapas y GPX más fiables.</item>
+        <item>Mejoras de estabilidad y rendimiento.</item>
+    </string-array>
+    <string-array name="changelog_1_2_1_notes">
+        <item>Mejorada la autonomía durante la navegación y la grabación.</item>
+        <item>La pausa automática está activada por defecto.</item>
+        <item>Gestión más eficiente del GPS y la brújula.</item>
+        <item>Mejor funcionamiento con la pantalla apagada o el reloj inactivo.</item>
+        <item>Grabación de rutas, distancia y altitud más fiables.</item>
+        <item>Mejor recuperación del GPS y uso del GPS del reloj cuando se desconecta el teléfono.</item>
+        <item>Mejor recuperación de descargas y extracción de mapas sin conexión.</item>
+        <item>Mejorados el zoom, la estabilidad del sombreado, la navegación giro a giro y los controles giratorios.</item>
+    </string-array>
+    <string-array name="changelog_1_2_0_notes">
+        <item>Añadida la grabación de actividades.</item>
+        <item>Añadida la navegación giro a giro.</item>
+        <item>Añadido soporte para sensores externos, incluidas bandas de pulso y sensores Stryd.</item>
+        <item>Añadidos perfiles de senderismo y ciclismo.</item>
+        <item>Mejorado el GPS durante la grabación y la navegación.</item>
+        <item>Mejorados el rendimiento y la respuesta del mapa.</item>
+        <item>Mejorada la eficiencia de batería, especialmente en grabaciones y navegaciones largas.</item>
+        <item>Mejorado el diseño de la interfaz.</item>
+    </string-array>
+    <string-array name="changelog_1_1_3_notes">
+        <item>Añadida la creación de actividades grabadas directamente desde el reloj.</item>
+        <item>Añadida la creación de navegación giro a giro directamente desde el reloj.</item>
+        <item>Añadido soporte para sensores externos, incluidas bandas de pulso y sensores Stryd.</item>
+        <item>Añadidos perfiles de senderismo y ciclismo.</item>
+        <item>Mejorado el GPS durante la grabación y la navegación.</item>
+        <item>Mejorados el rendimiento y la respuesta del mapa.</item>
+        <item>Mejorada la eficiencia de batería, especialmente en grabaciones y navegaciones largas.</item>
+        <item>Mejorado el diseño de la interfaz.</item>
+    </string-array>
+    <string-array name="changelog_1_1_2_notes">
+        <item>Añadida una flecha de dirección para rutas GPX.</item>
+        <item>Añadido soporte para el botón Atrás en relojes compatibles.</item>
+        <item>Añadida la posición ajustable del marcador.</item>
+        <item>Rediseñados los iconos, ajustes y navegación de POI.</item>
+        <item>Añadidos datos de altitud de mayor calidad.</item>
+        <item>Añadida la exportación de rutas GPX del reloj al teléfono.</item>
+        <item>Añadidos POI de Refuge.info a los paquetes y mejorada su navegación.</item>
+        <item>Añadidas guías rápidas de POI, GPX y mapas, y mejoras de batería, estabilidad y rendimiento.</item>
+    </string-array>
+    <string-array name="changelog_1_1_0_notes">
+        <item>Corregidos la cancelación de descargas y otros problemas menores.</item>
+        <item>Añadida la descarga directa de paquetes desde el reloj.</item>
+        <item>Añadida una nueva pantalla de inicio.</item>
+        <item>Corregidos problemas de marcadores y creación de POI y mejorada la estabilidad.</item>
+    </string-array>
+    <string-array name="changelog_1_0_5_notes">
+        <item>Corregidos problemas de brújula en relojes Samsung.</item>
+        <item>Corregidos los niveles de zoom en mapas grandes.</item>
+        <item>Corregidos problemas de caché de temas.</item>
+        <item>Corregido el diseño en pantallas pequeñas.</item>
+        <item>Añadido el tema OS Map.</item>
+        <item>Añadido un acceso directo al tema nocturno.</item>
+    </string-array>
+    <string-array name="changelog_1_0_4_notes">
+        <item>Corregida la descarga de datos DEM en algunas zonas.</item>
     </string-array>
 </resources>

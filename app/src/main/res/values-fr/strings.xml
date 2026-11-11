@@ -2,12 +2,12 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
     <string name="watch_whats_new_title">Nouveautés de %1$s</string>
     <string-array name="watch_whats_new_notes">
+        <item>Ajout du français, de l’allemand, de l’espagnol, de l’italien et du polonais, avec sélection de la langue.</item>
+        <item>Ajout des commandes de carte en plein écran et d’un raccourci de recentrage automatique.</item>
         <item>Ajout du terrain 3D expérimental et d’un thème de randonnée.</item>
-        <item>Amélioration de l’enregistrement des interruptions GPS et du changement de source de localisation.</item>
-        <item>Les libellés longs défilent sur les écrans de la montre.</item>
-        <item>Amélioration du téléchargement et de l’extraction des packs de cartes hors ligne.</item>
-        <item>La vue de la carte est conservée lors du passage entre les menus et les tableaux de bord.</item>
-        <item>Affichage de l’altitude GPX amélioré et transferts plus fiables.</item>
+        <item>Prise en charge des thèmes Mapsforge personnalisés envoyés depuis le téléphone.</item>
+        <item>Amélioration de la continuité des enregistrements, de la gestion des interruptions GPS et de la récupération des capteurs.</item>
+        <item>Amélioration du téléchargement et de l’extraction des cartes hors ligne.</item>
     </string-array>
     <string name="glancemap_state_on">"Activé"</string>
     <string name="glancemap_state_off">"Désactivé"</string>

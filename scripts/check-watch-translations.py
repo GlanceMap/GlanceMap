@@ -75,12 +75,26 @@ def load(path, text=None):
     require(root.tag == "resources", f"Expected resources root: {path}")
     result = {}
     for element in root:
-        if element.tag not in {"string", "plurals"}:
+        if element.tag not in {"string", "plurals"} and not (
+            element.tag == "string-array" and (
+                element.get("name", "").startswith("changelog_") or element.get("name") == "watch_whats_new_notes"
+            )
+        ):
             continue
         name = element.get("name")
         require(name and name not in result, f"Missing/duplicate resource name in {path}: {name}")
         result[name] = element
     return result
+
+
+def english_resources(res):
+    english = {}
+    for path in sorted((res / "values").glob("*.xml")):
+        for name, element in load(path).items():
+            if element.get("translatable") != "false":
+                require(name not in english, f"values/{name}: duplicate across files")
+                english[name] = element
+    return english
 
 
 def discover(res):
@@ -180,6 +194,9 @@ def validate_resources(group, english):
         require((directory / "strings.xml").is_file(), f"{directory}: missing strings.xml")
         require(translated.keys() <= english.keys(),
                 f"{directory.name}: extra/nontranslatable={sorted(translated.keys() - english.keys())}")
+        missing_history = sorted(name for name in english.keys() - translated.keys()
+                                 if english[name].tag == "string-array")
+        require(not missing_history, f"{directory.name}: missing changelog arrays: {missing_history}")
     else:
         require(translated.keys() <= english.keys(), f"{directory.name}: unknown configuration-override resource")
     rows, records = [], []
@@ -194,6 +211,10 @@ def validate_resources(group, english):
             originals = plural_forms(source, name)
             pairs = [(name + "." + q, originals.get(q, originals["other"]), child) for q, child in forms.items()]
             records.append(("plural", group["locale"], label, ",".join(sorted(forms))))
+        elif source.tag == "string-array":
+            require(len(source) == len(target), f"{label}: item count mismatch")
+            pairs = [(f"{name}[{index}]", original, translation)
+                     for index, (original, translation) in enumerate(zip(source, target))]
         else:
             pairs = [(name, source, target)]
             if is_icu(source):
@@ -239,7 +260,7 @@ def preserve_existing_files(res, base_ref):
             continue
         require((res / relative).is_file(), f"Existing translation file deleted: {relative}; preserve approved work")
         retained[relative] = path
-    english = {name for name, element in load(res / "values/strings.xml").items() if element.get("translatable") != "false"}
+    english = set(english_resources(res))
     previous = collections.defaultdict(set)
     for relative, path in retained.items():
         if relative.parts[0].startswith("values-") and relative.suffix == ".xml":
@@ -254,12 +275,13 @@ def preserve_existing_files(res, base_ref):
 
 
 def validate(res, report_dir=None):
-    english = {name: e for name, e in load(res / "values/strings.xml").items() if e.get("translatable") != "false"}
+    english = english_resources(res)
     groups = discover(res)
     require(groups, "No translated locale resources found")
     records = []
     for name, element in english.items():
-        forms = plural_forms(element, name) if element.tag == "plurals" else {"": element}
+        forms = (plural_forms(element, name) if element.tag == "plurals" else
+                 {str(i): item for i, item in enumerate(element)} if element.tag == "string-array" else {"": element})
         for quantity, item in forms.items():
             compare(item, item, "values/" + name + ("." + quantity if quantity else ""))
         if element.tag == "plurals":

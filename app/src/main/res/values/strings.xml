@@ -1,12 +1,12 @@
 <resources>
     <string name="watch_whats_new_title">What’s new in %1$s</string>
     <string-array name="watch_whats_new_notes">
+        <item>Added French, German, Spanish, Italian and Polish, with language selection.</item>
+        <item>Added fullscreen map controls and an auto-recenter shortcut.</item>
         <item>Added experimental 3D terrain and a hiking theme.</item>
-        <item>Improved GPS gap recording and source switching.</item>
-        <item>Made long labels scroll on watch screens.</item>
-        <item>Improved offline map bundle downloads and extraction.</item>
-        <item>Preserves the map view when moving between menus and dashboards.</item>
-        <item>Improved GPX elevation display and transfer reliability.</item>
+        <item>Added support for custom Mapsforge themes sent from the phone.</item>
+        <item>Improved recording continuity, GPS gap handling and sensor recovery.</item>
+        <item>Improved offline map downloads and extraction.</item>
     </string-array>
     <string name="app_name" translatable="false">GlanceMap</string>
     <string name="glancemap_state_on">On</string>

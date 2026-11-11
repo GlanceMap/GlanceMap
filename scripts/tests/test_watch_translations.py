@@ -186,6 +186,22 @@ class TranslationValidationTest(unittest.TestCase):
         self.assertEqual(6, inventory[0]["strings"])
         self.assertEqual(1, inventory[0]["plurals"])
 
+    def test_changelog_arrays_in_separate_files_are_checked(self):
+        self.write('values/changelog.xml', '<resources><string name="changelog_title">Changelog</string><string-array name="changelog_1_0_4_notes"><item>Map %1$s</item></string-array></resources>')
+        target = self.write('values-de/changelog.xml', '<resources><string name="changelog_title">Änderungen</string><string-array name="changelog_1_0_4_notes"><item>Karte %1$s</item></string-array></resources>')
+        self.validate()
+        target.write_text(target.read_text().replace('%1$s', '%1$d'))
+        with self.assertRaisesRegex(ValueError, 'placeholder'):
+            self.validate()
+        target.write_text(target.read_text().replace('%1$d', '%1$s</item><item>extra'))
+        with self.assertRaisesRegex(ValueError, 'item count'):
+            self.validate()
+
+    def test_missing_changelog_array_fails(self):
+        self.write('values/changelog.xml', '<resources><string-array name="changelog_1_0_4_notes"><item>Map</item></string-array></resources>')
+        with self.assertRaisesRegex(ValueError, 'missing changelog'):
+            self.validate()
+
     def test_supported_format_tokens_and_modifiers_pass(self):
         for text in ('%1$s', '%1$d', '%1$.1f', '%1$.0f', '%%', '%n', '%1$-8.3s', '%1$08d', '%1$+08.2f'):
             with self.subTest(text=text):
