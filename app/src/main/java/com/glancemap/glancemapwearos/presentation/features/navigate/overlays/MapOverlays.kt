@@ -32,8 +32,10 @@ import com.glancemap.glancemapwearos.presentation.features.maps.RotatableMarker
 import com.glancemap.glancemapwearos.presentation.features.maps.mutateLayers
 import com.glancemap.glancemapwearos.presentation.features.poi.PoiOverlaySource
 import com.glancemap.glancemapwearos.presentation.features.poi.PoiViewModel
+import com.glancemap.glancemapwearos.presentation.features.recording.RecordingTraceHistoryLayer
 import com.glancemap.glancemapwearos.presentation.features.recording.RecordingTraceOverlayEffect
 import com.glancemap.glancemapwearos.presentation.features.recording.TraceRecordingUiState
+import com.glancemap.glancemapwearos.presentation.features.recording.recordingGapConnectors
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.channels.BufferOverflow
@@ -782,6 +784,10 @@ private fun GpxAndInspectionOverlayEffect(
         remember {
             AndroidGraphicFactory.INSTANCE.createPaint().apply { setStyle(Style.STROKE) }
         }
+    val gapPaint =
+        remember {
+            AndroidGraphicFactory.INSTANCE.createPaint().apply { setStyle(Style.STROKE) }
+        }
     val previewPaint =
         remember {
             AndroidGraphicFactory.INSTANCE.createPaint().apply { setStyle(Style.STROKE) }
@@ -794,6 +800,7 @@ private fun GpxAndInspectionOverlayEffect(
     // Stable caches
     val polylinesById = remember(mapView) { mutableMapOf<String, List<Polyline>>() }
     val elevationPolylinesById = remember(mapView) { mutableMapOf<String, List<Polyline>>() }
+    val gapLayersById = remember(mapView) { mutableMapOf<String, RecordingTraceHistoryLayer>() }
     val startMarkersById = remember(mapView) { mutableMapOf<String, Marker>() }
     val endMarkersById = remember(mapView) { mutableMapOf<String, Marker>() }
     val lodById = remember(mapView) { mutableMapOf<String, TrackLodLevels>() }
@@ -847,6 +854,8 @@ private fun GpxAndInspectionOverlayEffect(
                 opacityPercent = gpxTrackOpacityPercent,
             )
         trackPaint.strokeWidth = gpxTrackWidth
+        gapPaint.color = applyOpacityToColor(Color.rgb(128, 128, 128), gpxTrackOpacityPercent)
+        gapPaint.strokeWidth = gpxTrackWidth
         previewPaint.color =
             if (routeToolCreatePreviewActive) {
                 Color.argb(
@@ -965,6 +974,18 @@ private fun GpxAndInspectionOverlayEffect(
                 }
             }
 
+        val gapsById =
+            withContext(Dispatchers.Default) {
+                activeGpxDetails.associate { details ->
+                    details.id to
+                        if (details.isActivity) {
+                            recordingGapConnectors(details.trackPoints.allLatLongSegments())
+                        } else {
+                            emptyList()
+                        }
+                }
+            }
+
         // Layer mutations can wait for gesture idle, so publish reusable geometry first.
         trackLodCacheById.clear()
         trackLodCacheById.putAll(computedLodById)
@@ -982,6 +1003,7 @@ private fun GpxAndInspectionOverlayEffect(
                     displayedLodBucketById = displayedLodBucketById,
                 ) - wantedIds
             staleOverlayIds.forEach { id ->
+                gapLayersById.remove(id)?.let { changed = layers.remove(it) || changed }
                 polylinesById.remove(id)?.forEach { polyline ->
                     changed = layers.remove(polyline) || changed
                 }
@@ -1027,6 +1049,15 @@ private fun GpxAndInspectionOverlayEffect(
             activeGpxDetails.forEach { details ->
                 val lod = computedLodById[details.id] ?: return@forEach
                 lodById[details.id] = lod
+                val gaps = gapsById[details.id].orEmpty()
+                if (gaps.isEmpty()) {
+                    gapLayersById.remove(details.id)?.let { changed = layers.remove(it) || changed }
+                } else {
+                    val gapLayer = gapLayersById.getOrPut(details.id) { RecordingTraceHistoryLayer(gapPaint) }
+                    gapLayer.segments = gaps
+                    if (!layers.contains(gapLayer)) layers.add(gapLayer)
+                    changed = true
+                }
                 val renderPoints = lod.pointsForZoom(zoomNow)
 
                 if (useElevationTrackColors) {
@@ -1213,6 +1244,7 @@ private fun GpxAndInspectionOverlayEffect(
             mapView.mutateLayers { layers ->
                 polylinesById.values.flatten().forEach(layers::remove)
                 elevationPolylinesById.values.flatten().forEach(layers::remove)
+                gapLayersById.values.forEach(layers::remove)
                 startMarkersById.values.forEach(layers::remove)
                 endMarkersById.values.forEach(layers::remove)
                 layers.remove(directionArrowLayer)
@@ -1222,6 +1254,7 @@ private fun GpxAndInspectionOverlayEffect(
 
                 polylinesById.clear()
                 elevationPolylinesById.clear()
+                gapLayersById.clear()
                 startMarkersById.clear()
                 endMarkersById.clear()
                 directionArrowLayer.trackLods = emptyMap()

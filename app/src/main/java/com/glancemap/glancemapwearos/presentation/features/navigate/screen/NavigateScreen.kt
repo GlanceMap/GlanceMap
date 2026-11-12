@@ -106,7 +106,10 @@ fun NavigateScreen(
     val screenSize = rememberWearScreenSize()
     val density = LocalDensity.current
     val focusRequester = remember { FocusRequester() }
-    val mapFocusState = remember { NavigateMapFocusState() }
+    val mapFocusState =
+        remember(navigateViewModel) {
+            NavigateMapFocusState(initialMapFocusMode = navigateViewModel.mapFocusMode.value)
+        }
     SideEffect {
         BenchmarkTrace.mark("recompose.NavigateScreen")
     }
@@ -469,6 +472,7 @@ fun NavigateScreen(
         fun enterMapFocus() {
             screenActions.triggerHaptic()
             mapFocusState.enter { shortcutTrayExpanded = false }
+            navigateViewModel.mapFocusMode.value = true
             DebugTelemetry.log("NavigationTelemetry", "event=map_focus_enter source=shortcut")
         }
 
@@ -477,6 +481,7 @@ fun NavigateScreen(
             if (source == "button") screenActions.triggerHaptic()
             shortcutTrayExpanded = false
             mapFocusState.exit()
+            navigateViewModel.mapFocusMode.value = false
             DebugTelemetry.log("NavigationTelemetry", "event=map_focus_exit source=$source")
         }
 

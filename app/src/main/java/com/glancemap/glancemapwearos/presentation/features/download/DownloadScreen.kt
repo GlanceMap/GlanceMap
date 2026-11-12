@@ -35,6 +35,7 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.UnfoldMore
 import androidx.compose.material.icons.filled.Update
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -54,6 +55,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.wear.compose.foundation.lazy.ScalingLazyColumn
 import androidx.wear.compose.material.Chip
 import androidx.wear.compose.material.ChipDefaults
@@ -73,6 +77,7 @@ import com.glancemap.glancemapwearos.presentation.features.settings.rememberSett
 import com.glancemap.glancemapwearos.presentation.ui.CompactIconHitTargetButton
 import com.glancemap.glancemapwearos.presentation.ui.DeleteConfirmationDialog
 import com.glancemap.glancemapwearos.presentation.ui.FeatureListScaffold
+import com.glancemap.glancemapwearos.presentation.ui.KeepScreenOnEffect
 import com.glancemap.glancemapwearos.presentation.ui.WearScreenSize
 import com.glancemap.glancemapwearos.presentation.ui.cappedFontScale
 import com.glancemap.glancemapwearos.presentation.ui.rememberWearAdaptiveSpec
@@ -97,6 +102,10 @@ fun DownloadScreen(
     val screenSize = rememberWearScreenSize()
     val adaptive = rememberWearAdaptiveSpec()
     val uiState by viewModel.uiState.collectAsState()
+    val isInstallationScreenActive = rememberOamInstallationScreenActive()
+    if (shouldKeepOamInstallationScreenOn(uiState.isExtracting, isInstallationScreenActive)) {
+        KeepScreenOnEffect(screenBrightness = OAM_EXTRACTION_SCREEN_BRIGHTNESS)
+    }
     val showAreaPicker = areaPickerOpen
     var bundlePendingDelete by remember { mutableStateOf<OamInstalledBundle?>(null) }
     var showOamInfoDialog by remember { mutableStateOf(false) }
@@ -104,7 +113,7 @@ fun DownloadScreen(
     var refreshMode by remember { mutableStateOf(false) }
     val effectiveRefreshMode =
         refreshMode &&
-            !uiState.isDownloading &&
+            !uiState.isLibraryBusy &&
             uiState.pausedOperation != DownloadOperation.REFRESH
     var showAreaSearchDialog by remember { mutableStateOf(false) }
     val infoPrefs =
@@ -307,8 +316,8 @@ fun DownloadScreen(
             showOamInfoDialog = true
         }
     }
-    LaunchedEffect(uiState.installedBundles.isEmpty()) {
-        if (uiState.installedBundles.isEmpty()) {
+    LaunchedEffect(uiState.visibleInstalledBundles.isEmpty()) {
+        if (uiState.visibleInstalledBundles.isEmpty()) {
             deleteMode = false
             refreshMode = false
             viewModel.clearRefreshBundleSelection()
@@ -394,9 +403,9 @@ fun DownloadScreen(
     ScreenScaffold(scrollState = listState) {
         FeatureListScaffold {
             DownloadHeader(
-                isDownloading = uiState.isDownloading,
+                isDownloading = uiState.isLibraryBusy,
                 isCheckingUpdates = uiState.isCheckingUpdates,
-                hasInstalledBundles = uiState.installedBundles.isNotEmpty(),
+                hasInstalledBundles = uiState.visibleInstalledBundles.isNotEmpty(),
                 refreshMode = effectiveRefreshMode,
                 deleteMode = deleteMode,
                 selectedRefreshBundleCount = uiState.selectedRefreshBundleIds.size,
@@ -553,7 +562,7 @@ fun DownloadScreen(
                         }
                     }
 
-                    if (uiState.installedBundles.isEmpty()) {
+                    if (uiState.visibleInstalledBundles.isEmpty()) {
                         item {
                             Text(
                                 text = stringResource(R.string.download_no_bundles_installed),
@@ -564,21 +573,21 @@ fun DownloadScreen(
                             )
                         }
                     } else {
-                        uiState.installedBundles.forEach { bundle ->
+                        uiState.visibleInstalledBundles.forEach { bundle ->
                             item {
                                 InstalledBundleRow(
                                     bundle = bundle,
-                                    needsRepair = uiState.bundleHealthByAreaId[bundle.areaId]?.needsRepair == true,
                                     refreshMode = effectiveRefreshMode,
                                     refreshSelected = bundle.areaId in uiState.selectedRefreshBundleIds,
                                     deleteMode = deleteMode,
+                                    enabled = !uiState.isLibraryBusy && !uiState.isCheckingUpdates,
                                     onRefresh = {
-                                        if (!uiState.isDownloading && effectiveRefreshMode) {
+                                        if (!uiState.isLibraryBusy && effectiveRefreshMode) {
                                             viewModel.toggleRefreshBundleSelection(bundle.areaId)
                                         }
                                     },
                                     onDelete = {
-                                        if (!uiState.isDownloading && deleteMode) {
+                                        if (!uiState.isLibraryBusy && !uiState.isCheckingUpdates && deleteMode) {
                                             bundlePendingDelete = bundle
                                         }
                                     },
@@ -642,7 +651,7 @@ fun DownloadScreen(
                     }
                 }
             } else {
-                if (effectiveRefreshMode && uiState.installedBundles.isNotEmpty()) {
+                if (effectiveRefreshMode && uiState.visibleInstalledBundles.isNotEmpty()) {
                     Box(
                         modifier =
                             Modifier
@@ -664,7 +673,8 @@ fun DownloadScreen(
                             icon = Icons.Filled.Update,
                             enabled =
                                 uiState.selectedRefreshBundleIds.isNotEmpty() &&
-                                    !uiState.isCheckingUpdates,
+                                    !uiState.isCheckingUpdates &&
+                                    !uiState.isLibraryBusy,
                             height = actionButtonHeight,
                             iconSize = actionButtonIconSize,
                             widthFraction = refreshActionWidthFraction,
@@ -698,7 +708,7 @@ fun DownloadScreen(
                                     contentDescription = stringResource(R.string.download_bundle_settings),
                                 )
                             }
-                            if (uiState.installedBundles.isNotEmpty()) {
+                            if (uiState.visibleInstalledBundles.isNotEmpty()) {
                                 CompactIconHitTargetButton(
                                     onClick = {
                                         val nextDeleteMode = !deleteMode
@@ -708,7 +718,7 @@ fun DownloadScreen(
                                             viewModel.clearRefreshBundleSelection()
                                         }
                                     },
-                                    enabled = !uiState.isDownloading,
+                                    enabled = !uiState.isLibraryBusy && !uiState.isCheckingUpdates,
                                     visualSize = headerActionButtonSize,
                                     visualOffsetY = bottomActionVisualOffsetY,
                                     containerColor =
@@ -782,19 +792,21 @@ private fun DownloadHeader(
                 cappedFontScale(maxFontScale = 1f) {
                     Text(
                         text = stringResource(R.string.common_download),
+                        modifier = Modifier.basicMarquee(),
                         style = MaterialTheme.typography.titleSmall,
                         textAlign = TextAlign.Center,
                         maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
+                        overflow = TextOverflow.Visible,
                     )
                 }
             } else {
                 Text(
                     text = stringResource(R.string.common_download),
+                    modifier = Modifier.basicMarquee(),
                     style = MaterialTheme.typography.titleMedium,
                     textAlign = TextAlign.Center,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                    overflow = TextOverflow.Visible,
                 )
             }
             Row(
@@ -852,8 +864,8 @@ private fun DownloadHeader(
                             color = MaterialTheme.colorScheme.primary,
                             textAlign = TextAlign.Center,
                             maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.padding(top = 6.dp),
+                            overflow = TextOverflow.Visible,
+                            modifier = Modifier.padding(top = 6.dp).basicMarquee(),
                         )
                     }
                 } else {
@@ -953,8 +965,9 @@ private fun DownloadActionButton(
         Spacer(Modifier.size(ButtonDefaults.IconSpacing))
         Text(
             text = label,
+            modifier = Modifier.basicMarquee(),
             maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
+            overflow = TextOverflow.Visible,
         )
     }
 }
@@ -1013,26 +1026,18 @@ private fun DownloadProgress(uiState: DownloadUiState) {
 @Composable
 private fun InstalledBundleRow(
     bundle: OamInstalledBundle,
-    needsRepair: Boolean,
     refreshMode: Boolean,
     refreshSelected: Boolean,
     deleteMode: Boolean,
+    enabled: Boolean,
     onRefresh: () -> Unit,
     onDelete: () -> Unit,
 ) {
     val resources = LocalResources.current
     DownloadChip(
         label = bundle.areaLabel,
-        secondaryLabel =
-            if (needsRepair) {
-                stringResource(
-                    R.string.download_repair_needed_2,
-                    installedBundleSubtitle(bundle, resources = resources),
-                )
-            } else {
-                installedBundleSubtitle(bundle, resources = resources)
-            },
-        secondaryMarquee = true,
+        enabled = enabled,
+        secondaryLabel = installedBundleSubtitle(bundle, resources = resources),
         icon =
             when {
                 refreshMode && refreshSelected -> Icons.Filled.Check
@@ -1041,7 +1046,7 @@ private fun InstalledBundleRow(
                 else -> Icons.Filled.Check
             },
         selected = (refreshMode && refreshSelected) || (!deleteMode && !refreshMode),
-        warning = needsRepair,
+        warning = false,
         onClick =
             when {
                 refreshMode -> onRefresh
@@ -1183,23 +1188,25 @@ internal fun DownloadChip(
     onClick: () -> Unit,
     selected: Boolean = false,
     warning: Boolean = false,
-    secondaryMarquee: Boolean = false,
+    enabled: Boolean = true,
 ) {
     Chip(
         modifier = Modifier.fillMaxWidth(),
+        enabled = enabled,
         label = {
             Text(
                 text = label,
+                modifier = Modifier.basicMarquee(),
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+                overflow = TextOverflow.Visible,
             )
         },
         secondaryLabel = {
             Text(
                 text = secondaryLabel,
-                modifier = if (secondaryMarquee) Modifier.basicMarquee() else Modifier,
+                modifier = Modifier.basicMarquee(),
                 maxLines = 1,
-                overflow = if (secondaryMarquee) TextOverflow.Visible else TextOverflow.Ellipsis,
+                overflow = TextOverflow.Visible,
             )
         },
         icon = {
@@ -1245,6 +1252,35 @@ private fun formatBytes(
 
 private fun Double.formatOneDecimal(): String = String.format(java.util.Locale.getDefault(), "%.1f", this)
 
+@Composable
+private fun rememberOamInstallationScreenActive(): Boolean {
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var isScreenResumed by remember(lifecycleOwner) {
+        mutableStateOf(lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED))
+    }
+
+    DisposableEffect(lifecycleOwner) {
+        val observer =
+            LifecycleEventObserver { _, event ->
+                isScreenResumed = oamInstallationScreenActiveAfter(isScreenResumed, event)
+            }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    return isScreenResumed
+}
+
+internal fun oamInstallationScreenActiveAfter(
+    isScreenResumed: Boolean,
+    event: Lifecycle.Event,
+): Boolean =
+    when (event) {
+        Lifecycle.Event.ON_RESUME -> true
+        Lifecycle.Event.ON_PAUSE -> false
+        else -> isScreenResumed
+    }
+
 private val ChipBackground = Color(0xFF222A33)
 private val SelectedChipBackground = Color(0xFF1F4656)
 private val ChipContent = Color(0xFFF4F7FB)
@@ -1256,5 +1292,6 @@ private val WarningChipIcon = Color(0xFFFFB95C)
 
 private const val DOWNLOAD_INFO_PREFS = "download_screen_info_prefs"
 private const val DOWNLOAD_INFO_SHOWN_KEY = "oam_info_shown"
+private const val OAM_EXTRACTION_SCREEN_BRIGHTNESS = 0.20f
 private const val DOWNLOAD_MAIN_ACTION_ITEM_INDEX = 2
 private const val DOWNLOAD_FIRST_REFRESH_BUNDLE_ITEM_INDEX = 0

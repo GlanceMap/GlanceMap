@@ -26,6 +26,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.automirrored.filled.SendToMobile
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Gavel
 import androidx.compose.material.icons.filled.Map
@@ -108,9 +109,14 @@ fun FilePickerScreen(
         remember(context) {
             shouldAutoOpenHelpOnFirstLaunch(context)
         }
+    val autoOpenWhatsNew =
+        remember(context) {
+            shouldAutoOpenWhatsNew(context)
+        }
     var showCancelDialog by remember { mutableStateOf(false) }
     var quickGuideMode by remember { mutableStateOf(QuickGuideMode.GENERAL) }
     var showHowToDialog by remember(autoOpenHelpOnFirstLaunch) { mutableStateOf(autoOpenHelpOnFirstLaunch) }
+    var showWhatsNewDialog by remember(autoOpenWhatsNew) { mutableStateOf(autoOpenWhatsNew) }
     var showDebugDialog by remember { mutableStateOf(false) }
     var activeHomeArea by remember {
         mutableStateOf(
@@ -138,6 +144,12 @@ fun FilePickerScreen(
 
     BackHandler(enabled = activeHomeArea != CompanionHomeArea.HOME) {
         activeHomeArea = CompanionHomeArea.HOME
+    }
+
+    LaunchedEffect(autoOpenWhatsNew) {
+        if (autoOpenWhatsNew) {
+            markWhatsNewShown(context)
+        }
     }
 
     LaunchedEffect(openSendToWatchToken) {
@@ -611,6 +623,7 @@ fun FilePickerScreen(
                         onOpenSendToWatch = { activeHomeArea = CompanionHomeArea.SEND_TO_WATCH },
                         onOpenLiveTracking = { activeHomeArea = CompanionHomeArea.LIVE_TRACKING },
                         onOpenMapLegend = { activeHomeArea = CompanionHomeArea.MAP_LEGEND },
+                        onOpenWhatsNew = { showWhatsNewDialog = true },
                         onOpenQuickGuide = {
                             quickGuideMode = QuickGuideMode.GENERAL
                             showHowToDialog = true
@@ -941,6 +954,10 @@ fun FilePickerScreen(
                 )
             }
 
+            if (showWhatsNewDialog) {
+                WhatsNewDialog(onDismiss = { showWhatsNewDialog = false })
+            }
+
             if (showCancelDialog) {
                 CancelTransferDialog(
                     onConfirm = {
@@ -1110,6 +1127,7 @@ private fun CompanionHomeScreen(
     onOpenSendToWatch: () -> Unit,
     onOpenLiveTracking: () -> Unit,
     onOpenMapLegend: () -> Unit,
+    onOpenWhatsNew: () -> Unit,
     onOpenQuickGuide: () -> Unit,
     onOpenCreditsLegal: () -> Unit,
 ) {
@@ -1246,6 +1264,21 @@ private fun CompanionHomeScreen(
                     title = stringResource(R.string.settings_credits_legal_title),
                     description = stringResource(R.string.settings_credits_legal_home_description),
                     onClick = onOpenCreditsLegal,
+                )
+            }
+            FilledTonalIconButton(
+                onClick = onOpenWhatsNew,
+                modifier =
+                    Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(16.dp)
+                        .size(adaptive.helpIconButtonSize),
+                colors = companionTonalIconButtonColors(),
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.AutoAwesome,
+                    contentDescription = stringResource(R.string.whats_new_open_content_description),
+                    modifier = Modifier.size(adaptive.helpIconSize),
                 )
             }
         }

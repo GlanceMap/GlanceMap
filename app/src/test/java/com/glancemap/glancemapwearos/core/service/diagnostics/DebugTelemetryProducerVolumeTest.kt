@@ -12,7 +12,7 @@ class DebugTelemetryProducerVolumeTest {
     @Before
     fun setUp() {
         DebugTelemetry.setTransitionMarkersEnabledForTests(false)
-        DebugTelemetry.setEnabledFromLocationService(false)
+        DebugTelemetry.setEnabledFromCaptureSettings(false)
         DebugTelemetry.clear()
         GnssDiagnostics.clear()
         EnergyDiagnostics.configure(captureActive = false, fullDiagnostics = false)
@@ -20,7 +20,7 @@ class DebugTelemetryProducerVolumeTest {
 
     @After
     fun tearDown() {
-        DebugTelemetry.setEnabledFromLocationService(false)
+        DebugTelemetry.setEnabledFromCaptureSettings(false)
         DebugTelemetry.clear()
         GnssDiagnostics.clear()
         EnergyDiagnostics.configure(captureActive = false, fullDiagnostics = false)
@@ -29,7 +29,7 @@ class DebugTelemetryProducerVolumeTest {
 
     @Test
     fun producerAttributionIncrementsForKnownTags() {
-        DebugTelemetry.setEnabledFromLocationService(true)
+        DebugTelemetry.setEnabledFromCaptureSettings(true)
         log("LocTelemetry")
         log("GnssTelemetry")
         log("NavigationTelemetry")
@@ -55,7 +55,7 @@ class DebugTelemetryProducerVolumeTest {
 
     @Test
     fun unknownTagsAreCategorizedAsOther() {
-        DebugTelemetry.setEnabledFromLocationService(true)
+        DebugTelemetry.setEnabledFromCaptureSettings(true)
         log("UnknownProducer")
 
         val other = volumesByProducer().getValue(GlobalTelemetryProducer.OTHER)
@@ -67,7 +67,7 @@ class DebugTelemetryProducerVolumeTest {
 
     @Test
     fun globalRingEvictionTracksProducerDropAndRetentionCounts() {
-        DebugTelemetry.setEnabledFromLocationService(true)
+        DebugTelemetry.setEnabledFromCaptureSettings(true)
         repeat(DebugTelemetry.maxBufferedLines()) { log("LocTelemetry") }
         log("GnssTelemetry")
 
@@ -90,11 +90,11 @@ class DebugTelemetryProducerVolumeTest {
 
     @Test
     fun clearResetsProducerCounters() {
-        DebugTelemetry.setEnabledFromLocationService(true)
+        DebugTelemetry.setEnabledFromCaptureSettings(true)
         log("LocTelemetry")
         log("UnknownProducer")
 
-        DebugTelemetry.setEnabledFromLocationService(false)
+        DebugTelemetry.setEnabledFromCaptureSettings(false)
         DebugTelemetry.clear()
 
         val snapshot = DebugTelemetry.captureSessionSnapshot()
@@ -122,7 +122,7 @@ class DebugTelemetryProducerVolumeTest {
 
     @Test
     fun exportSummaryReportsProducerCounts() {
-        DebugTelemetry.setEnabledFromLocationService(true)
+        DebugTelemetry.setEnabledFromCaptureSettings(true)
         log("LocTelemetry")
         log("UnknownProducer")
 
@@ -136,7 +136,7 @@ class DebugTelemetryProducerVolumeTest {
 
     @Test
     fun gnssRingReportsGeneratedRetainedAndDroppedCounts() {
-        DebugTelemetry.setEnabledFromLocationService(true)
+        DebugTelemetry.setEnabledFromCaptureSettings(true)
         repeat(1_201) {
             runCatching { GnssDiagnostics.recordEvent(event = "test") }
         }

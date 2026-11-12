@@ -75,6 +75,8 @@ data class TrackPoint(
     val elevation: Double?,
     val startsNewSegment: Boolean = false,
     val segmentStartReason: String? = null,
+    /** Distance counted across a recorded GPS-gap boundary; other segment starts count none. */
+    val gapDistanceMeters: Double? = null,
     val hasTimestamp: Boolean = false,
     val timeMillis: Long? = null,
     val accuracyMeters: Float? = null,
@@ -110,6 +112,7 @@ data class GpxTrackDetails(
     val elevationGain: Double,
     val startPoint: LatLong?,
     val endPoint: LatLong?,
+    val isActivity: Boolean = false,
 )
 
 data class TrackPosition(

@@ -1,5 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:tools="http://schemas.android.com/tools">
+    <string name="watch_whats_new_title">Nowości w wersji %1$s</string>
+    <string-array name="watch_whats_new_notes">
+        <item>Dodano języki francuski, niemiecki, hiszpański, włoski i polski wraz z wyborem języka.</item>
+        <item>Dodano pełnoekranowe sterowanie mapą i skrót automatycznego ponownego wyśrodkowania.</item>
+        <item>Dodano eksperymentalny teren 3D i motyw turystyczny.</item>
+        <item>Dodano obsługę własnych motywów Mapsforge wysyłanych z telefonu.</item>
+        <item>Usprawniono ciągłość nagrywania, obsługę przerw GPS i przywracanie czujników.</item>
+        <item>Usprawniono pobieranie i rozpakowywanie map offline.</item>
+    </string-array>
     <string name="glancemap_state_on">"Wł."</string>
     <string name="glancemap_state_off">"Wył."</string>
     <string name="action_increase">"Zwiększ"</string>
@@ -462,6 +471,7 @@
     <string name="download_download_paused">"Pobieranie wstrzymane"</string>
     <string name="download_download_selected_areas">"Pobierz wybrane obszary"</string>
     <string name="download_downloading_offline_bundle">"Pobieranie pakietu offline"</string>
+    <string name="download_installing_offline_bundle">"Instalowanie pakietu offline"</string>
     <string name="download_elevation">"%1$s wysokość"</string>
     <string name="download_elevation_adds_altitude_slope_and_terrain_shading">"Dane wysokości dodają wysokość, nachylenie i cieniowanie terenu."</string>
     <string name="download_elevation_quality">"Jakość wysokości"</string>
@@ -1498,6 +1508,8 @@
     <string name="recording_speed_avg">"Prędkość (śr.)"</string>
     <string name="recording_speed_max">"Prędkość (maks.)"</string>
     <string name="recording_start_anyway">"Rozpocznij mimo to"</string>
+    <string name="recording_battery_saver_on">"Oszczędzanie baterii włączone"</string>
+    <string name="recording_battery_saver_can_stop_gps_screen_off">"Oszczędzanie baterii może wyłączać GPS przy wygaszonym ekranie i powodować luki w trasie. Wyłącz je, aby nagrać pełną trasę, albo rozpocznij mimo to."</string>
     <string name="recording_start_pending">"Uruchamianie REC…"</string>
     <string name="recording_this_recording_will_be_permanently_deleted_and_cannot_be_recovered">"Ten zapis zostanie trwale usunięty i nie będzie można go odzyskać."</string>
     <string name="recording_time_active">"Czas (aktywny)"</string>
@@ -1587,12 +1599,12 @@
     <string name="settings_checks_still_turn_response">"Sprawdza bezruch i reakcję na obrót"</string>
     <string name="settings_choose_source">"Wybierz źródło: %1$s"</string>
     <string name="settings_clear_cache">"Wyczyść pamięć podręczną"</string>
-    <string name="settings_clear_partial_transfer">"Wyczyść częściowy transfer"</string>
-    <string name="settings_clear_partial_transfers">"Wyczyść częściowe transfery"</string>
+    <string name="settings_clear_partial_transfer">"Usuń pliki częściowe"</string>
+    <string name="settings_clear_partial_transfers">"Usuń pliki częściowe"</string>
     <string name="settings_cleared_start_capture">"Wyczyszczono. Rozpocznij zbieranie."</string>
     <string name="settings_clearing">"Czyszczenie..."</string>
     <string name="settings_clearing_cache">"Czyszczenie pamięci podręcznej..."</string>
-    <string name="settings_clearing_partial_transfer">"Czyszczenie częściowego transferu..."</string>
+    <string name="settings_clearing_partial_transfer">"Usuwanie plików częściowych..."</string>
     <string name="settings_closest_in">"Największe zbliżenie"</string>
     <string name="settings_collapsed_section">"▸ %1$s"</string>
     <string name="settings_color_mode">"Tryb kolorów"</string>
@@ -1728,7 +1740,7 @@
     <string name="settings_if_custom_compass_drifts">"Gdy własny kompas dryfuje"</string>
     <string name="settings_if_custom_drifts">"Gdy własny dryfuje"</string>
     <string name="settings_if_off_cone_stays_green">"Gdy wył., stożek pozostaje zielony"</string>
-    <string name="settings_if_you_closed_the_phone_prompt_tap_button_3_again_to_resend">"Jeśli zamkniesz komunikat na telefonie, dotknij ponownie przycisku 3, by wysłać ponownie."</string>
+    <string name="settings_if_you_closed_the_phone_prompt_tap_button_3_again_to_resend">"Jeśli zamkniesz powiadomienie na telefonie, dotknij ponownie przycisku 3, aby wysłać je ponownie."</string>
     <string name="settings_in_the_rec_popup_long_press_any_metric_to_change_it">"W oknie REC przytrzymaj dowolny pomiar, by go zmienić."</string>
     <string name="settings_increase_interval">"Wydłuż interwał: %1$s"</string>
     <string name="settings_increase_timeout">"Wydłuż limit czasu"</string>
@@ -1811,7 +1823,7 @@
     <string name="settings_no_compatible_heading_source_found">"Nie znaleziono zgodnego źródła kierunku."</string>
     <string name="settings_no_logs_to_export_start_capturing_first">"Brak logów do eksportu. Najpierw rozpocznij zbieranie."</string>
     <string name="settings_no_partial_files">"Brak częściowych plików"</string>
-    <string name="settings_no_partial_transfer_files">"Brak plików częściowych transferów"</string>
+    <string name="settings_no_partial_transfer_files">"Brak plików częściowych"</string>
     <string name="settings_noise_threshold">"Próg szumu"</string>
     <string name="settings_normal">"Normalny"</string>
     <string name="settings_normal_alert_timing">"Zwykły czas alertów"</string>
@@ -1860,12 +1872,13 @@
         <item quantity="many">"%1$d plików · %2$s"</item>
         <item quantity="other">"%1$d plików · %2$s"</item>
     </plurals>
-    <string name="settings_partial_transfer_cleanup_failed">"Błąd czyszczenia częściowych transferów"</string>
+    <string name="settings_partial_files_in_use">"Niektóre pliki są używane. Wstrzymaj lub zatrzymaj pobieranie przed ich usunięciem."</string>
+    <string name="settings_partial_transfer_cleanup_failed">"Nie udało się usunąć plików częściowych"</string>
     <plurals name="settings_partial_transfer_delete_confirmation">
-        <item quantity="one">"Usuwa %1$d plik częściowego transferu i zwalnia %2$s. Gotowe pliki zostają na zegarku."</item>
-        <item quantity="few">"Usuwa %1$d pliki częściowych transferów i zwalnia %2$s. Gotowe pliki zostają na zegarku."</item>
-        <item quantity="many">"Usuwa %1$d plików częściowych transferów i zwalnia %2$s. Gotowe pliki zostają na zegarku."</item>
-        <item quantity="other">"Usuwa %1$d plików częściowych transferów i zwalnia %2$s. Gotowe pliki zostają na zegarku."</item>
+        <item quantity="one">"Usuwa %1$d plik częściowy, w tym zachowane archiwa pakietów, i zwalnia %2$s. Zainstalowane pliki pozostają na zegarku."</item>
+        <item quantity="few">"Usuwa pliki częściowe (%1$d), w tym zachowane archiwa pakietów, i zwalnia %2$s. Zainstalowane pliki pozostają na zegarku."</item>
+        <item quantity="many">"Usuwa pliki częściowe (%1$d), w tym zachowane archiwa pakietów, i zwalnia %2$s. Zainstalowane pliki pozostają na zegarku."</item>
+        <item quantity="other">"Usuwa pliki częściowe (%1$d), w tym zachowane archiwa pakietów, i zwalnia %2$s. Zainstalowane pliki pozostają na zegarku."</item>
     </plurals>
     <string name="settings_path_preference">"Preferencje ścieżek"</string>
     <string name="settings_pause_rec_when_still">"Wstrzymaj REC w bezruchu"</string>

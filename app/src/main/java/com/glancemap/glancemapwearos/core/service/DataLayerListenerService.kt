@@ -111,10 +111,12 @@ class DataLayerListenerService : WearableListenerService() {
         ScreenOffActivityDiagnostics.dataLayer.recordChannelOpened()
         if (channel.path.startsWith(TransferConstants.CHANNEL_PREFIX)) {
             parseChannelPath(channel.path)?.first?.let { transferId ->
+                val prewarmMetadata = handlers.popChannelMetadata(transferId)
                 val handoff =
                     ChannelTransferHandoff(
                         channel = channel,
-                        expectedChecksum = handlers.popChannelChecksum(transferId),
+                        expectedChecksum = prewarmMetadata?.expectedChecksum,
+                        expectedSize = prewarmMetadata?.expectedSize,
                     )
                 if (!ChannelTransferHandoffRegistry.offer(transferId, handoff)) {
                     sendChannelHandoffFailure(channel, transferId, "CHANNEL_HANDOFF_ALREADY_PENDING")

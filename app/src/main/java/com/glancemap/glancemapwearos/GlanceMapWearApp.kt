@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.res.Configuration
 import com.glancemap.glancemapwearos.core.localization.AppLanguageSettings
 import com.glancemap.glancemapwearos.core.service.diagnostics.CrashDiagnosticsStore
+import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
 import com.glancemap.glancemapwearos.core.service.transfer.runtime.TransferPrewarmHoldManager
 import com.glancemap.glancemapwearos.core.service.transfer.runtime.TransferSessionState
 import com.glancemap.glancemapwearos.core.service.transfer.storage.StalePartialTransferCleaner
@@ -38,6 +39,12 @@ class GlanceMapWearApp : Application() {
         CrashDiagnosticsStore.install(this)
         // Initialize the container when the app starts
         container = AppContainer(this, applicationScope)
+        applicationScope.launch {
+            DebugTelemetry.observeCaptureSettings(
+                captureActive = container.settingsRepository.gpsDebugTelemetry,
+                captureMode = container.settingsRepository.diagnosticsCaptureMode,
+            )
+        }
         applicationScope.launch {
             StalePartialTransferCleaner.cleanStale(this@GlanceMapWearApp)
         }

@@ -268,3 +268,15 @@ location marker updates; compare them during a moving-GPS run. GPU memory
 and WorldWind internal work that is not exposed
 are unavailable, not zero. A short or noisy battery run does not establish
 battery equivalence.
+
+## Offline bundle update checks
+
+Update checks retain the local integrity checks and compare remote metadata in batches of up to
+four requests. A network I/O failure is retried once after 250 ms; HTTP errors, missing saved
+metadata, and incomparable metadata still leave the affected file unchecked. Bundles remain
+sequential, and a known local repair or remote change still takes precedence over an incomplete check.
+
+On a watch, compare before and after using the same installed bundles, network, and selection.
+Check a bundle with many elevation tiles, multiple selected bundles, an interrupted connection,
+and a bundle without saved metadata. Confirm the results and repair actions remain correct, and
+record elapsed time separately from battery impact. Real-device measurements are pending.

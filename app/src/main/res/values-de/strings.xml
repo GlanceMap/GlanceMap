@@ -1,5 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="watch_whats_new_title">Neu in %1$s</string>
+    <string-array name="watch_whats_new_notes">
+        <item>Französisch, Deutsch, Spanisch, Italienisch und Polnisch mit Sprachauswahl hinzugefügt.</item>
+        <item>Vollbild-Kartensteuerung und eine Verknüpfung zur automatischen Neuzentrierung hinzugefügt.</item>
+        <item>Experimentelles 3D-Gelände und ein Wanderthema hinzugefügt.</item>
+        <item>Unterstützung für vom Smartphone gesendete benutzerdefinierte Mapsforge-Themen hinzugefügt.</item>
+        <item>Aufzeichnungskontinuität, Umgang mit GPS-Lücken und Wiederherstellung der Sensoren verbessert.</item>
+        <item>Downloads und Entpackung von Offline-Karten verbessert.</item>
+    </string-array>
     <string name="glancemap_state_on">"Ein"</string>
     <string name="glancemap_state_off">"Aus"</string>
     <string name="action_increase">"Erhöhen"</string>
@@ -398,6 +407,7 @@
     <string name="download_download_paused">"Download pausiert"</string>
     <string name="download_download_selected_areas">"Ausgewählte Bereiche herunterladen"</string>
     <string name="download_downloading_offline_bundle">"Offline-Paket wird geladen"</string>
+    <string name="download_installing_offline_bundle">"Offline-Paket wird installiert"</string>
     <string name="download_elevation">"%1$s Höhen"</string>
     <string name="download_elevation_adds_altitude_slope_and_terrain_shading">"Höhendaten ergänzen Höhe, Neigung und Geländeschattierung."</string>
     <string name="download_elevation_quality">"Geländequalität"</string>
@@ -1390,6 +1400,8 @@
     <string name="recording_speed_avg">"Geschwindigkeit (Ø)"</string>
     <string name="recording_speed_max">"Geschwindigkeit (max.)"</string>
     <string name="recording_start_anyway">"Trotzdem starten"</string>
+    <string name="recording_battery_saver_on">"Energiesparmodus aktiv"</string>
+    <string name="recording_battery_saver_can_stop_gps_screen_off">"Der Energiesparmodus kann GPS bei ausgeschaltetem Bildschirm stoppen und Lücken in deinem Track verursachen. Schalte ihn für eine vollständige Aufzeichnung aus oder starte trotzdem."</string>
     <string name="recording_start_pending">"Starte REC…"</string>
     <string name="recording_this_recording_will_be_permanently_deleted_and_cannot_be_recovered">"Diese Aufzeichnung wird dauerhaft gelöscht und kann nicht wiederhergestellt werden."</string>
     <string name="recording_time_active">"Zeit (Aktiv)"</string>
@@ -1479,12 +1491,12 @@
     <string name="settings_checks_still_turn_response">"Prüft Ruhe und Drehreaktion"</string>
     <string name="settings_choose_source">"Quelle für %1$s wählen"</string>
     <string name="settings_clear_cache">"Cache leeren"</string>
-    <string name="settings_clear_partial_transfer">"Teilübertragung löschen"</string>
-    <string name="settings_clear_partial_transfers">"Teilübertragungen löschen"</string>
+    <string name="settings_clear_partial_transfer">"Unvollständige Dateien löschen"</string>
+    <string name="settings_clear_partial_transfers">"Unvollständige Dateien löschen"</string>
     <string name="settings_cleared_start_capture">"Gelöscht. Erfassung starten."</string>
     <string name="settings_clearing">"Löschen..."</string>
     <string name="settings_clearing_cache">"Leere Cache..."</string>
-    <string name="settings_clearing_partial_transfer">"Lösche Teilübertragung..."</string>
+    <string name="settings_clearing_partial_transfer">"Dateien werden gelöscht..."</string>
     <string name="settings_closest_in">"Am nächsten"</string>
     <string name="settings_collapsed_section">"▸ %1$s"</string>
     <string name="settings_color_mode">"Farbmodus"</string>
@@ -1620,7 +1632,7 @@
     <string name="settings_if_custom_compass_drifts">"Bei Drift des eigenen Kompasses"</string>
     <string name="settings_if_custom_drifts">"Bei Drift der eigenen Quelle"</string>
     <string name="settings_if_off_cone_stays_green">"Wenn aus, bleibt der Kegel grün"</string>
-    <string name="settings_if_you_closed_the_phone_prompt_tap_button_3_again_to_resend">"Falls du den Hinweis am Telefon geschlossen hast, Taste 3 zum erneuten Senden antippen."</string>
+    <string name="settings_if_you_closed_the_phone_prompt_tap_button_3_again_to_resend">"Falls du die Telefonbenachrichtigung geschlossen hast, tippe zum erneuten Senden noch einmal auf Taste 3."</string>
     <string name="settings_in_the_rec_popup_long_press_any_metric_to_change_it">"Im REC-Popup einen Messwert lange drücken, um ihn zu ändern."</string>
     <string name="settings_increase_interval">"%1$s-Intervall erhöhen"</string>
     <string name="settings_increase_timeout">"Zeitlimit erhöhen"</string>
@@ -1703,7 +1715,7 @@
     <string name="settings_no_compatible_heading_source_found">"Keine kompatible Richtungsquelle gefunden."</string>
     <string name="settings_no_logs_to_export_start_capturing_first">"Keine Protokolle zum Exportieren. Zuerst Erfassung starten."</string>
     <string name="settings_no_partial_files">"Keine Teildateien"</string>
-    <string name="settings_no_partial_transfer_files">"Keine Teilübertragungsdateien"</string>
+    <string name="settings_no_partial_transfer_files">"Keine unvollständigen Dateien"</string>
     <string name="settings_noise_threshold">"Rauschschwelle"</string>
     <string name="settings_normal">"Normal"</string>
     <string name="settings_normal_alert_timing">"Normales Hinweisintervall"</string>
@@ -1746,10 +1758,11 @@
         <item quantity="one">"%1$d Datei · %2$s"</item>
         <item quantity="other">"%1$d Dateien · %2$s"</item>
     </plurals>
-    <string name="settings_partial_transfer_cleanup_failed">"Teilübertragung konnte nicht gelöscht werden"</string>
+    <string name="settings_partial_files_in_use">"Dateien werden verwendet. Downloads vor dem Löschen pausieren oder beenden."</string>
+    <string name="settings_partial_transfer_cleanup_failed">"Dateibereinigung fehlgeschlagen"</string>
     <plurals name="settings_partial_transfer_delete_confirmation">
-        <item quantity="one">"Löscht %1$d Teilübertragungsdatei und gibt %2$s frei. Fertige Dateien bleiben auf der Uhr."</item>
-        <item quantity="other">"Löscht %1$d Teilübertragungsdateien und gibt %2$s frei. Fertige Dateien bleiben auf der Uhr."</item>
+        <item quantity="one">"Löscht %1$d unvollständige Datei, einschließlich gespeicherter Paketarchive, und gibt %2$s frei. Installierte Dateien bleiben auf der Uhr."</item>
+        <item quantity="other">"Löscht %1$d unvollständige Dateien, einschließlich gespeicherter Paketarchive, und gibt %2$s frei. Installierte Dateien bleiben auf der Uhr."</item>
     </plurals>
     <string name="settings_path_preference">"Wegpräferenz"</string>
     <string name="settings_pause_rec_when_still">"REC bei Stillstand pausieren"</string>

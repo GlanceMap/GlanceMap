@@ -2,6 +2,7 @@
 
 package com.glancemap.glancemapwearos.presentation.features.download
 
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
@@ -116,9 +117,9 @@ private fun ElevationDownloadSetting(
         label = {
             Text(
                 text = stringResource(R.string.common_elevation),
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.weight(1f).basicMarquee(),
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+                overflow = TextOverflow.Visible,
             )
             Icon(
                 imageVector = Icons.Filled.UnfoldMore,
@@ -129,8 +130,9 @@ private fun ElevationDownloadSetting(
         secondaryLabel = {
             Text(
                 text = stringResource(source.shortLabelRes),
+                modifier = Modifier.basicMarquee(),
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+                overflow = TextOverflow.Visible,
             )
         },
     )

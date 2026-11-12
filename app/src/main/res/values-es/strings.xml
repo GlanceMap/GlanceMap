@@ -1,5 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:tools="http://schemas.android.com/tools">
+    <string name="watch_whats_new_title">Novedades de %1$s</string>
+    <string-array name="watch_whats_new_notes">
+        <item>Añadidos francés, alemán, español, italiano y polaco, con selección de idioma.</item>
+        <item>Añadidos controles de mapa a pantalla completa y un acceso directo al recentrado automático.</item>
+        <item>Añadidos terreno 3D experimental y un tema de senderismo.</item>
+        <item>Añadida compatibilidad con temas Mapsforge personalizados enviados desde el teléfono.</item>
+        <item>Mejoradas la continuidad de la grabación, la gestión de interrupciones GPS y la recuperación de sensores.</item>
+        <item>Mejoradas la descarga y extracción de mapas sin conexión.</item>
+    </string-array>
     <string name="glancemap_state_on">"Activado"</string>
     <string name="glancemap_state_off">"Desactivado"</string>
     <string name="action_increase">"Aumentar"</string>
@@ -430,6 +439,7 @@
     <string name="download_download_paused">"Descarga en pausa"</string>
     <string name="download_download_selected_areas">"Descargar áreas seleccionadas"</string>
     <string name="download_downloading_offline_bundle">"Descargando paquete sin conexión"</string>
+    <string name="download_installing_offline_bundle">"Instalando paquete sin conexión"</string>
     <string name="download_elevation">"%1$s altitud"</string>
     <string name="download_elevation_adds_altitude_slope_and_terrain_shading">"Los datos de altitud añaden altura, pendiente y sombreado del relieve."</string>
     <string name="download_elevation_quality">"Calidad del relieve"</string>
@@ -1444,6 +1454,8 @@
     <string name="recording_speed_avg">"Velocidad (media)"</string>
     <string name="recording_speed_max">"Velocidad (máx.)"</string>
     <string name="recording_start_anyway">"Iniciar igualmente"</string>
+    <string name="recording_battery_saver_on">"Ahorro de batería activado"</string>
+    <string name="recording_battery_saver_can_stop_gps_screen_off">"El ahorro de batería puede detener el GPS con la pantalla apagada y dejar huecos en tu ruta. Desactívalo para una grabación completa o empieza de todos modos."</string>
     <string name="recording_start_pending">"Iniciando REC…"</string>
     <string name="recording_this_recording_will_be_permanently_deleted_and_cannot_be_recovered">"Este registro será eliminado de forma permanente y no puede recuperarse."</string>
     <string name="recording_time_active">"Tiempo (Activo)"</string>
@@ -1533,12 +1545,12 @@
     <string name="settings_checks_still_turn_response">"Comprueba reposo y respuesta al giro"</string>
     <string name="settings_choose_source">"Elegir fuente de %1$s"</string>
     <string name="settings_clear_cache">"Vaciar caché"</string>
-    <string name="settings_clear_partial_transfer">"Borrar transferencia parcial"</string>
-    <string name="settings_clear_partial_transfers">"Borrar transferencias parciales"</string>
+    <string name="settings_clear_partial_transfer">"Eliminar archivos parciales"</string>
+    <string name="settings_clear_partial_transfers">"Eliminar archivos parciales"</string>
     <string name="settings_cleared_start_capture">"Borrado. Inicia la captura."</string>
     <string name="settings_clearing">"Borrando..."</string>
     <string name="settings_clearing_cache">"Vaciando caché..."</string>
-    <string name="settings_clearing_partial_transfer">"Borrando transferencia parcial..."</string>
+    <string name="settings_clearing_partial_transfer">"Eliminando archivos parciales..."</string>
     <string name="settings_closest_in">"Más cerca"</string>
     <string name="settings_collapsed_section">"▸ %1$s"</string>
     <string name="settings_color_mode">"Modo de color"</string>
@@ -1674,7 +1686,7 @@
     <string name="settings_if_custom_compass_drifts">"Si deriva la brújula personalizada"</string>
     <string name="settings_if_custom_drifts">"Si deriva el personalizado"</string>
     <string name="settings_if_off_cone_stays_green">"Si está desactivado, el cono sigue verde"</string>
-    <string name="settings_if_you_closed_the_phone_prompt_tap_button_3_again_to_resend">"Si cerraste el aviso del teléfono, vuelve a tocar el botón 3 para reenviar."</string>
+    <string name="settings_if_you_closed_the_phone_prompt_tap_button_3_again_to_resend">"Si cerraste la notificación del teléfono, toca el botón 3 otra vez para reenviarla."</string>
     <string name="settings_in_the_rec_popup_long_press_any_metric_to_change_it">"En la ventana REC, mantén pulsada una medida para cambiarla."</string>
     <string name="settings_increase_interval">"Aumentar intervalo de %1$s"</string>
     <string name="settings_increase_timeout">"Aumentar tiempo de espera"</string>
@@ -1757,7 +1769,7 @@
     <string name="settings_no_compatible_heading_source_found">"No hay fuente de rumbo compatible."</string>
     <string name="settings_no_logs_to_export_start_capturing_first">"No hay registros para exportar. Inicia primero la captura."</string>
     <string name="settings_no_partial_files">"Sin archivos parciales"</string>
-    <string name="settings_no_partial_transfer_files">"Sin archivos de transferencia parcial"</string>
+    <string name="settings_no_partial_transfer_files">"No hay archivos parciales"</string>
     <string name="settings_noise_threshold">"Umbral de ruido"</string>
     <string name="settings_normal">"Normal"</string>
     <string name="settings_normal_alert_timing">"Intervalo normal de avisos"</string>
@@ -1803,11 +1815,12 @@
         <item quantity="many">"%1$d archivos · %2$s"</item>
         <item quantity="other">"%1$d archivos · %2$s"</item>
     </plurals>
-    <string name="settings_partial_transfer_cleanup_failed">"No se pudo borrar la transferencia parcial"</string>
+    <string name="settings_partial_files_in_use">"Hay archivos en uso. Pausa o detén las descargas antes de eliminarlos."</string>
+    <string name="settings_partial_transfer_cleanup_failed">"Error al eliminar archivos parciales"</string>
     <plurals name="settings_partial_transfer_delete_confirmation">
-        <item quantity="one">"Elimina %1$d archivo de transferencia parcial y libera %2$s. Los archivos terminados permanecen en el reloj."</item>
-        <item quantity="many">"Elimina %1$d archivos de transferencia parcial y libera %2$s. Los archivos terminados permanecen en el reloj."</item>
-        <item quantity="other">"Elimina %1$d archivos de transferencia parcial y libera %2$s. Los archivos terminados permanecen en el reloj."</item>
+        <item quantity="one">"Elimina %1$d archivo parcial, incluidos los archivos de paquetes conservados, y libera %2$s. Los archivos instalados permanecen en el reloj."</item>
+        <item quantity="many">"Elimina %1$d archivos parciales, incluidos los archivos de paquetes conservados, y libera %2$s. Los archivos instalados permanecen en el reloj."</item>
+        <item quantity="other">"Elimina %1$d archivos parciales, incluidos los archivos de paquetes conservados, y libera %2$s. Los archivos instalados permanecen en el reloj."</item>
     </plurals>
     <string name="settings_path_preference">"Preferencia de ruta"</string>
     <string name="settings_pause_rec_when_still">"Pausar REC en reposo"</string>

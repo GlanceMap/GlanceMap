@@ -23,12 +23,14 @@ internal fun shouldStartRecordingGpsGapSegment(
         if (activityProfile == SettingsRepository.ACTIVITY_PROFILE_BIKE) {
             RecordingGpsGapSegmentPolicy(
                 minimumGapMillis = 30_000L,
+                maximumBridgedGapMillis = 90_000L,
                 baseAllowanceMeters = 80.0,
                 maximumAllowanceMeters = 150.0,
             )
         } else {
             RecordingGpsGapSegmentPolicy(
                 minimumGapMillis = 60_000L,
+                maximumBridgedGapMillis = 180_000L,
                 baseAllowanceMeters = 40.0,
                 maximumAllowanceMeters = 80.0,
             )
@@ -43,11 +45,66 @@ internal fun shouldStartRecordingGpsGapSegment(
         } else {
             profile.baseAllowanceMeters
         }
-    return haversineMeters(previous.latLong, current.latLong) > allowanceMeters
+    val displacementMeters = haversineMeters(previous.latLong, current.latLong)
+    if (displacementMeters <= allowanceMeters) return false
+    if (gapMillis > profile.maximumBridgedGapMillis) return true
+    return !isPlausibleGapProgress(previous, current, displacementMeters, gapMillis, activityProfile)
+}
+
+/**
+ * A moderate gap whose straight-line progress fits the movement before and after it stays one
+ * continuous track, as other trackers draw it. This reuses the live distance recovery cap, so a
+ * bridged gap adds the same distance live and in the saved track.
+ */
+private fun isPlausibleGapProgress(
+    previous: RecordedTracePoint,
+    current: RecordedTracePoint,
+    displacementMeters: Double,
+    gapMillis: Long,
+    activityProfile: String,
+): Boolean {
+    val elapsedMillis = (current.timeMillis - previous.timeMillis).takeIf { it > 0L } ?: gapMillis
+    // Live distance sees the filter accuracy, so a fixed 125 m watch-GPS value is not widened here.
+    return !estimateRecordingDistanceDelta(
+        RecordingDistanceInput(
+            geometricDeltaMeters = displacementMeters,
+            previous = previous.copy(accuracyMeters = previous.effectiveAccuracyMeters),
+            current = current.copy(accuracyMeters = current.effectiveAccuracyMeters),
+            elapsedSincePreviousMs = elapsedMillis,
+            activityProfile = activityProfile,
+            isContinuityRecovery = true,
+        ),
+    ).capped
+}
+
+/**
+ * Distance counted across a GPS-gap segment boundary, live and in the saved track: the straight
+ * line between the last point before and the first point after the gap, capped by the same
+ * believable-speed rule as live distance. Uses effective accuracy, like live distance.
+ */
+internal fun recordingGpsGapDistanceMeters(
+    previous: RecordedTracePoint,
+    current: RecordedTracePoint,
+    activityProfile: String,
+): Double {
+    val straightMeters = haversineMeters(previous.latLong, current.latLong)
+    val elapsedMillis = current.timeMillis - previous.timeMillis
+    if (!straightMeters.isFinite() || elapsedMillis <= 0L) return 0.0
+    return estimateRecordingDistanceDelta(
+        RecordingDistanceInput(
+            geometricDeltaMeters = straightMeters,
+            previous = previous.copy(accuracyMeters = previous.effectiveAccuracyMeters),
+            current = current.copy(accuracyMeters = current.effectiveAccuracyMeters),
+            elapsedSincePreviousMs = elapsedMillis,
+            activityProfile = activityProfile,
+            isContinuityRecovery = true,
+        ),
+    ).distanceMeters.coerceAtLeast(0.0)
 }
 
 private data class RecordingGpsGapSegmentPolicy(
     val minimumGapMillis: Long,
+    val maximumBridgedGapMillis: Long,
     val baseAllowanceMeters: Double,
     val maximumAllowanceMeters: Double,
 )

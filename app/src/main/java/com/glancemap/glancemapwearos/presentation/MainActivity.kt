@@ -60,6 +60,7 @@ import com.glancemap.glancemapwearos.presentation.features.navigate.NavigateScre
 import com.glancemap.glancemapwearos.presentation.features.navigate.UI_RECORDING_START_REACQUIRE_SOURCE
 import com.glancemap.glancemapwearos.presentation.features.poi.PoiScreen
 import com.glancemap.glancemapwearos.presentation.features.recording.RecordingLocationStartWarning
+import com.glancemap.glancemapwearos.presentation.features.recording.health.RecordingHealthMetric
 import com.glancemap.glancemapwearos.presentation.features.recording.isPausedForAutoResumeMonitoring
 import com.glancemap.glancemapwearos.presentation.features.recording.sensors.RecordingSensorBridge
 import com.glancemap.glancemapwearos.presentation.features.settings.CompassSettingsScreen
@@ -96,12 +97,24 @@ import com.glancemap.glancemapwearos.presentation.navigation.WatchRoutes
 import com.glancemap.glancemapwearos.presentation.ui.WearActionButtonRole
 import com.glancemap.glancemapwearos.presentation.ui.WearActionDialog
 import com.glancemap.glancemapwearos.presentation.ui.WearActionDialogButton
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import org.mapsforge.map.android.graphics.AndroidGraphicFactory
 
+internal const val ACTION_OPEN_OAM_EXTRACTION =
+    "com.glancemap.glancemapwearos.action.OPEN_OAM_EXTRACTION"
+
+internal fun oamNotificationDestination(
+    action: String?,
+): String? = if (action == ACTION_OPEN_OAM_EXTRACTION) WatchRoutes.DOWNLOAD else null
+
+@OptIn(ExperimentalCoroutinesApi::class)
 @Suppress("LargeClass")
 class MainActivity : ComponentActivity() {
     private val ambientState = WearAmbientState(this, ::logScreenTelemetry)
+    private val oamNotificationRouteRequests = MutableSharedFlow<String>(replay = 1, extraBufferCapacity = 1)
 
     @Volatile
     private var activeRoute: String? = null
@@ -127,6 +140,10 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         AndroidGraphicFactory.createInstance(this.application)
         ambientState.refreshDeviceInteractive(fallback = true)
+        oamNotificationDestination(intent.action)?.let { destination ->
+            intent.action = null
+            oamNotificationRouteRequests.tryEmit(destination)
+        }
 
         val screenStateFilter =
             IntentFilter().apply {
@@ -150,9 +167,12 @@ class MainActivity : ComponentActivity() {
             val navigateTimeFormat by appContainer.settingsViewModel.navigateTimeFormat.collectAsState()
             val isMetric by appContainer.settingsViewModel.isMetric.collectAsState()
             val traceRecordingState by appContainer.traceRecordingViewModel.recordingPresentationState.collectAsState()
+            val healthOwnedKinds by appContainer.recordingHealthRuntime.activeKinds.collectAsState()
             val recordingStartWarning by appContainer.traceRecordingViewModel.startWarning.collectAsState()
             val recordingLocationStartWarning by
                 appContainer.traceRecordingViewModel.locationStartWarning.collectAsState()
+            val recordingBatterySaverStartWarning by
+                appContainer.traceRecordingViewModel.batterySaverStartWarning.collectAsState()
             val recordingStartLocationPending by
                 appContainer.traceRecordingViewModel.recordingStartLocationPending.collectAsState()
             val turnByTurnGuidanceSession by appContainer.gpxViewModel.turnByTurnGuidanceSession.collectAsState()
@@ -218,14 +238,37 @@ class MainActivity : ComponentActivity() {
 
             GlanceMapTheme {
                 val navController = rememberNavController()
+                LaunchedEffect(navController) {
+                    oamNotificationRouteRequests.collect { destination ->
+                        navController.navigate(destination) {
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                        oamNotificationRouteRequests.resetReplayCache()
+                    }
+                }
                 val appScope = rememberCoroutineScope()
                 val backStackEntry by navController.currentBackStackEntryAsState()
                 val route = backStackEntry?.destination?.route
                 val routeLabel = route ?: WatchRoutes.NAVIGATE
                 val compositionContext = LocalContext.current
+                com.glancemap.glancemapwearos.presentation.features.recording.sensors.AutoPauseStepMonitor(
+                    enabled =
+                        traceRecordingState.active &&
+                            traceRecordingState.paused &&
+                            traceRecordingState.autoPaused &&
+                            traceRecordingState.recordingAutoPauseEnabled &&
+                            !traceRecordingState.saving &&
+                            traceRecordingState.activityProfile != SettingsRepository.ACTIVITY_PROFILE_BIKE,
+                    onStepCounter = appContainer.traceRecordingViewModel::onAutoPauseStepCounter,
+                )
                 RecordingSensorBridge(
                     active = traceRecordingState.active,
                     paused = traceRecordingState.paused,
+                    autoPaused = traceRecordingState.autoPaused,
+                    onAutoPauseCyclingMeasurement = appContainer.traceRecordingViewModel::onAutoPauseCyclingMeasurement,
+                    onAutoPauseCyclingSensorUnavailable =
+                        appContainer.traceRecordingViewModel::onAutoPauseCyclingSensorUnavailable,
                     selectedMetricIds = recordingDashboardMetricSlots,
                     elevationSource = recordingElevationSource,
                     heartRateSource = recordingHeartRateSource,
@@ -240,6 +283,9 @@ class MainActivity : ComponentActivity() {
                     initialStepCount = appContainer.traceRecordingViewModel.currentStepCount(),
                     onMetrics = appContainer.traceRecordingViewModel::onSensorMetrics,
                     onPressureSample = appContainer.traceRecordingViewModel::onPressureSample,
+                    healthHeartRateActive = RecordingHealthMetric.HEART_RATE in healthOwnedKinds,
+                    healthStepsActive = RecordingHealthMetric.STEPS_TOTAL in healthOwnedKinds,
+                    healthCadenceActive = RecordingHealthMetric.CADENCE in healthOwnedKinds,
                 )
                 val locationPermissionGranted =
                     ContextCompat.checkSelfPermission(
@@ -821,8 +867,13 @@ class MainActivity : ComponentActivity() {
                             ) {
                                 RecordingExternalSensorsScreen(
                                     viewModel = appContainer.settingsViewModel,
-                                    connectLinkedSensors =
-                                        !traceRecordingState.active || traceRecordingState.paused,
+                                    connectLinkedSensors = !traceRecordingState.active || traceRecordingState.paused,
+                                    connectLinkedRunPod =
+                                        !(
+                                            traceRecordingState.autoPaused &&
+                                                traceRecordingState.activityProfile ==
+                                                SettingsRepository.ACTIVITY_PROFILE_BIKE
+                                        ),
                                     onOpenRecordingSettings = {
                                         navController.navigate(WatchRoutes.RECORDING_SETTINGS) {
                                             popUpTo(WatchRoutes.RECORDING_SETTINGS) { inclusive = false }
@@ -1215,7 +1266,39 @@ class MainActivity : ComponentActivity() {
                         style = MaterialTheme.typography.bodyMedium,
                     )
                 }
+                WearActionDialog(
+                    visible = recordingBatterySaverStartWarning,
+                    title = stringResource(R.string.recording_battery_saver_on),
+                    onDismissRequest = appContainer.traceRecordingViewModel::cancelStartRecordingWithBatterySaver,
+                    buttons =
+                        listOf(
+                            WearActionDialogButton(
+                                text = stringResource(R.string.recording_start_anyway),
+                                onClick = appContainer.traceRecordingViewModel::startRecordingWithBatterySaver,
+                            ),
+                            WearActionDialogButton(
+                                text = stringResource(R.string.common_cancel),
+                                onClick = appContainer.traceRecordingViewModel::cancelStartRecordingWithBatterySaver,
+                                role = WearActionButtonRole.Secondary,
+                            ),
+                        ),
+                ) {
+                    Text(
+                        text = stringResource(R.string.recording_battery_saver_can_stop_gps_screen_off),
+                        textAlign = TextAlign.Center,
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
             }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        oamNotificationDestination(intent.action)?.let { destination ->
+            intent.action = null
+            oamNotificationRouteRequests.tryEmit(destination)
         }
     }
 

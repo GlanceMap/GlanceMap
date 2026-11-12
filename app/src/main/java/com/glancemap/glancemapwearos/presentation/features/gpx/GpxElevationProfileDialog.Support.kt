@@ -239,6 +239,7 @@ internal fun ElevationLeftScale(
 @Composable
 internal fun ElevationProfileChart(
     samples: List<ElevationSample>,
+    trackColor: Color,
     selectedIndex: Int,
     locationDistanceMeters: Double?,
     onSelectIndex: (Int) -> Unit,
@@ -367,7 +368,7 @@ internal fun ElevationProfileChart(
             val from = samples[drawingRange.first + i - 1]
             val to = samples[drawingRange.first + i]
             drawLine(
-                color = elevationProfileSegmentColor(from, to),
+                color = elevationProfileSegmentColor(from, to, trackColor),
                 start = points[i - 1],
                 end = points[i],
                 strokeWidth = 2.5.dp.toPx(),

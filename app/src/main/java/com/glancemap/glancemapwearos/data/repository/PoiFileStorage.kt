@@ -27,8 +27,11 @@ internal class PoiFileStorage(
         expectedSize: Long?,
         resumeOffset: Long,
         diagnosticContext: String?,
+        expectedSha256: String? = null,
+        keepPartialOnCancel: Boolean = true,
+        keepPartialOnFailure: Boolean = true,
     ): String? {
-        val expectedBytes = expectedSize?.takeIf { it > 0L }
+        val expectedBytes = expectedSize?.takeIf { it >= 0L }
         val options =
             AtomicStreamWriter.Options(
                 bufferSize = 1024 * 1024,
@@ -37,9 +40,10 @@ internal class PoiFileStorage(
                 failIfExists = false,
                 expectedSize = expectedBytes,
                 requireExactSize = (expectedBytes != null),
+                expectedSha256 = expectedSha256,
                 resumeOffset = resumeOffset.coerceAtLeast(0L),
-                keepPartialOnCancel = true,
-                keepPartialOnFailure = true,
+                keepPartialOnCancel = keepPartialOnCancel,
+                keepPartialOnFailure = keepPartialOnFailure,
                 computeSha256 = true,
                 diagnosticContext = diagnosticContext,
             )

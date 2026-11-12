@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <lint>
+    <!-- New UI entries use English until community translations catch up. -->
+    <issue id="MissingTranslation" severity="warning" />
     <!-- Ignore the IconLocation for the Tile preview images -->
     <issue id="IconLocation">
         <ignore path="res/drawable/tile_preview.png" />

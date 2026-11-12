@@ -110,6 +110,37 @@ class RecordingGpxMetadataTest {
     }
 
     @Test
+    fun watchGpsSatelliteEvidenceIsExportedAndSurvivesDraftPersistence() {
+        val quality =
+            RecordedLocationQuality(
+                provider = "gps",
+                sourceMode = "watch_gps",
+                verticalAccuracyMeters = 250f,
+                speedAccuracyMps = 25f,
+                ageMillis = 8L,
+                gnssSatellitesUsed = 28,
+                gnssUsedCn0AvgDbHz = 31.25f,
+            )
+        val document = document(point = point().copy(locationQuality = quality))
+
+        assertEquals("28", document.extension("gnssSatellitesUsed"))
+        assertEquals("31.25", document.extension("gnssUsedCn0AvgDbHz"))
+        assertEquals(quality, quality.toJson().toRecordedLocationQuality())
+    }
+
+    @Test
+    fun fusedFixWithoutSatelliteEvidenceOmitsGnssTagsAndRestoresAsUnknown() {
+        val quality = RecordedLocationQuality("fused", "auto_fused", 1f, 0.2f, 100L)
+        val document = document(point = point().copy(locationQuality = quality))
+
+        assertEquals(0, document.getElementsByTagNameNS(GMAP, "gnssSatellitesUsed").length)
+        assertEquals(0, document.getElementsByTagNameNS(GMAP, "gnssUsedCn0AvgDbHz").length)
+        val restored = quality.toJson().toRecordedLocationQuality()
+        assertEquals(null, restored.gnssSatellitesUsed)
+        assertEquals(null, restored.gnssUsedCn0AvgDbHz)
+    }
+
+    @Test
     fun outOfRangeHeartRateIsNotWrittenAsInvalidGarminData() {
         val document = document(point = point().copy(heartRateBpm = 300))
 

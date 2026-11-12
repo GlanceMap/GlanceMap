@@ -1,6 +1,7 @@
 package com.glancemap.glancemapwearos.presentation.features.settings
 
 import android.content.res.Resources
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -203,9 +204,10 @@ private fun PoiPopupTimeoutSlider(
     ) {
         Text(
             stringResource(R.string.settings_popup_timeout_s, internalValue.toInt()),
+            modifier = Modifier.basicMarquee(),
             style = MaterialTheme.typography.titleMedium,
             maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
+            overflow = TextOverflow.Visible,
         )
         Slider(
             value = internalValue,

@@ -20,6 +20,8 @@ import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONObject
 import java.io.BufferedOutputStream
+import java.io.IOException
+import java.io.InputStream
 import java.io.OutputStream
 import java.util.Locale
 
@@ -63,13 +65,32 @@ class ChannelClientStrategy :
         withContext(Dispatchers.IO) {
             val totalStartMs = SystemClock.elapsedRealtime()
 
+            val diagnosticContext =
+                "${metadata.diagnosticContext()} file=${metadata.safeFileName} " +
+                    "expectedBytes=${metadata.totalSize} checksumAvailable=${!metadata.checksumSha256.isNullOrBlank()}"
+            val validationFailure =
+                when {
+                    metadata.isMapFile && metadata.totalSize <= 0L -> "missing_expected_size"
+                    metadata.checksumSha256.isNullOrBlank() -> "missing_expected_checksum"
+                    else -> null
+                }
+            if (validationFailure != null) {
+                PhoneTransferDiagnostics.error(
+                    "Channel",
+                    "event=sender_result $diagnosticContext bytesSent=0 sourceStreamOpen=no " +
+                        "result=failed reason=$validationFailure",
+                )
+                return@withContext TransferResult(false, validationFailure)
+            }
+
             val channelClient = Wearable.getChannelClient(context)
             val messageClient = Wearable.getMessageClient(context)
             activeChannelClient = channelClient
 
-            val input =
-                context.contentResolver.openInputStream(fileUri)
-                    ?: return@withContext TransferResult(false, "Cannot open input stream")
+            var input: InputStream? = null
+            var sourceStreamOpened = false
+            var bytesSent = 0L
+            var channel: ChannelClient.Channel? = null
 
             // Adaptive buffer (Channel is usually BT-limited, but slightly larger helps reduce overhead)
             val bufferBytes =
@@ -80,15 +101,22 @@ class ChannelClientStrategy :
                     else -> 512 * 1024 // ✅ if used above 30MB, keep stable
                 }
 
-            var channel: ChannelClient.Channel? = null
-
             try {
+                val sourceInput =
+                    context.contentResolver.openInputStream(fileUri)
+                        ?: throw IOException("source_stream_open_failed")
+                input = sourceInput
+                sourceStreamOpened = true
+                PhoneTransferDiagnostics.log(
+                    "Channel",
+                    "event=source_stream_open $diagnosticContext sourceStreamOpen=yes",
+                )
+
                 // 0) Pre-warm watch
                 onProgress(0f, "Waking watch…")
                 PhoneTransferDiagnostics.log(
                     "Channel",
-                    "Transfer start ${metadata.diagnosticContext()} " +
-                        "file=${metadata.displayFileName} size=${metadata.totalSize}",
+                    "event=channel_send_start $diagnosticContext",
                 )
                 val payload =
                     JSONObject()
@@ -111,10 +139,12 @@ class ChannelClientStrategy :
                         prewarmSuccess = true
                         break
                     } else {
-                        Log.d(TAG, "Pre-warm attempt $attempt failed (non-fatal): ${result.exceptionOrNull()?.message}")
+                        val reason = result.exceptionOrNull()?.let(::safeFailureReason) ?: "unknown"
+                        Log.d(TAG, "Pre-warm attempt $attempt failed (non-fatal): reason=$reason")
                         PhoneTransferDiagnostics.warn(
                             "Channel",
-                            "Prewarm attempt $attempt failed file=${metadata.displayFileName} msg=${result.exceptionOrNull()?.message}",
+                            "event=prewarm_failed ${metadata.diagnosticContext()} " +
+                                "attempt=$attempt reason=$reason",
                         )
                         if (attempt < PREWARM_MAX_ATTEMPTS) delay(PREWARM_RETRY_DELAY_MS)
                     }
@@ -153,9 +183,9 @@ class ChannelClientStrategy :
 
                 // 3) Copy
                 val copyStartMs = SystemClock.elapsedRealtime()
-                var bytesSent = 0L
-                BufferedOutputStream(rawOut, bufferBytes).use { out ->
-                    input.use { inp ->
+                val countedOutput = CountingOutputStream(rawOut) { bytesWritten -> bytesSent += bytesWritten }
+                BufferedOutputStream(countedOutput, bufferBytes).use { out ->
+                    sourceInput.use { inp ->
                         onProgress(0f, "Transferring…")
                         bytesSent =
                             TransferUtils.copyWithProgress(
@@ -171,7 +201,13 @@ class ChannelClientStrategy :
                             )
                     }
                 }
+                input = null
                 val copyMs = SystemClock.elapsedRealtime() - copyStartMs
+                PhoneTransferDiagnostics.log(
+                    "Channel",
+                    "event=channel_send_complete $diagnosticContext bytesSent=$bytesSent " +
+                        "result=success",
+                )
 
                 // 4) Wait ACK
                 onProgress(1f, "Waiting for watch confirmation…")
@@ -227,18 +263,35 @@ class ChannelClientStrategy :
                             "success=${ack.success} waitMs=$ackWaitMs",
                     )
                 }
-                return@withContext channelAckResult(ack)
+                val result = channelAckResult(ack)
+                val resultReason = if (result.success) "na" else safeFailureReason(result.message)
+                PhoneTransferDiagnostics.log(
+                    "Channel",
+                    "event=sender_result $diagnosticContext " +
+                        "bytesSent=$bytesSent sourceStreamOpen=$sourceStreamOpened " +
+                        "result=${if (result.success) "success" else "failed"} reason=$resultReason",
+                )
+                result
             } catch (ce: CancellationException) {
+                PhoneTransferDiagnostics.warn(
+                    "Channel",
+                    "event=sender_result $diagnosticContext " +
+                        "bytesSent=$bytesSent sourceStreamOpen=$sourceStreamOpened " +
+                        "result=failed reason=cancelled",
+                )
                 throw ce
             } catch (e: Exception) {
-                Log.e(TAG, "Transfer error", e)
+                val reason = safeFailureReason(e)
+                Log.e(TAG, "Transfer failed reason=$reason")
                 PhoneTransferDiagnostics.error(
                     "Channel",
-                    "Transfer error file=${metadata.displayFileName}",
-                    e,
+                    "event=sender_result $diagnosticContext bytesSent=$bytesSent " +
+                        "sourceStreamOpen=$sourceStreamOpened result=failed " +
+                        "reason=$reason",
                 )
-                return@withContext TransferResult(false, "Error: ${e.localizedMessage}")
+                return@withContext TransferResult(false, "Error: $reason")
             } finally {
+                runCatching { input?.close() }
                 activeOutputStream = null
                 channel?.let { runCatching { channelClient.close(it).await() } }
                 activeChannel = null
@@ -266,4 +319,49 @@ internal fun channelAckResult(ack: TransferResult?): TransferResult =
         ack
     } else {
         TransferResult(false, CHANNEL_ACK_TIMEOUT_MESSAGE)
+    }
+
+private class CountingOutputStream(
+    private val delegate: OutputStream,
+    private val onBytesWritten: (Long) -> Unit,
+) : OutputStream() {
+    override fun write(value: Int) {
+        delegate.write(value)
+        onBytesWritten(1L)
+    }
+
+    override fun write(
+        buffer: ByteArray,
+        offset: Int,
+        length: Int,
+    ) {
+        delegate.write(buffer, offset, length)
+        onBytesWritten(length.toLong())
+    }
+
+    override fun flush() = delegate.flush()
+
+    override fun close() = delegate.close()
+}
+
+private fun safeFailureReason(error: Throwable): String {
+    if (error is CancellationException) return "cancelled"
+    val detailReason = safeFailureReason(error.message.orEmpty())
+    return when {
+        detailReason != "receiver_error" -> detailReason
+        error is IOException -> "io_exception"
+        else -> error.javaClass.simpleName
+    }
+}
+
+private fun safeFailureReason(detail: String): String =
+    when {
+        detail.startsWith("unexpected_eof") || detail.startsWith("INCOMPLETE_FILE:") -> "unexpected_eof"
+        detail.startsWith("unexpected_extra_data") || detail.startsWith("TOO_MUCH_DATA:") -> "unexpected_extra_data"
+        detail.startsWith("missing_expected_size") -> "missing_expected_size"
+        detail.startsWith("missing_expected_checksum") -> "missing_expected_checksum"
+        detail.startsWith("checksum_compute_failed") -> "checksum_compute_failed"
+        detail.startsWith("checksum_mismatch") || detail.startsWith("CHECKSUM_MISMATCH") -> "checksum_mismatch"
+        detail.startsWith("source_stream_open_failed") -> "source_stream_open_failed"
+        else -> "receiver_error"
     }

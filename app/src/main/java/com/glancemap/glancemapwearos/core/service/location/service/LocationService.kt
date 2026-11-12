@@ -46,21 +46,28 @@ import com.glancemap.glancemapwearos.core.service.location.config.TELEMETRY_SUMM
 import com.glancemap.glancemapwearos.core.service.location.config.TELEMETRY_TAG
 import com.glancemap.glancemapwearos.core.service.location.config.WAKE_BURST_START_DEBOUNCE_MS
 import com.glancemap.glancemapwearos.core.service.location.config.WATCH_GPS_AUTO_FALLBACK_INTERACTIVE_MAX_ACCURACY_M
+import com.glancemap.glancemapwearos.core.service.location.config.WATCH_GPS_FLOOR_MAX_ACCEPTED_ACCURACY_M
 import com.glancemap.glancemapwearos.core.service.location.config.WATCH_GPS_MAX_ACCEPTED_ACCURACY_M
+import com.glancemap.glancemapwearos.core.service.location.config.WatchGpsConstantAccuracy
+import com.glancemap.glancemapwearos.core.service.location.config.isKnownWatchGpsAccuracyFloor
 import com.glancemap.glancemapwearos.core.service.location.engine.LocationEngine
 import com.glancemap.glancemapwearos.core.service.location.engine.RequestSpec
 import com.glancemap.glancemapwearos.core.service.location.model.LocationPermissionChecker
 import com.glancemap.glancemapwearos.core.service.location.model.LocationPermissionSnapshot
 import com.glancemap.glancemapwearos.core.service.location.model.LocationScreenState
+import com.glancemap.glancemapwearos.core.service.location.model.attachGnssFixQuality
+import com.glancemap.glancemapwearos.core.service.location.model.gnssFixQualityForFix
 import com.glancemap.glancemapwearos.core.service.location.model.isInteractive
 import com.glancemap.glancemapwearos.core.service.location.model.isNonInteractive
 import com.glancemap.glancemapwearos.core.service.location.model.resolveLocationTimingProfile
 import com.glancemap.glancemapwearos.core.service.location.notifications.LocationNotificationFactory
 import com.glancemap.glancemapwearos.core.service.location.policy.FixAcceptancePolicy
+import com.glancemap.glancemapwearos.core.service.location.policy.KeepAliveNotificationMode
 import com.glancemap.glancemapwearos.core.service.location.policy.LocationFixPolicy
 import com.glancemap.glancemapwearos.core.service.location.policy.LocationRuntimeMode
 import com.glancemap.glancemapwearos.core.service.location.policy.LocationSourceMode
 import com.glancemap.glancemapwearos.core.service.location.policy.NavigationRuntimeDemandReason
+import com.glancemap.glancemapwearos.core.service.location.policy.locationKeepAliveNotificationMode
 import com.glancemap.glancemapwearos.core.service.location.telemetry.LocationServiceTelemetry
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import com.google.android.gms.location.LocationServices
@@ -80,12 +87,6 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 class LocationService : Service() {
-    private enum class KeepAliveNotificationMode {
-        OFF,
-        PINNED_NOTIFICATION,
-        LOCATION_FOREGROUND,
-    }
-
     private val binder = LocalBinder()
     private lateinit var fusedLocationGateway: FusedLocationGateway
     private lateinit var passiveExternalLocationGateway: PassiveExternalLocationGateway
@@ -243,6 +244,7 @@ class LocationService : Service() {
                     expectedIntervalMs = expectedIntervalMs,
                 )
             },
+            recordingActive = { isRecordingRuntimeReason(latestRuntimeReason) },
         )
     }
     private val gnssDiagnosticsCoordinator by lazy {
@@ -587,6 +589,7 @@ class LocationService : Service() {
 
                 override fun onLocations(event: LocationUpdateEvent) {
                     ScreenOffActivityDiagnostics.recordLocationCallback()
+                    observeWatchChipAccuracy(event)
                     val callbackStartedAtElapsedMs =
                         if (latestGpsDebugTelemetry) {
                             RecordingScreenOffDiagnostics.start()
@@ -606,6 +609,30 @@ class LocationService : Service() {
                     }
                 }
             }
+    }
+
+    /**
+     * Learns a stuck watch-chip accuracy before any filtering, so a placeholder above the
+     * acceptance limits is still recognised. A fused fix carrying that placeholder means fused
+     * location fell back to the watch chip, so the phone link is checked right away.
+     */
+    private fun observeWatchChipAccuracy(event: LocationUpdateEvent) {
+        val nowElapsedMs = SystemClock.elapsedRealtime()
+        event.candidates.forEach { location ->
+            val accuracy = location.accuracy.takeIf { location.hasAccuracy() } ?: return@forEach
+            if (location.provider == LocationManager.GPS_PROVIDER) {
+                val fixElapsedMs = (location.elapsedRealtimeNanos / 1_000_000L).takeIf { it > 0L } ?: nowElapsedMs
+                if (WatchGpsConstantAccuracy.observe(accuracy, fixElapsedMs)) {
+                    telemetry.logWatchGpsConstantAccuracyLearned(accuracy)
+                }
+            } else if (
+                event.origin == LocationSourceMode.AUTO_FUSED &&
+                latestPhoneConnected != false &&
+                isKnownWatchGpsAccuracyFloor(accuracy)
+            ) {
+                selfHealFailoverCoordinator.recheckPhoneConnectionNow(nowElapsedMs)
+            }
+        }
     }
 
     fun requestImmediateLocation(source: String = "service_unknown") {
@@ -1326,10 +1353,17 @@ class LocationService : Service() {
                 watchGpsAutoFallbackInteractiveMaxAccuracyM =
                 WATCH_GPS_AUTO_FALLBACK_INTERACTIVE_MAX_ACCURACY_M,
             )
-        return LocationFixPolicy.adaptAcceptanceForSourceMode(
-            policy = basePolicy,
+        val sourcePolicy =
+            LocationFixPolicy.adaptAcceptanceForSourceMode(
+                policy = basePolicy,
+                sourceMode = sourceMode,
+                watchGpsMaxAccuracyM = watchGpsMaxAccuracyM,
+            )
+        return LocationFixPolicy.allowKnownWatchGpsFloor(
+            policy = sourcePolicy,
             sourceMode = sourceMode,
-            watchGpsMaxAccuracyM = watchGpsMaxAccuracyM,
+            phoneConnected = latestPhoneConnected,
+            floorMaxAccuracyM = WATCH_GPS_FLOOR_MAX_ACCEPTED_ACCURACY_M,
         )
     }
 
@@ -1481,7 +1515,6 @@ class LocationService : Service() {
             captureActive && captureMode == SettingsRepository.DIAGNOSTICS_CAPTURE_MODE_FULL
         latestDiagnosticsCaptureActive = captureActive
         latestGpsDebugTelemetry = fullDiagnostics
-        telemetry.setDebugEnabled(fullDiagnostics)
         ScreenOffActivityDiagnostics.configure(enabled = captureActive)
         RecordingScreenOffDiagnostics.configure(fullDiagnostics = fullDiagnostics)
         RecordingScreenOffDiagnostics.updateRuntimeState(
@@ -1497,15 +1530,14 @@ class LocationService : Service() {
     }
 
     private fun refreshKeepAliveNotificationState() {
-        val guidanceActive = isGuidanceRuntimeReason(latestRuntimeReason)
         val desiredMode =
-            when {
-                guidanceActive && shouldUseLocationForegroundMode() ->
-                    KeepAliveNotificationMode.LOCATION_FOREGROUND
-                !keepAppOpen.value -> KeepAliveNotificationMode.OFF
-                shouldUseLocationForegroundMode() -> KeepAliveNotificationMode.LOCATION_FOREGROUND
-                else -> KeepAliveNotificationMode.PINNED_NOTIFICATION
-            }
+            locationKeepAliveNotificationMode(
+                keepAppOpen = keepAppOpen.value,
+                trackingEnabled = latestTrackingEnabled,
+                screenState = latestScreenState,
+                backgroundGpsEnabled = effectiveBackgroundGpsEnabled(),
+                runtimeReason = latestRuntimeReason,
+            )
         if (
             desiredMode == keepAliveNotificationMode &&
             keepAliveNotificationRuntimeReason == latestRuntimeReason
@@ -1572,6 +1604,12 @@ class LocationService : Service() {
             reason == NavigationRuntimeDemandReason.RECORDING_GUIDANCE
 
     private fun publishAcceptedLocation(location: Location) {
+        if (location.provider == LocationManager.GPS_PROVIDER) {
+            gnssFixQualityForFix(
+                quality = gnssDiagnosticsCoordinator.latestFixQuality,
+                fixElapsedRealtimeMs = location.elapsedRealtimeNanos / 1_000_000L,
+            )?.let(location::attachGnssFixQuality)
+        }
         _currentLocation.value = location
         if (!_acceptedLocationEvents.tryEmit(location)) {
             DebugTelemetry.log(
@@ -1660,13 +1698,6 @@ class LocationService : Service() {
         fusedLocationGateway.removeLocationUpdatesBestEffort()
         passiveExternalLocationGateway.removeLocationUpdatesBestEffort()
         watchGpsLocationGateway.removeLocationUpdatesBestEffort()
-    }
-
-    private fun shouldUseLocationForegroundMode(): Boolean {
-        val locationAllowedByUiState =
-            latestTrackingEnabled &&
-                (latestScreenState.isInteractive || effectiveBackgroundGpsEnabled())
-        return locationAllowedByUiState
     }
 
     private fun isNonInteractiveScreenState(): Boolean = latestScreenState.isNonInteractive

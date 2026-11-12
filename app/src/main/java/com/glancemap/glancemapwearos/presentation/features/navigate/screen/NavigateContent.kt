@@ -702,6 +702,7 @@ internal fun NavigateContent(
     }
     val density = LocalDensity.current
     var visibleMapSizePx by remember { mutableStateOf(IntSize.Zero) }
+    var clockChipWidthPx by remember { mutableIntStateOf(0) }
     val liveHudState =
         rememberNavigateLiveHudState(
             enabled = hasLocationPermission && mapView != null,
@@ -767,7 +768,7 @@ internal fun NavigateContent(
             ((showScaleBar && mapChrome.shows(MapFocusControl.SCALE)) || routeToolModeActive)
     val shouldSuppressNavigateTime =
         shortcutTrayExpanded || !mapChrome.shows(MapFocusControl.TIME) || suppressNavigateTimeForLayout
-    MapFocusModeEffects(mapFocusState, fullScreenPopupExpanded, onExitMapFocus)
+    MapFocusModeEffects(mapFocusState)
     val overlayOwnsRotary = expandedOverlayState.overlayOwnsRotary
 
     LaunchedEffect(shouldSuppressNavigateTime) {
@@ -1224,6 +1225,7 @@ internal fun NavigateContent(
                         liveDistanceLabel = liveDistanceLabel,
                         zoomLabelTopPadding = zoomLabelTopPadding,
                         liveElevationIconSize = liveElevationIconSize,
+                        clockChipWidth = with(density) { clockChipWidthPx.toDp() },
                         northIndicatorMode = northIndicatorMode,
                         mapRotationDeg = mapRotationDeg,
                         navigationMarkerAnchorMode = navigationMarkerAnchorMode,
@@ -1529,6 +1531,7 @@ internal fun NavigateContent(
                     turnByTurnGuidanceState.active || turnByTurnGuidancePaused,
                 onTap = onRecordingTimeTap,
                 onLongPress = onRecordingTimeLongPress,
+                onWidthChanged = { clockChipWidthPx = it },
                 modifier = Modifier.align(Alignment.TopCenter),
             )
 
@@ -1664,9 +1667,13 @@ private fun CenteredNavigateTimeChip(
     guidanceSessionActive: Boolean,
     onTap: () -> Unit,
     onLongPress: () -> Unit,
+    onWidthChanged: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     if (!visible) return
+    DisposableEffect(Unit) {
+        onDispose { onWidthChanged(0) }
+    }
     val context = LocalContext.current
     var nowMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
     val clockUpdatesActive =
@@ -1748,6 +1755,7 @@ private fun CenteredNavigateTimeChip(
                 modifier =
                     Modifier
                         .padding(top = 12.dp)
+                        .onSizeChanged { onWidthChanged(it.width) }
                         .size(4.dp)
                         .background(accentColor, CircleShape),
             )
@@ -1756,6 +1764,7 @@ private fun CenteredNavigateTimeChip(
                 modifier =
                     Modifier
                         .height(20.dp)
+                        .onSizeChanged { onWidthChanged(it.width) }
                         .background(Color.Black.copy(alpha = 0.74f), RoundedCornerShape(percent = 50))
                         .border(1.dp, accentColor.copy(alpha = 0.96f), RoundedCornerShape(percent = 50))
                         .padding(start = if (recordingActive) 7.dp else 9.dp, end = 9.dp),

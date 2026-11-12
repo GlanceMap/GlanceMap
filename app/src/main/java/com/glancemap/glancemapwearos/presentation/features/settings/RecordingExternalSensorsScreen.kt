@@ -4,6 +4,7 @@ import android.content.res.Resources
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -61,11 +62,13 @@ import com.glancemap.glancemapwearos.presentation.ui.WearActionButtonRole
 import com.glancemap.glancemapwearos.presentation.ui.WearActionDialog
 import com.glancemap.glancemapwearos.presentation.ui.rememberWearAdaptiveSpec
 
+@Suppress("FunctionNaming", "LongMethod", "CyclomaticComplexMethod")
 @Composable
 fun RecordingExternalSensorsScreen(
     viewModel: SettingsViewModel,
     onOpenRecordingSettings: () -> Unit,
     connectLinkedSensors: Boolean = true,
+    connectLinkedRunPod: Boolean = true,
 ) {
     val listTokens = rememberSettingsListTokens()
     val context = LocalContext.current
@@ -138,7 +141,7 @@ fun RecordingExternalSensorsScreen(
         onHeartRate = { _, _ -> },
     )
     ExternalRunPodSensorBridge(
-        active = connectLinkedSensors && !linkedRunPodAddress.isNullOrBlank(),
+        active = connectLinkedSensors && connectLinkedRunPod && !linkedRunPodAddress.isNullOrBlank(),
         paused = false,
         address = linkedRunPodAddress,
         onMeasurement = {},
@@ -528,10 +531,10 @@ private fun LinkedExternalSensorChipContent(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     text = name,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.weight(1f).basicMarquee(),
                     color = contentColor,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                    overflow = TextOverflow.Visible,
                 )
                 if (connected && batteryLevelPercent in 0..100) {
                     Text(

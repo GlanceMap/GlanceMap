@@ -1,5 +1,6 @@
 package com.glancemap.glancemapwearos.presentation.features.settings
 
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.UnfoldMore
@@ -85,10 +86,10 @@ internal fun OptionPickerChoiceRow(
         label = {
             Text(
                 text = label,
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().basicMarquee(),
                 textAlign = TextAlign.Start,
-                overflow = TextOverflow.Ellipsis,
-                maxLines = 2,
+                overflow = TextOverflow.Visible,
+                maxLines = 1,
             )
         },
         toggleControl = {

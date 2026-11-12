@@ -42,9 +42,12 @@ class GpxRepositoryImpl(
         expectedSize: Long? = null,
         resumeOffset: Long = 0L,
         diagnosticContext: String? = null,
+        expectedSha256: String? = null,
+        keepPartialOnCancel: Boolean = true,
+        keepPartialOnFailure: Boolean = true,
     ): String? =
         withContext(Dispatchers.IO) {
-            val exp = expectedSize?.takeIf { it > 0L }
+            val exp = expectedSize?.takeIf { it >= 0L }
 
             val options =
                 AtomicStreamWriter.Options(
@@ -54,9 +57,10 @@ class GpxRepositoryImpl(
                     failIfExists = false,
                     expectedSize = exp,
                     requireExactSize = (exp != null),
+                    expectedSha256 = expectedSha256,
                     resumeOffset = resumeOffset.coerceAtLeast(0L),
-                    keepPartialOnCancel = true, // keep .part on pause
-                    keepPartialOnFailure = true, // keep .part on recoverable IO failure
+                    keepPartialOnCancel = keepPartialOnCancel,
+                    keepPartialOnFailure = keepPartialOnFailure,
                     computeSha256 = true,
                     diagnosticContext = diagnosticContext,
                 )

@@ -67,19 +67,34 @@ def value(element):
     return re.sub(r'''\\([ntr'"\\])''', lambda m: {"n": "\n", "t": "\t", "r": "\r"}.get(m[1], m[1]), text)
 
 
-def load(path):
-    text = path.read_text(encoding="utf-8")
+def load(path, text=None):
+    if text is None:
+        text = path.read_text(encoding="utf-8")
     require(not re.search(r"<!\s*(?:DOCTYPE|ENTITY)\b", text, re.I), f"DTD/entities are not allowed: {path}")
     root = ET.fromstring(text)
     require(root.tag == "resources", f"Expected resources root: {path}")
     result = {}
     for element in root:
-        if element.tag not in {"string", "plurals"}:
+        if element.tag not in {"string", "plurals"} and not (
+            element.tag == "string-array" and (
+                element.get("name", "").startswith("changelog_") or element.get("name") == "watch_whats_new_notes"
+            )
+        ):
             continue
         name = element.get("name")
         require(name and name not in result, f"Missing/duplicate resource name in {path}: {name}")
         result[name] = element
     return result
+
+
+def english_resources(res):
+    english = {}
+    for path in sorted((res / "values").glob("*.xml")):
+        for name, element in load(path).items():
+            if element.get("translatable") != "false":
+                require(name not in english, f"values/{name}: duplicate across files")
+                english[name] = element
+    return english
 
 
 def discover(res):
@@ -177,8 +192,11 @@ def validate_resources(group, english):
     primary = not group["configuration"]
     if primary:
         require((directory / "strings.xml").is_file(), f"{directory}: missing strings.xml")
-        require(english.keys() == translated.keys(),
-                f"{directory.name}: missing={sorted(english.keys() - translated.keys())}, extra/nontranslatable={sorted(translated.keys() - english.keys())}")
+        require(translated.keys() <= english.keys(),
+                f"{directory.name}: extra/nontranslatable={sorted(translated.keys() - english.keys())}")
+        missing_history = sorted(name for name in english.keys() - translated.keys()
+                                 if english[name].tag == "string-array")
+        require(not missing_history, f"{directory.name}: missing changelog arrays: {missing_history}")
     else:
         require(translated.keys() <= english.keys(), f"{directory.name}: unknown configuration-override resource")
     rows, records = [], []
@@ -193,6 +211,10 @@ def validate_resources(group, english):
             originals = plural_forms(source, name)
             pairs = [(name + "." + q, originals.get(q, originals["other"]), child) for q, child in forms.items()]
             records.append(("plural", group["locale"], label, ",".join(sorted(forms))))
+        elif source.tag == "string-array":
+            require(len(source) == len(target), f"{label}: item count mismatch")
+            pairs = [(f"{name}[{index}]", original, translation)
+                     for index, (original, translation) in enumerate(zip(source, target))]
         else:
             pairs = [(name, source, target)]
             if is_icu(source):
@@ -225,11 +247,11 @@ def validate_documents(directory, originals, complete=True):
 
 
 def preserve_existing_files(res, base_ref):
-    """Reject silent deletion of approved locale files from the PR/push base."""
+    """Protect approved locale files and active translated keys from the exact base."""
     require(re.fullmatch(r"[0-9a-f]{40,64}", base_ref), "Preservation base must be an exact Git commit SHA")
     prefix = "app/src/main/res/"
     paths = subprocess.check_output(["git", "ls-tree", "-r", "--name-only", base_ref, "--", prefix], cwd=ROOT, text=True).splitlines()
-    count = 0
+    retained = {}
     for path in paths:
         relative = Path(path.removeprefix(prefix))
         if len(relative.parts) != 2 or locale_directory(relative.parts[0]) is None:
@@ -237,16 +259,31 @@ def preserve_existing_files(res, base_ref):
         if relative.suffix not in {".xml", ".md"}:
             continue
         require((res / relative).is_file(), f"Existing translation file deleted: {relative}; preserve approved work")
-        count += 1
-    print(f"PASS preservation: {count} existing locale XML/raw files retained from {base_ref[:12]}")
+        retained[relative] = path
+    english = set(english_resources(res))
+    previous = collections.defaultdict(set)
+    for relative, path in retained.items():
+        if relative.parts[0].startswith("values-") and relative.suffix == ".xml":
+            blob = subprocess.check_output(["git", "show", f"{base_ref}:{path}"], cwd=ROOT, text=True)
+            previous[relative.parent].update(load(Path(path), text=blob))
+    for directory, names in previous.items():
+        current = {name for path in (res / directory).glob("*.xml") for name in load(path)}
+        # Retired source keys may go; untranslated new keys never existed here.
+        removed = sorted((names & english) - current)
+        require(not removed, f"Existing translations removed from {directory}: {removed}; preserve approved work")
+    print(f"PASS preservation: {len(retained)} existing locale XML/raw files and active translated keys retained from {base_ref[:12]}")
 
 
 def validate(res, report_dir=None):
-    english = {name: e for name, e in load(res / "values/strings.xml").items() if e.get("translatable") != "false"}
+    english = english_resources(res)
     groups = discover(res)
     require(groups, "No translated locale resources found")
     records = []
     for name, element in english.items():
+        forms = (plural_forms(element, name) if element.tag == "plurals" else
+                 {str(i): item for i, item in enumerate(element)} if element.tag == "string-array" else {"": element})
+        for quantity, item in forms.items():
+            compare(item, item, "values/" + name + ("." + quantity if quantity else ""))
         if element.tag == "plurals":
             records.append(("plural", "en", "values/" + name, ",".join(sorted(plural_forms(element, name)))))
         elif is_icu(element):
@@ -263,11 +300,20 @@ def validate(res, report_dir=None):
             android = group["android_locale"]
             variant = android + ("-" + group["configuration"] if group["configuration"] else "")
             counts = collections.Counter(e.tag for e in translated.values())
+            primary = "values" in group and not group["configuration"]
+            missing = sorted(english.keys() - translated.keys()) if primary else []
+            missing_counts = collections.Counter(english[name].tag for name in missing)
             item = {"locale": group["locale"], "android_locale": android, "configuration": group["configuration"],
                     "strings_xml": str(group["values"] / "strings.xml") if "values" in group else None,
-                    "strings": counts["string"], "plurals": counts["plurals"], "raw_documents": count}
+                    "strings": counts["string"], "plurals": counts["plurals"], "raw_documents": count,
+                    "missing_strings": missing_counts["string"], "missing_plurals": missing_counts["plurals"],
+                    "coverage_percent": round(100 * len(translated) / max(len(english), 1), 1) if primary else None,
+                    "missing_resources": missing}
             inventory.append(item)
             print(f"PASS {variant}: {counts['string']} strings, {counts['plurals']} plurals, {count} legal/raw documents")
+            if missing:
+                sample = ", ".join(missing[:5]) + (f", ... (+{len(missing) - 5} more)" if len(missing) > 5 else "")
+                print(f"WARNING {variant}: {len(missing)} resources use English fallback; coverage {item['coverage_percent']}%: {sample}")
             flags = collections.Counter(row["risk"] for row in rows)
             print(f"WARNING {variant}: length-review flags {dict(flags)} (non-blocking; inspect on a watch)")
             print(f"INFO {variant}: visual-length audit excludes spoken ICU patterns; ICU correctness is checked separately")
@@ -290,7 +336,7 @@ def validate(res, report_dir=None):
         configured = [e.get("{http://schemas.android.com/apk/res/android}name") for e in ET.parse(configured_file).getroot()]
         primary = {group["locale"] for group in groups if not group["configuration"] and "values" in group}
         require(len(configured) == len(set(configured)), "Duplicate configured app locale")
-        require(set(configured) <= {"en", *primary}, "A configured/shipped locale has no complete base translation")
+        require(set(configured) <= {"en", *primary}, "A configured/shipped locale has no base translation")
         for tag in sorted(primary - set(configured)):
             print(f"INFO {tag}: resources validated; not yet advertised by locales_config/picker (maintainer release decision)")
     require(not errors, "\n".join(errors))
@@ -305,7 +351,7 @@ def main():
     parser.add_argument("--res-dir", type=Path, default=ROOT / "app/src/main/res")
     parser.add_argument("--report-dir", type=Path)
     parser.add_argument("--icu4j-jar", type=Path, default=os.environ.get("ICU4J_JAR"))
-    parser.add_argument("--preserve-from", help="Exact PR/push base commit; reject deletion of existing locale files")
+    parser.add_argument("--preserve-from", help="Exact PR/push base commit; reject deletion of existing locale files or active translated keys")
     parser.add_argument("--structure-only", action="store_true", help="Explicitly skip JVM ICU/CLDR checks; never used by CI")
     args = parser.parse_args()
     if args.preserve_from:

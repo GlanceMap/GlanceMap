@@ -27,8 +27,12 @@ import com.glancemap.glancemapwearos.presentation.features.recording.RecordingEl
 import com.glancemap.glancemapwearos.presentation.features.recording.RecordingRuntimeDependencies
 import com.glancemap.glancemapwearos.presentation.features.recording.TraceRecordingDraftStore
 import com.glancemap.glancemapwearos.presentation.features.recording.TraceRecordingViewModel
+import com.glancemap.glancemapwearos.presentation.features.recording.health.RecordingHealthRuntime
+import com.glancemap.glancemapwearos.presentation.features.recording.sensors.AndroidRecordingExperimentLock
+import com.glancemap.glancemapwearos.presentation.features.recording.sensors.RecordingWakeLockExperiment
 import com.glancemap.glancemapwearos.presentation.features.settings.SettingsViewModel
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
@@ -38,6 +42,16 @@ class AppContainer(
     private val applicationContext: Context,
     private val coroutineScope: CoroutineScope,
 ) {
+    internal val recordingHealthRuntime = RecordingHealthRuntime(applicationContext)
+    internal val recordingWakeLockExperiment =
+        RecordingWakeLockExperiment(
+            enabled = BuildConfig.RECORDING_WAKE_LOCK_EXPERIMENT,
+            createLock = { AndroidRecordingExperimentLock(applicationContext) },
+            diagnostic = { event ->
+                com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
+                    .log("TraceRecordingSensors", event)
+            },
+        )
     val syncManager: SyncManager by lazy { SyncManager(scope = coroutineScope) }
 
     val settingsRepository: SettingsRepository by lazy {
@@ -178,17 +192,23 @@ class AppContainer(
     }
 
     private fun startRecordingLocationBridge(traceRecordingViewModel: TraceRecordingViewModel) {
-        coroutineScope.launch {
+        recordingHealthRuntime.bind(traceRecordingViewModel, settingsRepository, coroutineScope)
+        coroutineScope.launch(Dispatchers.Main.immediate) {
+            traceRecordingViewModel.recordingPresentationState.collect { state ->
+                recordingWakeLockExperiment.update(active = state.active && !state.saving, paused = state.paused)
+            }
+        }
+        coroutineScope.launch(Dispatchers.Main.immediate) {
             locationViewModel.recordingLocations.collect { location ->
                 traceRecordingViewModel.onLocation(location)?.join()
             }
         }
-        coroutineScope.launch {
+        coroutineScope.launch(Dispatchers.Main.immediate) {
             locationViewModel.gpsSignalSnapshot.collectLatest { snapshot ->
                 traceRecordingViewModel.onGpsSignalSnapshot(snapshot)
             }
         }
-        coroutineScope.launch {
+        coroutineScope.launch(Dispatchers.Main.immediate) {
             locationViewModel.effectiveGpsIntervalMs.collect { intervalMs ->
                 traceRecordingViewModel.onEffectiveRecordingSamplingIntervalChanged(intervalMs)
             }

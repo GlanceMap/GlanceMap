@@ -5,6 +5,8 @@ package com.glancemap.glancemapwearos.presentation.features.recording.external
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.platform.LocalContext
 import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
@@ -22,6 +24,8 @@ fun ExternalRunPodSensorBridge(
     onUnavailable: () -> Unit = {},
 ) {
     val context = LocalContext.current
+    val currentMeasurement by rememberUpdatedState(onMeasurement)
+    val currentUnavailable by rememberUpdatedState(onUnavailable)
     val simulated = ExternalSensorSimulation.isSimulatedAddress(address)
 
     LaunchedEffect(active, paused, address, simulated) {
@@ -42,7 +46,7 @@ fun ExternalRunPodSensorBridge(
             rawDistanceUnits += (speedMps * RSC_SIMULATED_DISTANCE_UNITS_PER_METER).toLong()
             val now = System.currentTimeMillis()
             val powerWatts = SIMULATED_RUN_POD_BASE_POWER_WATTS + (sampleIndex % 7)
-            onMeasurement(
+            currentMeasurement(
                 ExternalRunPodMeasurement(
                     speedMps = speedMps,
                     cadenceSpm = SIMULATED_RUN_POD_BASE_CADENCE_SPM + (sampleIndex % 5),
@@ -76,8 +80,8 @@ fun ExternalRunPodSensorBridge(
                 context = context.applicationContext,
                 address = linkedAddress,
                 wheelCircumferenceMeters = wheelCircumferenceMeters.toDouble(),
-                onMeasurement = onMeasurement,
-                onUnavailable = onUnavailable,
+                onMeasurement = { currentMeasurement(it) },
+                onUnavailable = { currentUnavailable() },
                 autoReconnect = active && !paused,
             )
         DebugTelemetry.log("ExternalRunPod", "event=bridge_start address=${linkedAddress.takeLast(5)}")

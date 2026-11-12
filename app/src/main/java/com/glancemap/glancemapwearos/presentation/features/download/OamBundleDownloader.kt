@@ -29,6 +29,7 @@ import com.glancemap.glancemapwearos.core.routing.routingSegmentPartFile
 import com.glancemap.glancemapwearos.core.routing.routingSegmentTargetFile
 import com.glancemap.glancemapwearos.core.routing.routingSegmentsDir
 import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
+import com.glancemap.glancemapwearos.core.service.transfer.storage.partialFileUseGuard
 import com.glancemap.glancemapwearos.data.repository.MapRepositoryImpl
 import com.glancemap.glancemapwearos.data.repository.PoiRepository
 import com.glancemap.glancemapwearos.data.repository.internal.AtomicStreamWriter
@@ -40,6 +41,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
@@ -51,6 +53,7 @@ import java.io.FileInputStream
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URI
+import java.net.URL
 import java.util.Locale
 import java.util.zip.ZipException
 import java.util.zip.ZipInputStream
@@ -194,9 +197,17 @@ class OamBundleDownloader(
     private val mapRepository: MapRepositoryImpl,
     private val poiRepository: PoiRepository,
     private val bundleStore: OamBundleStore = OamBundleStore(context),
+    connectionFactory: suspend (URL) -> HttpURLConnection = { it.openConnection() as HttpURLConnection },
 ) {
+    private val connections = OamDownloadConnections(connectionFactory)
     private val downloadDir: File by lazy { context.getDir("oam_downloads", Context.MODE_PRIVATE) }
     private val activeConnectionRegistry = OamActiveConnectionRegistry()
+    private val extractionPowerSampler by lazy {
+        OamExtractionPowerSampler(
+            read = { captureOamExtractionPowerSnapshot(context) },
+            nowMs = SystemClock::elapsedRealtime,
+        )
+    }
     private val activeConnections: MutableSet<HttpURLConnection>
         get() = activeConnectionRegistry.connections
     private val refugesInfoImporter by lazy {
@@ -297,31 +308,18 @@ class OamBundleDownloader(
             val unknownFileNames = mutableListOf<String>()
             var checkedFileCount = 0
 
-            requests.forEach { request ->
-                coroutineContext.ensureActive()
-                val previous = previousByUrl[request.url]
-                if (previous == null || !previous.isComparable()) {
-                    unknownFileNames += request.fileName
-                    return@forEach
-                }
-                val current =
-                    runCatching { fetchRemoteMetadata(request) }
-                        .getOrNull()
-                if (current == null || !current.isComparable()) {
-                    unknownFileNames += request.fileName
-                    return@forEach
-                }
-                checkedFileCount += 1
-                when (previous.compareWith(current)) {
+            checkRemoteMetadata(requests, previousByUrl, ::fetchRemoteMetadata).forEach { result ->
+                if (result.checked) checkedFileCount += 1
+                when (result.comparison) {
                     RemoteMetadataComparison.CHANGED -> {
-                        changedFileNames += request.fileName
+                        changedFileNames += result.fileName
                         DebugTelemetry.log(
                             OAM_DOWNLOAD_TELEMETRY_TAG,
-                            "event=remote_metadata_changed file=${request.fileName} " +
-                                "previous=${previous.telemetrySummary()} current=${current.telemetrySummary()}",
+                            "event=remote_metadata_changed file=${result.fileName} " +
+                                "previous=${result.previous?.telemetrySummary()} current=${result.current?.telemetrySummary()}",
                         )
                     }
-                    RemoteMetadataComparison.UNKNOWN -> unknownFileNames += request.fileName
+                    RemoteMetadataComparison.UNKNOWN -> unknownFileNames += result.fileName
                     RemoteMetadataComparison.SAME -> Unit
                 }
             }
@@ -329,13 +327,13 @@ class OamBundleDownloader(
             val distinctChangedFileNames = changedFileNames.distinct()
             val distinctUnknownFileNames = unknownFileNames.distinct()
             val status =
-                when {
-                    localHealth.needsRepair -> OamBundleUpdateStatus.REPAIR_NEEDED
-                    distinctChangedFileNames.isNotEmpty() -> OamBundleUpdateStatus.UPDATE_AVAILABLE
-                    requests.isEmpty() -> OamBundleUpdateStatus.UP_TO_DATE
-                    distinctUnknownFileNames.isNotEmpty() || checkedFileCount == 0 -> OamBundleUpdateStatus.UNKNOWN
-                    else -> OamBundleUpdateStatus.UP_TO_DATE
-                }
+                resolveOamBundleUpdateStatus(
+                    repairFileNames = localHealth.repairFileNames,
+                    changedFileNames = distinctChangedFileNames,
+                    requestCount = requests.size,
+                    unknownFileNames = distinctUnknownFileNames,
+                    checkedFileCount = checkedFileCount,
+                )
             DebugTelemetry.log(
                 OAM_DOWNLOAD_TELEMETRY_TAG,
                 "event=update_check_result area=${bundle.areaId} status=$status checked=$checkedFileCount " +
@@ -352,6 +350,15 @@ class OamBundleDownloader(
                 unknownFileNames = distinctUnknownFileNames,
             )
         }
+
+    fun requestNetworkHandoff(disconnect: (HttpURLConnection) -> Unit = { it.disconnect() }) {
+        val interrupted = activeConnectionRegistry.requestHandoff(disconnect)
+        DebugTelemetry.log(
+            OAM_DOWNLOAD_TELEMETRY_TAG,
+            "event=auto_reconnect_request reason=wifi_recovered activePayloads=$interrupted " +
+                "handoffGeneration=${activeConnectionRegistry.handoffGeneration}",
+        )
+    }
 
     fun abortActiveDownloads(reason: String = "manual") {
         val connectionCount = synchronized(activeConnections) { activeConnections.size }
@@ -413,9 +420,11 @@ class OamBundleDownloader(
         forceDemTiles: Boolean = false,
         forceDemTileIds: Set<String> = emptySet(),
         extractionKeepAliveState: () -> OamDownloadKeepAliveState = { OamDownloadKeepAliveState() },
+        onExtractionRunningChanged: (Boolean) -> Unit = {},
         onProgress: (OamDownloadProgress) -> Unit,
     ): OamInstalledBundle =
         coroutineScope {
+            partialFileUseGuard.protectUntilComplete(coroutineContext.job)
             require(selection.canDownload) { context.resources.getString(R.string.download_select_at_least_one_download_item) }
 
             val bundleStartedAtMs = System.currentTimeMillis()
@@ -507,6 +516,7 @@ class OamBundleDownloader(
                                             extension = ".map",
                                             label = context.resources.getString(R.string.download_map),
                                             extractionKeepAliveState = extractionKeepAliveState,
+                                            onExtractionRunningChanged = onExtractionRunningChanged,
                                             onProgress = extractionProgress,
                                         ) { fileName, input, expectedSize, progress ->
                                             mapRepository.saveMapFileAtomic(
@@ -601,6 +611,7 @@ class OamBundleDownloader(
                                             extension = ".poi",
                                             label = context.resources.getString(R.string.common_poi),
                                             extractionKeepAliveState = extractionKeepAliveState,
+                                            onExtractionRunningChanged = onExtractionRunningChanged,
                                             onProgress = extractionProgress,
                                         ) { fileName, input, expectedSize, progress ->
                                             poiRepository.savePoiFileAtomic(
@@ -622,7 +633,7 @@ class OamBundleDownloader(
             }
 
             mapExtraction?.let { extraction ->
-                mapFileName = extraction.await()
+                mapFileName = progressArbiter.awaitExtraction(extraction)
                 mapArchive?.delete()
             }
             if (selection.includeMap) {
@@ -762,7 +773,7 @@ class OamBundleDownloader(
                 }
 
             poiExtraction?.let { extraction ->
-                poiFileName = extraction.await()
+                poiFileName = progressArbiter.awaitExtraction(extraction)
                 poiArchive?.delete()
             }
 
@@ -838,46 +849,37 @@ class OamBundleDownloader(
 
     suspend fun deleteBundle(bundle: OamInstalledBundle) {
         withContext(Dispatchers.IO) {
-            val routingFilesUsedByOtherBundles =
-                bundleStore
-                    .listInstalledBundles()
-                    .asSequence()
-                    .filterNot { it.areaId == bundle.areaId }
-                    .flatMap { it.routingFileNames.asSequence() }
-                    .toSet()
+            val otherBundles = bundleStore.listInstalledBundles().filterNot { it.areaId == bundle.areaId }
+            val routingFilesUsedByOtherBundles = otherBundles.flatMap { it.routingFileNames }.toSet()
             val demTilesUsedByOtherBundles =
-                bundleStore
-                    .listInstalledBundles()
-                    .asSequence()
-                    .filterNot { it.areaId == bundle.areaId }
-                    .filter { it.demSource == bundle.demSource }
-                    .flatMap { it.demTileIds.asSequence() }
-                    .toSet()
-            bundle.mapFileName?.let { fileName ->
-                mapRepository
-                    .listMapFiles()
-                    .firstOrNull { it.name == fileName }
-                    ?.let { mapRepository.deleteMapFile(it.absolutePath) }
+                otherBundles.filter { it.demSource == bundle.demSource }.flatMap { it.demTileIds }.toSet()
+            val deletedFiles = mutableListOf<File>()
+            val mapFile = mapRepository.listMapFiles().firstOrNull { it.name == bundle.mapFileName }
+            val poiFiles = poiRepository.listPoiFiles()
+            val poiFile = poiFiles.firstOrNull { it.name == bundle.poiFileName }
+            val refugesFile = poiFiles.firstOrNull { it.name == bundle.refugesInfoFileName }
+            listOfNotNull(mapFile, poiFile, refugesFile).forEach { file ->
+                deletedFiles += file
+                deletedFiles += File(file.parentFile, ".${file.name}.part")
             }
-            bundle.poiFileName?.let { fileName ->
-                poiRepository
-                    .listPoiFiles()
-                    .firstOrNull { it.name == fileName }
-                    ?.let { poiRepository.deletePoiFile(it.absolutePath) }
+            mapFile?.let { mapRepository.deleteMapFile(it.absolutePath) }
+            poiFile?.let { poiRepository.deletePoiFile(it.absolutePath) }
+            refugesFile?.let { poiRepository.deletePoiFile(it.absolutePath) }
+            listOf("${bundle.areaId}.map.zip", "${bundle.areaId}.poi.zip").forEach { name ->
+                val file = File(downloadDir, File(name).name)
+                val partial = File(downloadDir, ".${file.name}.part")
+                deletedFiles += listOf(file, partial)
+                file.delete()
+                partial.delete()
             }
-            bundle.refugesInfoFileName?.let { fileName ->
-                poiRepository
-                    .listPoiFiles()
-                    .firstOrNull { it.name == fileName }
-                    ?.let { poiRepository.deletePoiFile(it.absolutePath) }
-            }
-            deleteZipAndPartial("${bundle.areaId}.map.zip")
-            deleteZipAndPartial("${bundle.areaId}.poi.zip")
             bundle.downloadedRoutingFileNames
                 .filterNot { it in routingFilesUsedByOtherBundles }
                 .forEach { fileName ->
-                    routingSegmentTargetFile(context, fileName).delete()
-                    routingSegmentPartFile(context, fileName).delete()
+                    val file = routingSegmentTargetFile(context, fileName)
+                    val partial = routingSegmentPartFile(context, fileName)
+                    deletedFiles += listOf(file, partial)
+                    file.delete()
+                    partial.delete()
                 }
             RoutingCoverageUtils.clearCaches()
             val remainingMapDemTiles =
@@ -885,15 +887,21 @@ class OamBundleDownloader(
                     .listMapFiles()
                     .flatMap { file -> Dem3CoverageUtils.requiredTileIdsForMap(file).orEmpty() }
                     .toSet()
-            Dem3CoverageUtils.deleteTiles(
-                context = context,
-                tileIds =
-                    bundle.downloadedDemTileIds
-                        .filterNot { it in demTilesUsedByOtherBundles || it in remainingMapDemTiles }
-                        .toSet(),
-                sources = listOf(bundle.demSource),
-            )
+            val removableDemTiles =
+                bundle.downloadedDemTileIds
+                    .filterNot { it in demTilesUsedByOtherBundles || it in remainingMapDemTiles }
+                    .toSet()
+            val demRoot = Dem3CoverageUtils.demRootDir(context, bundle.demSource)
+            removableDemTiles.forEach { tileId ->
+                Dem3CoverageUtils.tileFileCandidates(demRoot, tileId).forEach { file ->
+                    deletedFiles += file
+                    deletedFiles += File(file.parentFile, ".${file.name}.part")
+                }
+                deletedFiles += Dem3CoverageUtils.missingTileMarkerCandidates(demRoot, tileId)
+            }
+            Dem3CoverageUtils.deleteTiles(context, removableDemTiles, sources = listOf(bundle.demSource))
             Dem3CoverageUtils.clearCaches()
+            requireBundleFilesDeleted(deletedFiles)
         }
         bundleStore.remove(bundle.areaId)
     }
@@ -1368,21 +1376,12 @@ class OamBundleDownloader(
 
     private suspend fun fetchRemoteMetadata(request: RemoteFileRequest): OamRemoteFileMetadata =
         withContext(Dispatchers.IO) {
-            val connection =
-                (URI(request.url).toURL().openConnection() as HttpURLConnection).apply {
-                    requestMethod = "HEAD"
-                    connectTimeout = CONNECT_TIMEOUT_MS
-                    readTimeout = READ_TIMEOUT_MS
-                    instanceFollowRedirects = true
-                    useCaches = false
-                    setRequestProperty("Accept-Encoding", "identity")
-                    setRequestProperty("User-Agent", USER_AGENT)
-                }
+            val connection = connections.metadata(request.url)
             activeConnections.add(connection)
             try {
                 val code = connection.responseCode
                 if (code !in 200..399) {
-                    throw IOException(context.resources.getString(R.string.download_http_for, request.url, code.toString()))
+                    throw OamMetadataHttpException(context.resources.getString(R.string.download_http_for, request.url, code.toString()))
                 }
                 OamRemoteFileMetadata(
                     url = request.url,
@@ -1421,6 +1420,9 @@ class OamBundleDownloader(
             val partFile = File(dir, ".$safeName.part")
             var resumeOffset = partFile.takeIf { it.exists() }?.length()?.coerceAtLeast(0L) ?: 0L
             var restartCount = 0
+            var resumeValidator: String? = null
+            var attempt = 0
+            var reconnectReason = "initial"
             val retryBudget = OamDownloadRetryBudget(MAX_IO_RETRIES)
             val downloadStartedAtMs = System.currentTimeMillis()
             var lastSpeedSampleAtMs = downloadStartedAtMs
@@ -1429,33 +1431,38 @@ class OamBundleDownloader(
             while (true) {
                 coroutineContext.ensureActive()
                 val attemptStartOffset = resumeOffset
+                val openingGeneration = activeConnectionRegistry.handoffGeneration
+                attempt++
                 val connection =
                     openConnection(
                         url = url,
                         resumeOffset = resumeOffset,
+                        resumeValidator = resumeValidator,
                     )
-                activeConnections.add(connection)
+                activeConnectionRegistry.registerResumable(connection, openingGeneration)
+                DebugTelemetry.log(
+                    OAM_DOWNLOAD_TELEMETRY_TAG,
+                    "event=http_attempt file=$safeName attempt=$attempt resumeOffset=$resumeOffset " +
+                        "reason=$reconnectReason connection=${System.identityHashCode(connection)}",
+                )
                 try {
+                    activeConnectionRegistry.throwIfHandoffRequested(connection)
                     val code = connection.responseCode
+                    activeConnectionRegistry.throwIfHandoffRequested(connection)
                     val append =
-                        when {
-                            resumeOffset > 0L && code == HttpURLConnection.HTTP_PARTIAL -> true
-                            resumeOffset > 0L && code == HttpURLConnection.HTTP_OK -> {
+                        when (oamResumeResponse(resumeOffset, code)) {
+                            OamResumeResponse.APPEND -> true
+                            OamResumeResponse.RESTART -> {
                                 partFile.delete()
                                 resumeOffset = 0L
                                 restartCount += 1
                                 connection.disconnect()
                                 continue
                             }
-                            resumeOffset > 0L && code == HTTP_RANGE_NOT_SATISFIABLE -> {
-                                partFile.delete()
-                                resumeOffset = 0L
-                                restartCount += 1
-                                connection.disconnect()
-                                continue
-                            }
-                            code == HttpURLConnection.HTTP_OK -> false
-                            else -> throw IOException(context.resources.getString(R.string.download_http_for_2, code.toString(), url))
+                            OamResumeResponse.FRESH -> false
+                            OamResumeResponse.ERROR -> throw IOException(
+                                context.resources.getString(R.string.download_http_for_2, code.toString(), url),
+                            )
                         }
 
                     if (restartCount > MAX_RANGE_RESTARTS) {
@@ -1466,6 +1473,13 @@ class OamBundleDownloader(
                         connection.contentLengthLong
                             .takeIf { it > 0L }
                             ?.let { contentLength -> (if (append) resumeOffset else 0L) + contentLength }
+                    resumeValidator =
+                        oamResumeValidator(
+                            connection.getHeaderField("ETag"),
+                            connection.getHeaderField("Last-Modified"),
+                            previousValidator = resumeValidator,
+                            isAppending = append,
+                        )
                     onResponseMetadata(
                         OamRemoteFileMetadata(
                             url = url,
@@ -1525,7 +1539,7 @@ class OamBundleDownloader(
                             }
                         }
                     try {
-                        connection.inputStream.use { input ->
+                        activeConnectionRegistry.checkedInput(connection, connection.inputStream).use { input ->
                             AtomicStreamWriter.writeAtomic(
                                 dir = dir,
                                 fileName = safeName,
@@ -1593,12 +1607,18 @@ class OamBundleDownloader(
                     )
                     return@withContext finalFile
                 } catch (error: IOException) {
+                    val networkHandoff = activeConnectionRegistry.isHandoffRequested(connection)
                     val resumeOffsetAfterFailure =
                         partFile.takeIf { it.exists() }?.length()?.coerceAtLeast(0L) ?: 0L
-                    if (error.isHttpResponseError()) {
-                        throw error
-                    }
-                    if (!retryBudget.shouldRetry(attemptStartOffset, resumeOffsetAfterFailure)) {
+                    val retry =
+                        retryBudget.shouldRetryAfterFailure(
+                            error,
+                            attemptStartOffset,
+                            resumeOffsetAfterFailure,
+                            networkHandoff,
+                            coroutineContext,
+                        )
+                    if (!retry) {
                         throw IOException(
                             oamNoProgressFailureMessage(
                                 fileName = safeName,
@@ -1611,6 +1631,12 @@ class OamBundleDownloader(
                         )
                     }
                     resumeOffset = resumeOffsetAfterFailure
+                    reconnectReason = if (networkHandoff) "wifi_recovered" else "io_failure"
+                    DebugTelemetry.log(
+                        OAM_DOWNLOAD_TELEMETRY_TAG,
+                        "event=http_retry file=$safeName attempt=$attempt resumeOffset=$resumeOffset " +
+                            "reason=$reconnectReason ioRetryCount=${retryBudget.currentRetryCount()}",
+                    )
                     onProgress(
                         OamDownloadProgress(
                             phase = "RECONNECTING",
@@ -1631,10 +1657,12 @@ class OamBundleDownloader(
                                 elapsedMs = System.currentTimeMillis() - lastSpeedSampleAtMs,
                             ),
                     )
-                    delay(IO_RETRY_DELAY_MS * retryBudget.currentRetryCount().coerceAtLeast(1))
+                    if (!networkHandoff) {
+                        delay(IO_RETRY_DELAY_MS * retryBudget.currentRetryCount().coerceAtLeast(1))
+                    }
                     continue
                 } finally {
-                    activeConnections.remove(connection)
+                    activeConnectionRegistry.unregisterResumable(connection)
                     connection.disconnect()
                 }
             }
@@ -1642,22 +1670,11 @@ class OamBundleDownloader(
             finalFile
         }
 
-    private fun openConnection(
+    private suspend fun openConnection(
         url: String,
         resumeOffset: Long,
-    ): HttpURLConnection =
-        (URI(url).toURL().openConnection() as HttpURLConnection).apply {
-            requestMethod = "GET"
-            connectTimeout = CONNECT_TIMEOUT_MS
-            readTimeout = READ_TIMEOUT_MS
-            instanceFollowRedirects = true
-            useCaches = false
-            setRequestProperty("Accept-Encoding", "identity")
-            setRequestProperty("User-Agent", USER_AGENT)
-            if (resumeOffset > 0L) {
-                setRequestProperty("Range", "bytes=$resumeOffset-")
-            }
-        }
+        resumeValidator: String?,
+    ): HttpURLConnection = connections.download(url, resumeOffset, resumeValidator)
 
     private fun remoteFileName(url: String): String =
         runCatching { File(URI(url).path).name }
@@ -1705,6 +1722,7 @@ class OamBundleDownloader(
         extension: String,
         label: String,
         extractionKeepAliveState: () -> OamDownloadKeepAliveState,
+        onExtractionRunningChanged: (Boolean) -> Unit,
         onProgress: (OamDownloadProgress) -> Unit,
         saveEntry: suspend (
             fileName: String,
@@ -1712,6 +1730,18 @@ class OamBundleDownloader(
             expectedSize: Long?,
             onEntryProgress: (Long) -> Unit,
         ) -> Unit,
+    ): String =
+        runInlineOamExtraction(onExtractionRunningChanged) {
+            extractFirstEntryInline(zipFile, extension, label, extractionKeepAliveState, onProgress, saveEntry)
+        }
+
+    private suspend fun extractFirstEntryInline(
+        zipFile: File,
+        extension: String,
+        label: String,
+        extractionKeepAliveState: () -> OamDownloadKeepAliveState,
+        onProgress: (OamDownloadProgress) -> Unit,
+        saveEntry: suspend (String, ZipInputStream, Long?, (Long) -> Unit) -> Unit,
     ): String =
         withContext(Dispatchers.IO) {
             ZipInputStream(BufferedInputStream(FileInputStream(zipFile), ZIP_READ_BUFFER_SIZE)).use { zip ->
@@ -1872,15 +1902,19 @@ class OamBundleDownloader(
             wakeLockAcquireAgeMs = keepAliveState.wakeLockAcquireAgeMs,
             wakeLockTimeoutMs = keepAliveState.wakeLockTimeoutMs,
             wakeLockGeneration = keepAliveState.wakeLockGeneration,
+            wakeLockSystemEnabled = keepAliveState.wakeLockSystemEnabled,
+            wakeLockIdentity = keepAliveState.wakeLockIdentity,
+            wakeLockTag = keepAliveState.wakeLockTag,
+            foregroundServiceActive = keepAliveState.foregroundServiceActive,
+            foregroundServiceType = keepAliveState.foregroundServiceType,
+            operationActive = keepAliveState.operationActive,
+            power = if (DebugTelemetry.isEnabled()) extractionPowerSampler.sample() else OamExtractionPowerSnapshot(),
         )
     }
 
     private companion object {
-        private const val CONNECT_TIMEOUT_MS = 20_000
-        private const val READ_TIMEOUT_MS = 60_000
         private const val STALL_CHECK_INTERVAL_MS = 15_000L
         private const val STALL_RECONNECT_TIMEOUT_MS = 75_000L
-        private const val HTTP_RANGE_NOT_SATISFIABLE = 416
         private const val MAX_RANGE_RESTARTS = 1
         private const val MAX_IO_RETRIES = 3
         private const val IO_RETRY_DELAY_MS = 2_000L
@@ -1890,7 +1924,6 @@ class OamBundleDownloader(
         private const val EXTRACTION_STALL_HEARTBEAT_INTERVAL_MS = 30_000L
         private const val LARGE_DETAILED_DEM_TILE_THRESHOLD = 100
         private const val BROUTER_SEGMENTS_BASE_URL = "https://brouter.de/brouter/segments4"
-        private const val USER_AGENT = "GlanceMap-WearOS-OAM-Downloader/1.0 https://www.openandromaps.org"
         private const val OAM_DOWNLOAD_TELEMETRY_TAG = "OamDownload"
     }
 }
@@ -1928,7 +1961,7 @@ internal enum class RemoteMetadataComparison {
 private val OamRemoteFileMetadata.metadataValues: List<Any?>
     get() = listOf(entityTag, lastModifiedMillis, contentLengthBytes)
 
-private fun OamRemoteFileMetadata.isComparable(): Boolean = metadataValues.any { it != null }
+internal fun OamRemoteFileMetadata.isComparable(): Boolean = metadataValues.any { it != null }
 
 internal fun OamRemoteFileMetadata.compareWith(other: OamRemoteFileMetadata): RemoteMetadataComparison =
     when {
@@ -1954,8 +1987,6 @@ private fun Throwable.demTelemetryMessage(): String =
         .replace(Regex("[^A-Za-z0-9._:-]"), "_")
         .take(120)
         .ifBlank { "na" }
-
-private fun Throwable.isHttpResponseError(): Boolean = message?.startsWith("HTTP ", ignoreCase = true) == true
 
 private fun OamRemoteFileMetadata.telemetrySummary(): String = "etag=${entityTag ?: "na"},modified=${lastModifiedMillis ?: "na"},bytes=${contentLengthBytes ?: "na"}"
 

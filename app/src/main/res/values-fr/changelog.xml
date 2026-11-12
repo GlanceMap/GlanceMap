@@ -1,0 +1,86 @@
+<resources>
+    <string name="changelog_title">Historique des modifications</string>
+    <string-array name="changelog_1_3_0_notes">
+        <item>Ajout du français, de l’allemand, de l’espagnol, de l’italien et du polonais, avec sélection de la langue.</item>
+        <item>Ajout des commandes de carte en plein écran et d’un raccourci de recentrage automatique.</item>
+        <item>Ajout du terrain 3D expérimental et d’un thème de randonnée.</item>
+        <item>Prise en charge des thèmes Mapsforge personnalisés envoyés depuis le téléphone.</item>
+        <item>Amélioration de la continuité des enregistrements, de la gestion des interruptions GPS et de la récupération des capteurs.</item>
+        <item>Amélioration du téléchargement et de l’extraction des cartes hors ligne.</item>
+    </string-array>
+
+    <string-array name="changelog_1_2_3_notes">
+        <item>Amélioration du démarrage, de l’affichage et de la navigation sur la carte.</item>
+        <item>Amélioration de la boussole après la veille et en cas d’interférences magnétiques.</item>
+        <item>Rotation de la boussole et navigation plus fluides.</item>
+        <item>Conservation de la position de la carte au retour du menu.</item>
+        <item>Amélioration des performances des POI, GPX et enregistrements.</item>
+        <item>Messages plus clairs au démarrage, pour la localisation et en l’absence de carte active.</item>
+        <item>Compatibilité avec les anciennes montres Wear OS sous Android 9 et 10.</item>
+    </string-array>
+    <string-array name="changelog_1_2_2_notes">
+        <item>Boussole et guidage virage par virage plus fiables, même après une pause.</item>
+        <item>Enregistrement plus fluide et distance et vitesse plus cohérentes.</item>
+        <item>Zoom par pincement, actions par appui long sur la carte et progression plus claire de l’itinéraire.</item>
+        <item>Meilleure gestion du terrain et profils d’altitude indiquant votre position.</item>
+        <item>Transferts montre–téléphone et chargement des cartes et GPX plus fiables.</item>
+        <item>Amélioration de la stabilité et des performances.</item>
+    </string-array>
+    <string-array name="changelog_1_2_1_notes">
+        <item>Meilleure autonomie pendant la navigation et l’enregistrement.</item>
+        <item>La pause automatique est activée par défaut.</item>
+        <item>Gestion plus efficace du GPS et de la boussole.</item>
+        <item>Meilleur fonctionnement lorsque l’écran est éteint ou la montre inactive.</item>
+        <item>Enregistrement des traces, distance et altitude plus fiables.</item>
+        <item>Meilleure récupération du GPS et recours au GPS de la montre si le téléphone se déconnecte.</item>
+        <item>Meilleure reprise du téléchargement et de l’extraction des cartes hors ligne.</item>
+        <item>Amélioration du zoom, de la stabilité du relief ombré, du guidage et des commandes rotatives.</item>
+    </string-array>
+    <string-array name="changelog_1_2_0_notes">
+        <item>Ajout de l’enregistrement d’activités.</item>
+        <item>Ajout de la navigation virage par virage.</item>
+        <item>Prise en charge des capteurs externes, notamment les ceintures cardio et capteurs Stryd.</item>
+        <item>Ajout des profils randonnée et vélo.</item>
+        <item>Amélioration du GPS pendant l’enregistrement et la navigation.</item>
+        <item>Amélioration des performances et de la réactivité de la carte.</item>
+        <item>Meilleure autonomie, notamment lors des longs enregistrements et trajets.</item>
+        <item>Amélioration de l’interface.</item>
+    </string-array>
+    <string-array name="changelog_1_1_3_notes">
+        <item>Création d’activités enregistrées directement depuis la montre.</item>
+        <item>Création de navigations virage par virage directement depuis la montre.</item>
+        <item>Prise en charge des capteurs externes, notamment les ceintures cardio et capteurs Stryd.</item>
+        <item>Ajout des profils randonnée et vélo.</item>
+        <item>Amélioration du GPS pendant l’enregistrement et la navigation.</item>
+        <item>Amélioration des performances et de la réactivité de la carte.</item>
+        <item>Meilleure autonomie, notamment lors des longs enregistrements et trajets.</item>
+        <item>Amélioration de l’interface.</item>
+    </string-array>
+    <string-array name="changelog_1_1_2_notes">
+        <item>Ajout d’une flèche indiquant la direction de la trace GPX.</item>
+        <item>Prise en charge du bouton Retour sur les montres compatibles.</item>
+        <item>Position du marqueur réglable.</item>
+        <item>Refonte des icônes, réglages et de la navigation des POI.</item>
+        <item>Ajout de données d’altitude de meilleure qualité.</item>
+        <item>Export des traces GPX de la montre vers le téléphone.</item>
+        <item>Ajout des POI Refuge.info aux packs et amélioration de leur navigation.</item>
+        <item>Ajout de guides rapides POI, GPX et cartes, et amélioration de l’autonomie, de la stabilité et des performances.</item>
+    </string-array>
+    <string-array name="changelog_1_1_0_notes">
+        <item>Correction de l’annulation des téléchargements et de problèmes mineurs.</item>
+        <item>Téléchargement direct de packs depuis la montre.</item>
+        <item>Ajout d’un nouvel écran d’accueil.</item>
+        <item>Correction de problèmes de marqueurs et de création de POI et amélioration de la stabilité.</item>
+    </string-array>
+    <string-array name="changelog_1_0_5_notes">
+        <item>Correction de problèmes de boussole sur les montres Samsung.</item>
+        <item>Correction des niveaux de zoom sur les grandes cartes.</item>
+        <item>Correction de problèmes de cache des thèmes.</item>
+        <item>Correction de l’interface sur les petits écrans.</item>
+        <item>Ajout du thème OS Map.</item>
+        <item>Ajout d’un raccourci vers le thème nuit.</item>
+    </string-array>
+    <string-array name="changelog_1_0_4_notes">
+        <item>Correction du téléchargement des données DEM pour certaines zones.</item>
+    </string-array>
+</resources>

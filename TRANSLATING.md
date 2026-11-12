@@ -67,7 +67,7 @@ context, review discussion, and translation checks.
 For local validation, use Python 3.9 or newer and JDK 17:
 
 ```sh
-scripts/check-watch-translations.sh --report-dir build/reports/translations
+scripts/check-watch-translations.sh --preserve-from "$(git rev-parse HEAD)" --report-dir build/reports/translations
 python3 -m unittest discover -s scripts/tests -p 'test_watch_translations.py'
 ./gradlew --no-daemon --no-configuration-cache :app:processDebugResources :app:compileDebugAndroidTestKotlin :app:lintDebug
 git diff --check
@@ -83,6 +83,28 @@ The canonical validator discovers locales, including Android regional and script
 qualifiers. It ignores display-only directories such as `values-round`,
 `values-night`, and `values-v31`. Configuration-specific language overrides are
 checked as overrides, rather than as separate languages.
+
+## Coverage and English fallback
+
+New English UI strings do not have to wait for every translation before merging.
+Missing localized strings or entire plural resources produce non-blocking warnings;
+Android uses the English resource until translators supply it. The inventory report
+lists missing keys, missing string/plural counts and resource coverage per locale.
+Do not insert empty values or copy English into translation files to inflate coverage.
+
+Every supplied translation must still pass placeholder, plural-category, ICU,
+XML, markup, newline and whitespace checks. A partially translated plural resource
+does not fall back form by form: supply the required forms for that language.
+English format strings and ICU patterns are checked even before they are translated.
+Android lint reports `MissingTranslation` as a warning; other lint checks retain
+their configured severity. Existing French editorial and legal checks still run.
+
+CI compares each change with its exact PR/push base. Removing an existing locale
+file or a translated key that remains translatable in English fails validation;
+deleting approved work is not a way to enable fallback. Retired English keys may
+be removed from translations, and keys may move between XML files in the same
+locale. The local command above protects work already committed at `HEAD`; use
+the actual PR base SHA instead when checking the whole branch's changes.
 
 ## Watch readability
 
@@ -102,12 +124,14 @@ Android locale file and adds strings as they are translated; contributors do not
 copy all English strings by hand or need repository write access. The same
 validator and workflow discover the new file automatically.
 
-Resource completeness is a merge gate: an incomplete translation PR can stay in
-progress while Weblate accumulates work. Merge a new UI language when all source
-entries are present and reviewed, critical navigation/warnings/destructive
-actions are translated, placeholders/plurals/ICU/markup pass, and representative
-watch screens have been checked. Weblate completion statistics are useful
-progress indicators, not evidence of linguistic correctness.
+For a new UI language, keep the initial translation PR in progress while Weblate
+accumulates work. Before its first merge/release, maintainers should review full
+initial coverage, critical navigation/warnings/destructive actions, passing
+placeholders/plurals/ICU/markup checks, and representative watch screens. CI
+reports partial coverage without approving a new language for release. Already
+supported languages remain available while newly added strings use English fallback.
+Weblate completion statistics are useful progress indicators, not evidence of
+linguistic correctness.
 
 This is a documented release policy, not a new arbitrary percentage cutoff.
 Existing supported languages are retained. One shared English fallback serves

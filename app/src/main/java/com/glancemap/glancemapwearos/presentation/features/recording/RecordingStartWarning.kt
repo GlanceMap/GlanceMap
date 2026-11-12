@@ -22,6 +22,9 @@ data class RecordingLocationStartWarning(
 
 internal const val RECORDING_START_PENDING_MESSAGE = "Starting REC…"
 
+/** Unknown power-save state does not block REC; only a confirmed Battery Saver asks first. */
+internal fun shouldWarnBatterySaverAtRecordingStart(isPowerSaveMode: Boolean?): Boolean = isPowerSaveMode == true
+
 internal fun isRecordingStartLocationReady(
     hasUsableLocation: Boolean,
     gpsSignalSnapshot: GpsSignalSnapshot,

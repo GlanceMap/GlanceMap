@@ -49,10 +49,21 @@ internal const val WATCH_GPS_ACCURACY_FLOOR_M = 125f
 internal const val WATCH_GPS_ACCURACY_FLOOR_TOLERANCE_M = 3f
 internal const val WATCH_GPS_EFFECTIVE_ACCURACY_M = 18f
 
+// A placeholder accuracy is not a measurement, so it is accepted above the normal limits up to
+// this ceiling; a larger value is treated as a real coarse fix and still dropped.
+internal const val WATCH_GPS_FLOOR_MAX_ACCEPTED_ACCURACY_M = 250f
+
+/**
+ * True for a placeholder accuracy from the watch GNSS chip: the known OnePlus 125 m value, or a
+ * value [WatchGpsConstantAccuracy] learned because the chip repeated it unchanged.
+ */
 internal fun isKnownWatchGpsAccuracyFloor(accuracyMeters: Float?): Boolean =
     accuracyMeters?.let { accuracy ->
         accuracy.isFinite() &&
-            abs(accuracy - WATCH_GPS_ACCURACY_FLOOR_M) <= WATCH_GPS_ACCURACY_FLOOR_TOLERANCE_M
+            (
+                abs(accuracy - WATCH_GPS_ACCURACY_FLOOR_M) <= WATCH_GPS_ACCURACY_FLOOR_TOLERANCE_M ||
+                    WatchGpsConstantAccuracy.matches(accuracy)
+            )
     } == true
 
 internal fun resolveEffectiveWatchGpsAccuracyMeters(

@@ -24,20 +24,23 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
+import com.glancemap.glancemapwearos.BuildConfig
+import com.glancemap.glancemapwearos.GlanceMapWearApp
 import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
 import com.glancemap.glancemapwearos.core.service.diagnostics.EnergyDiagnostics
 import com.glancemap.glancemapwearos.core.service.diagnostics.RecordingScreenOffActivity
 import com.glancemap.glancemapwearos.core.service.diagnostics.RecordingScreenOffDiagnostics
-import com.glancemap.glancemapwearos.core.service.diagnostics.RecordingSensorDiagnosticKind
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import com.glancemap.glancemapwearos.presentation.features.recording.RecordingPressureSample
 import com.glancemap.glancemapwearos.presentation.features.recording.external.ExternalHeartRateSensorBridge
+import com.glancemap.glancemapwearos.presentation.features.recording.external.ExternalRunPodMeasurementSource
 import com.glancemap.glancemapwearos.presentation.features.recording.external.ExternalRunPodSensorBridge
 import com.glancemap.glancemapwearos.presentation.features.recording.usesHybridRecordingElevation
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
@@ -93,6 +96,9 @@ internal class RecordingSensorRuntimeState {
     private var stepCounterBase: Float? = null
     private var lastStepCounterValue: Float? = null
     private var lastStepCounterTimeMs = 0L
+    private var counterCadenceAnchorValue: Float? = null
+    private var counterCadenceAnchorTimeMs = 0L
+    private var lastCounterCadenceTimeMs = 0L
     private val stepDetectorEventTimes = ArrayDeque<Long>()
 
     @Synchronized
@@ -101,7 +107,16 @@ internal class RecordingSensorRuntimeState {
         stepCounterBase = null
         lastStepCounterValue = null
         lastStepCounterTimeMs = 0L
+        counterCadenceAnchorValue = null
+        counterCadenceAnchorTimeMs = 0L
+        lastCounterCadenceTimeMs = 0L
         stepDetectorEventTimes.clear()
+    }
+
+    @Synchronized
+    fun beginStepSegment(stepCount: Int?) {
+        reset()
+        prepareRecoveredStepCount(stepCount)
     }
 
     @Synchronized
@@ -124,30 +139,63 @@ internal class RecordingSensorRuntimeState {
     ): StepCounterReading {
         val base = stepCounterBase ?: value.also { stepCounterBase = it }
         val steps = stepCountOffset + (value - base).roundToInt().coerceAtLeast(0)
-        val previousValue = lastStepCounterValue
         val previousTimeMs = lastStepCounterTimeMs
-        val cadence =
-            if (previousValue != null && previousTimeMs > 0L && nowMillis > previousTimeMs) {
-                val deltaSteps = (value - previousValue).coerceAtLeast(0f)
-                val deltaMinutes = (nowMillis - previousTimeMs) / 60_000.0
-                (deltaSteps / deltaMinutes).roundToInt().takeIf { it > 0 }
-            } else {
-                null
-            }
+        if (previousTimeMs > 0L && nowMillis <= previousTimeMs) {
+            return StepCounterReading(steps = steps, cadenceSpm = null)
+        }
+        if (lastStepCounterValue?.let { value < it } == true) counterCadenceAnchorValue = null
         lastStepCounterValue = value
         lastStepCounterTimeMs = nowMillis
+        val cadence = updateCounterCadence(value, nowMillis)
+        if (cadence != null) lastCounterCadenceTimeMs = nowMillis
         return StepCounterReading(steps = steps, cadenceSpm = cadence)
     }
 
+    private fun updateCounterCadence(
+        value: Float,
+        nowMillis: Long,
+    ): Int? {
+        val anchorValue = counterCadenceAnchorValue
+        if (anchorValue == null) {
+            counterCadenceAnchorValue = value
+            counterCadenceAnchorTimeMs = nowMillis
+            return null
+        }
+        val elapsedMs = nowMillis - counterCadenceAnchorTimeMs
+        return if (elapsedMs >= COUNTER_CADENCE_MIN_WINDOW_MS) {
+            val cadence = ((value - anchorValue) * 60_000.0 / elapsedMs).roundToInt()
+            val credibleCadence = cadence.takeIf { it in 1..MAX_COUNTER_CADENCE_SPM }
+            // Keep burst steps in the window until real elapsed time supports a credible rate.
+            if (value == anchorValue || credibleCadence != null) {
+                counterCadenceAnchorValue = value
+                counterCadenceAnchorTimeMs = nowMillis
+            }
+            credibleCadence
+        } else {
+            null
+        }
+    }
+
     @Synchronized
-    fun updateStepDetector(nowMillis: Long): Int? {
+    fun updateStepDetector(
+        nowMillis: Long,
+        value: Float = 1f,
+    ): Int? {
+        if (value != 1f || nowMillis <= (stepDetectorEventTimes.lastOrNull() ?: 0L)) return null
         stepDetectorEventTimes.addLast(nowMillis)
         while (stepDetectorEventTimes.firstOrNull()?.let { nowMillis - it > CADENCE_WINDOW_MS } == true) {
             stepDetectorEventTimes.removeFirst()
         }
-        return ((stepDetectorEventTimes.size * 60_000.0) / CADENCE_WINDOW_MS)
-            .roundToInt()
-            .takeIf { it > 0 }
+        val counterCadenceFresh =
+            lastCounterCadenceTimeMs > 0L &&
+                nowMillis - lastCounterCadenceTimeMs <= RECORDING_SENSOR_MAX_AGE_MS
+        return if (counterCadenceFresh) {
+            null
+        } else {
+            ((stepDetectorEventTimes.size * 60_000.0) / CADENCE_WINDOW_MS)
+                .roundToInt()
+                .takeIf { it > 0 }
+        }
     }
 }
 
@@ -157,6 +205,9 @@ internal class RecordingSensorRuntimeState {
 fun RecordingSensorBridge(
     active: Boolean,
     paused: Boolean,
+    autoPaused: Boolean,
+    onAutoPauseCyclingMeasurement: (Float?, Long) -> Unit,
+    onAutoPauseCyclingSensorUnavailable: () -> Unit,
     selectedMetricIds: List<String>,
     elevationSource: String,
     heartRateSource: String,
@@ -171,6 +222,9 @@ fun RecordingSensorBridge(
     initialStepCount: Int?,
     onMetrics: (RecordingSensorMetrics) -> Unit,
     onPressureSample: (RecordingPressureSample) -> Unit,
+    healthHeartRateActive: Boolean = false,
+    healthStepsActive: Boolean = false,
+    healthCadenceActive: Boolean = false,
 ) {
     val context = LocalContext.current
     val externalHeartRateLinked = !externalHeartRateAddress.isNullOrBlank()
@@ -178,7 +232,7 @@ fun RecordingSensorBridge(
         externalHeartRateLinked &&
             heartRateSource == SettingsRepository.RECORDING_HEART_RATE_SOURCE_STRAP
     val useWatchHeartRate =
-        heartRateSource == SettingsRepository.RECORDING_HEART_RATE_SOURCE_WATCH
+        heartRateSource == SettingsRepository.RECORDING_HEART_RATE_SOURCE_WATCH && !healthHeartRateActive
     val externalRunPodLinked = !externalRunPodAddress.isNullOrBlank()
     val isBikeProfile = activityProfile == SettingsRepository.ACTIVITY_PROFILE_BIKE
     val useExternalCadence =
@@ -186,10 +240,12 @@ fun RecordingSensorBridge(
             cadenceSource == SettingsRepository.RECORDING_SENSOR_SOURCE_POD
     val useInternalCadence =
         !isBikeProfile &&
-            cadenceSource == SettingsRepository.RECORDING_SENSOR_SOURCE_WATCH_GPS
+            cadenceSource == SettingsRepository.RECORDING_SENSOR_SOURCE_WATCH_GPS &&
+            !healthCadenceActive
     val useInternalSteps =
         !isBikeProfile &&
-            stepsSource == SettingsRepository.RECORDING_SENSOR_SOURCE_WATCH_GPS
+            stepsSource == SettingsRepository.RECORDING_SENSOR_SOURCE_WATCH_GPS &&
+            !healthStepsActive
     val useExternalSpeed =
         externalRunPodLinked && speedSource == SettingsRepository.RECORDING_SENSOR_SOURCE_POD
     val useExternalDistance =
@@ -213,7 +269,14 @@ fun RecordingSensorBridge(
         )
     val collectInternalSteps = active && useInternalSteps
     val sensorMetricIds =
-        remember(selectedMetricIds, useWatchHeartRate, useInternalCadence, useInternalSteps, collectInternalSteps, collectBarometricPressure) {
+        remember(
+            selectedMetricIds,
+            useWatchHeartRate,
+            useInternalCadence,
+            useInternalSteps,
+            collectInternalSteps,
+            collectBarometricPressure,
+        ) {
             val filteredMetricIds =
                 selectedMetricIds
                     .filter { it in recordingSensorMetricIds }
@@ -240,17 +303,21 @@ fun RecordingSensorBridge(
     val permissionsLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
             permissionResultVersion += 1
+            val heartRatePermission = recordingHeartRatePermission()
+            val heartRateGranted = result[heartRatePermission] ?: hasPermission(context, heartRatePermission)
             DebugTelemetry.log(
                 "TraceRecordingSensors",
                 "event=permissions_result " +
-                    "body=${result[Manifest.permission.BODY_SENSORS] ?: true} " +
+                    "body=$heartRateGranted heartRatePermission=$heartRatePermission " +
                     "activity=${result[activityRecognitionPermission()] ?: true}",
             )
         }
     var metrics by remember { mutableStateOf(RecordingSensorMetrics()) }
-    val sensorRuntimeState = remember { RecordingSensorRuntimeState() }
+    val sensorRuntimeState = remember(useInternalSteps, useInternalCadence) { RecordingSensorRuntimeState() }
     val heartRateSensorEventCount = remember { AtomicLong(0L) }
     val pressureSensorEventCount = remember { AtomicLong(0L) }
+    val sensorDiagnostics = remember { AtomicReference<RecordingSensorPipelineDiagnostics?>(null) }
+    val registeredSensors = remember { AtomicReference<List<String>>(emptyList()) }
     if (active && sensorRuntimeState.prepareRecoveredStepCount(initialStepCount)) {
         DebugTelemetry.log(
             "TraceRecordingSensors",
@@ -283,87 +350,107 @@ fun RecordingSensorBridge(
         },
     )
     ExternalRunPodSensorBridge(
-        active = active && useExternalRunPod,
-        paused = paused,
+        active = active && (useExternalRunPod || (autoPaused && isBikeProfile && externalRunPodLinked)),
+        paused = paused && !(autoPaused && isBikeProfile),
         address = externalRunPodAddress,
         wheelCircumferenceMeters = cyclingWheelCircumferenceMeters,
         onMeasurement = { measurement ->
-            metrics =
-                metrics.copy(
-                    cadenceSpm =
-                        if (useExternalCadence) {
-                            measurement.cadenceSpm ?: metrics.cadenceSpm
-                        } else {
-                            metrics.cadenceSpm
+            if (paused) {
+                if (autoPaused &&
+                    isBikeProfile &&
+                    measurement.source == ExternalRunPodMeasurementSource.CYCLING_SPEED_CADENCE
+                ) {
+                    onAutoPauseCyclingMeasurement(
+                        measurement.speedMps.takeIf {
+                            measurement.wheelIntervalSeconds?.let { interval -> interval in 0.0..15.0 } == true
                         },
-                    cadenceUpdatedAtMillis =
-                        if (useExternalCadence && measurement.cadenceSpm != null) {
-                            measurement.timeMillis
-                        } else {
-                            metrics.cadenceUpdatedAtMillis
-                        },
-                    cadenceFromBluetooth =
-                        if (useExternalCadence && measurement.cadenceSpm != null) {
-                            true
-                        } else {
-                            metrics.cadenceFromBluetooth
-                        },
-                    externalSpeedMps = measurement.speedMps ?: metrics.externalSpeedMps,
-                    externalSpeedUpdatedAtMillis =
-                        if (measurement.speedMps != null) {
-                            measurement.timeMillis
-                        } else {
-                            metrics.externalSpeedUpdatedAtMillis
-                        },
-                    externalDistanceMeters = measurement.totalDistanceMeters ?: metrics.externalDistanceMeters,
-                    externalDistanceRawUnits =
-                        measurement.rawTotalDistanceUnits ?: metrics.externalDistanceRawUnits,
-                    externalDistanceUpdatedAtMillis =
-                        if (measurement.totalDistanceMeters != null) {
-                            measurement.timeMillis
-                        } else {
-                            metrics.externalDistanceUpdatedAtMillis
-                        },
-                    externalPowerWatts =
-                        if (useExternalPower) {
-                            measurement.powerWatts ?: metrics.externalPowerWatts
-                        } else {
-                            metrics.externalPowerWatts
-                        },
-                    externalPowerUpdatedAtMillis =
-                        if (useExternalPower && measurement.powerWatts != null) {
-                            measurement.timeMillis
-                        } else {
-                            metrics.externalPowerUpdatedAtMillis
-                        },
-                    externalBatteryLevelPercent = measurement.batteryLevelPercent ?: metrics.externalBatteryLevelPercent,
-                    externalBatteryUpdatedAtMillis =
-                        if (measurement.batteryLevelPercent != null) {
-                            measurement.timeMillis
-                        } else {
-                            metrics.externalBatteryUpdatedAtMillis
-                        },
-                )
-            onMetrics(metrics)
+                        SystemClock.elapsedRealtime(),
+                    )
+                }
+            } else {
+                metrics =
+                    metrics.copy(
+                        cadenceSpm =
+                            if (useExternalCadence) {
+                                measurement.cadenceSpm ?: metrics.cadenceSpm
+                            } else {
+                                metrics.cadenceSpm
+                            },
+                        cadenceUpdatedAtMillis =
+                            if (useExternalCadence && measurement.cadenceSpm != null) {
+                                measurement.timeMillis
+                            } else {
+                                metrics.cadenceUpdatedAtMillis
+                            },
+                        cadenceFromBluetooth =
+                            if (useExternalCadence && measurement.cadenceSpm != null) {
+                                true
+                            } else {
+                                metrics.cadenceFromBluetooth
+                            },
+                        externalSpeedMps = measurement.speedMps ?: metrics.externalSpeedMps,
+                        externalSpeedUpdatedAtMillis =
+                            if (measurement.speedMps != null) {
+                                measurement.timeMillis
+                            } else {
+                                metrics.externalSpeedUpdatedAtMillis
+                            },
+                        externalDistanceMeters = measurement.totalDistanceMeters ?: metrics.externalDistanceMeters,
+                        externalDistanceRawUnits =
+                            measurement.rawTotalDistanceUnits ?: metrics.externalDistanceRawUnits,
+                        externalDistanceUpdatedAtMillis =
+                            if (measurement.totalDistanceMeters != null) {
+                                measurement.timeMillis
+                            } else {
+                                metrics.externalDistanceUpdatedAtMillis
+                            },
+                        externalPowerWatts =
+                            if (useExternalPower) {
+                                measurement.powerWatts ?: metrics.externalPowerWatts
+                            } else {
+                                metrics.externalPowerWatts
+                            },
+                        externalPowerUpdatedAtMillis =
+                            if (useExternalPower && measurement.powerWatts != null) {
+                                measurement.timeMillis
+                            } else {
+                                metrics.externalPowerUpdatedAtMillis
+                            },
+                        externalBatteryLevelPercent =
+                            measurement.batteryLevelPercent ?: metrics.externalBatteryLevelPercent,
+                        externalBatteryUpdatedAtMillis =
+                            if (measurement.batteryLevelPercent != null) {
+                                measurement.timeMillis
+                            } else {
+                                metrics.externalBatteryUpdatedAtMillis
+                            },
+                    )
+                onMetrics(metrics)
+            }
         },
         onUnavailable = {
-            DebugTelemetry.log("TraceRecordingSensors", "event=external_run_pod_unavailable")
-            metrics =
-                metrics.withExternalRunPodUnavailable(
-                    clearCadence = useExternalCadence,
-                    clearPower = useExternalPower,
-                )
-            onMetrics(metrics)
+            if (paused && autoPaused && isBikeProfile) onAutoPauseCyclingSensorUnavailable()
+            if (!paused) {
+                DebugTelemetry.log("TraceRecordingSensors", "event=external_run_pod_unavailable")
+                metrics =
+                    metrics.withExternalRunPodUnavailable(
+                        clearCadence = useExternalCadence,
+                        clearPower = useExternalPower,
+                    )
+                onMetrics(metrics)
+            }
         },
     )
 
-    LaunchedEffect(active) {
+    LaunchedEffect(active, paused) {
         if (!active) {
             metrics = RecordingSensorMetrics()
             sensorRuntimeState.reset()
             heartRateSensorEventCount.set(0L)
             pressureSensorEventCount.set(0L)
             onMetrics(metrics)
+        } else if (paused) {
+            sensorRuntimeState.beginStepSegment(initialStepCount)
         }
     }
 
@@ -414,12 +501,15 @@ fun RecordingSensorBridge(
                 useExternalRunPod = useExternalRunPod,
                 paused = paused,
                 event = "status",
+                registered = registeredSensors.get(),
             )
+            logRecordingSensorPipeline(context, sensorDiagnostics.get())
             delay(RECORDING_SENSOR_STATUS_INTERVAL_MS)
         }
     }
 
     DisposableEffect(
+        sensorRuntimeState,
         context,
         active,
         paused,
@@ -444,13 +534,16 @@ fun RecordingSensorBridge(
         val sensorThread = HandlerThread(RECORDING_SENSOR_THREAD_NAME).apply { start() }
         val sensorHandler = Handler(sensorThread.looper)
         val disposed = AtomicBoolean(false)
+        val pipelineDiagnostics = RecordingSensorPipelineDiagnostics()
+        sensorDiagnostics.set(pipelineDiagnostics)
         var lastHeartRatePublishedAtElapsedMs = 0L
         var lastHeartRatePublishedBpm: Int? = null
         var lastPressurePublishedAtElapsedMs = 0L
         var lastPressurePublishedHpa: Double? = null
 
         fun publishSensorUpdate(
-            kind: RecordingSensorDiagnosticKind,
+            source: RecordingSensorSource,
+            callbackElapsedMillis: Long,
             update: (RecordingSensorMetrics) -> RecordingSensorMetrics,
         ) {
             mainHandler.post {
@@ -458,16 +551,47 @@ fun RecordingSensorBridge(
                 val updatedMetrics = update(metrics)
                 metrics = updatedMetrics
                 onMetrics(updatedMetrics)
-                RecordingScreenOffDiagnostics.recordSensorUiPublish(kind)
+                RecordingScreenOffDiagnostics.recordSensorUiPublish(source.diagnosticKind)
+                if (DebugTelemetry.isEnabled()) {
+                    pipelineDiagnostics.published(source, callbackElapsedMillis, SystemClock.elapsedRealtime())
+                }
             }
         }
 
         val listener =
             object : SensorEventListener {
                 override fun onSensorChanged(event: SensorEvent) {
+                    val callbackElapsedMillis = SystemClock.elapsedRealtime()
+                    val source =
+                        when (event.sensor.type) {
+                            Sensor.TYPE_HEART_RATE -> RecordingSensorSource.HEART_RATE
+                            Sensor.TYPE_STEP_COUNTER -> RecordingSensorSource.STEP_COUNTER
+                            Sensor.TYPE_STEP_DETECTOR -> RecordingSensorSource.STEP_DETECTOR
+                            Sensor.TYPE_PRESSURE -> RecordingSensorSource.PRESSURE
+                            else -> return
+                        }
+                    RecordingScreenOffDiagnostics.recordSensorCallback(source.diagnosticKind)
+
+                    fun recordReading(
+                        usable: Boolean,
+                        derivedCadenceSpm: Int? = null,
+                    ) {
+                        if (!DebugTelemetry.isEnabled()) return
+                        pipelineDiagnostics.callback(
+                            source,
+                            RecordingSensorCallbackSample(
+                                value = event.values.firstOrNull(),
+                                accuracy = event.accuracy,
+                                sourceElapsedMillis = event.timestamp / 1_000_000L,
+                                callbackElapsedMillis = callbackElapsedMillis,
+                                callbackUptimeMillis = SystemClock.uptimeMillis(),
+                                usable = usable,
+                                derivedCadenceSpm = derivedCadenceSpm,
+                            ),
+                        )
+                    }
                     when (event.sensor.type) {
                         Sensor.TYPE_HEART_RATE -> {
-                            RecordingScreenOffDiagnostics.recordSensorCallback(RecordingSensorDiagnosticKind.HEART_RATE)
                             val callbackStartedAtElapsedMs =
                                 RecordingScreenOffDiagnostics.start()
                             val bpm =
@@ -475,6 +599,7 @@ fun RecordingSensorBridge(
                                     .firstOrNull()
                                     ?.roundToInt()
                                     ?.takeIf { it > 0 }
+                            recordReading(usable = bpm != null)
                             val rawEventCount = heartRateSensorEventCount.incrementAndGet()
                             val now = System.currentTimeMillis()
                             val nowElapsed = SystemClock.elapsedRealtime()
@@ -486,6 +611,7 @@ fun RecordingSensorBridge(
                                     lastPublishedBpm = lastHeartRatePublishedBpm,
                                 )
                             ) {
+                                if (DebugTelemetry.isEnabled()) pipelineDiagnostics.coalesced(source)
                                 RecordingScreenOffDiagnostics.stop(
                                     activity = RecordingScreenOffActivity.HEART_RATE_CALLBACK,
                                     startedAtElapsedMs = callbackStartedAtElapsedMs,
@@ -494,7 +620,7 @@ fun RecordingSensorBridge(
                             }
                             lastHeartRatePublishedAtElapsedMs = nowElapsed
                             lastHeartRatePublishedBpm = bpm
-                            publishSensorUpdate(RecordingSensorDiagnosticKind.HEART_RATE) { current ->
+                            publishSensorUpdate(source, callbackElapsedMillis) { current ->
                                 current.copy(
                                     heartRateBpm = bpm,
                                     heartRateUpdatedAtMillis =
@@ -509,14 +635,32 @@ fun RecordingSensorBridge(
                             )
                         }
                         Sensor.TYPE_STEP_COUNTER -> {
-                            RecordingScreenOffDiagnostics.recordSensorCallback(RecordingSensorDiagnosticKind.STEP)
-                            val value = event.values.firstOrNull() ?: return
-                            val now = System.currentTimeMillis()
-                            val reading = sensorRuntimeState.updateStepCounter(value = value, nowMillis = now)
-                            publishSensorUpdate(RecordingSensorDiagnosticKind.STEP) { current ->
+                            val value = event.values.firstOrNull()?.takeIf { it.isFinite() && it >= 0f }
+                            val sourceElapsedMillis = event.timestamp / 1_000_000L
+                            val now =
+                                recordingSensorMeasurementTimeMillis(
+                                    sourceElapsedMillis,
+                                    callbackElapsedMillis,
+                                    System.currentTimeMillis(),
+                                )
+                            if (value == null || now == null) {
+                                recordReading(usable = false)
+                                return
+                            }
+                            val reading =
+                                sensorRuntimeState.updateStepCounter(
+                                    value = value,
+                                    nowMillis = sourceElapsedMillis,
+                                )
+                            recordReading(
+                                usable = true,
+                                derivedCadenceSpm = reading.cadenceSpm.takeIf { useInternalCadence },
+                            )
+                            publishSensorUpdate(source, callbackElapsedMillis) { current ->
                                 current.copy(
-                                    stepCount = reading.steps,
-                                    stepCountUpdatedAtMillis = now,
+                                    stepCount = if (useInternalSteps) reading.steps else current.stepCount,
+                                    stepCountUpdatedAtMillis =
+                                        if (useInternalSteps) now else current.stepCountUpdatedAtMillis,
                                     stepCountFromBluetooth = false,
                                     cadenceSpm =
                                         if (useInternalCadence) {
@@ -540,10 +684,25 @@ fun RecordingSensorBridge(
                             }
                         }
                         Sensor.TYPE_STEP_DETECTOR -> {
-                            RecordingScreenOffDiagnostics.recordSensorCallback(RecordingSensorDiagnosticKind.CADENCE)
-                            val now = System.currentTimeMillis()
-                            val cadence = sensorRuntimeState.updateStepDetector(nowMillis = now)
-                            publishSensorUpdate(RecordingSensorDiagnosticKind.CADENCE) { current ->
+                            val value = event.values.firstOrNull()
+                            val sourceElapsedMillis = event.timestamp / 1_000_000L
+                            val now =
+                                recordingSensorMeasurementTimeMillis(
+                                    sourceElapsedMillis,
+                                    callbackElapsedMillis,
+                                    System.currentTimeMillis(),
+                                )
+                            if (value != 1f || now == null) {
+                                recordReading(usable = false)
+                                return
+                            }
+                            val cadence =
+                                sensorRuntimeState.updateStepDetector(
+                                    nowMillis = sourceElapsedMillis,
+                                    value = value,
+                                )
+                            recordReading(usable = true, derivedCadenceSpm = cadence.takeIf { useInternalCadence })
+                            publishSensorUpdate(source, callbackElapsedMillis) { current ->
                                 current.copy(
                                     cadenceSpm =
                                         if (useInternalCadence) {
@@ -567,7 +726,6 @@ fun RecordingSensorBridge(
                             }
                         }
                         Sensor.TYPE_PRESSURE -> {
-                            RecordingScreenOffDiagnostics.recordSensorCallback(RecordingSensorDiagnosticKind.PRESSURE)
                             val callbackStartedAtElapsedMs =
                                 RecordingScreenOffDiagnostics.start()
                             val pressure =
@@ -575,6 +733,7 @@ fun RecordingSensorBridge(
                                     .firstOrNull()
                                     ?.toDouble()
                                     ?.takeIf { it > 0.0 }
+                            recordReading(usable = pressure != null)
                             if (pressure == null) {
                                 RecordingScreenOffDiagnostics.stop(
                                     activity = RecordingScreenOffActivity.PRESSURE_CALLBACK,
@@ -607,6 +766,7 @@ fun RecordingSensorBridge(
                                             elapsedSincePublish >= PRESSURE_MEANINGFUL_CHANGE_MIN_INTERVAL_MS
                                     )
                             if (!shouldPublish) {
+                                if (DebugTelemetry.isEnabled()) pipelineDiagnostics.coalesced(source)
                                 RecordingScreenOffDiagnostics.stop(
                                     activity = RecordingScreenOffActivity.PRESSURE_CALLBACK,
                                     startedAtElapsedMs = callbackStartedAtElapsedMs,
@@ -615,7 +775,7 @@ fun RecordingSensorBridge(
                             }
                             lastPressurePublishedAtElapsedMs = nowElapsed
                             lastPressurePublishedHpa = pressure
-                            publishSensorUpdate(RecordingSensorDiagnosticKind.PRESSURE) { current ->
+                            publishSensorUpdate(source, callbackElapsedMillis) { current ->
                                 current.copy(
                                     barometricPressureHpa = pressure,
                                     barometricPressureUpdatedAtMillis = now,
@@ -644,6 +804,7 @@ fun RecordingSensorBridge(
                 context = context,
                 handler = sensorHandler,
             )
+        registeredSensors.set(registered)
         EnergyDiagnostics.recordRecordingSensorsRegistered(registered)
         logRecordingSensorStatus(
             context = context,
@@ -672,10 +833,33 @@ fun RecordingSensorBridge(
         onDispose {
             disposed.set(true)
             sensorManager.unregisterListener(listener)
+            logRecordingSensorPipeline(context, pipelineDiagnostics)
+            sensorDiagnostics.compareAndSet(pipelineDiagnostics, null)
+            registeredSensors.set(emptyList())
             EnergyDiagnostics.recordRecordingSensorsUnregistered(registered)
             sensorThread.quitSafely()
             DebugTelemetry.log("TraceRecordingSensors", "event=unregister")
         }
+    }
+}
+
+private fun logRecordingSensorPipeline(
+    context: Context,
+    diagnostics: RecordingSensorPipelineDiagnostics?,
+) {
+    if (!DebugTelemetry.isEnabled() || diagnostics == null) return
+    val nowElapsed = SystemClock.elapsedRealtime()
+    val powerManager = context.getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
+    val application = context.applicationContext as? GlanceMapWearApp
+    val wakeLockHeld = application?.container?.recordingWakeLockExperiment?.isHeld == true
+    diagnostics.snapshot().forEach { snapshot ->
+        DebugTelemetry.log(
+            "TraceRecordingSensors",
+            "event=pipeline interactive=${powerManager.isInteractive} " +
+                "wakeLockExperiment=${BuildConfig.RECORDING_WAKE_LOCK_EXPERIMENT} " +
+                "wakeLockHeld=$wakeLockHeld " +
+                snapshot.telemetry(nowElapsed),
+        )
     }
 }
 
@@ -705,7 +889,7 @@ private fun logRecordingSensorStatus(
 ) {
     if (!DebugTelemetry.isEnabled()) return
     val available = availableRecordingSensors(sensorManager)
-    val bodySensorsGranted = hasPermission(context, Manifest.permission.BODY_SENSORS)
+    val bodySensorsGranted = hasPermission(context, recordingHeartRatePermission())
     val activityRecognitionGranted = hasActivityRecognitionPermission(context)
     val externalHeartRateBridgeRequested = useExternalHeartRate && !paused
     val externalPowerBridgeRequested = useExternalPower && !paused
@@ -734,7 +918,7 @@ private fun logRecordingSensorStatus(
             "externalPowerBridgeRequested=$externalPowerBridgeRequested " +
             "externalRunPodBridgeRequested=$externalRunPodBridgeRequested " +
             "paused=$paused " +
-            "bodySensorsGranted=$bodySensorsGranted " +
+            "bodySensorsGranted=$bodySensorsGranted heartRatePermission=${recordingHeartRatePermission()} " +
             "activityRecognitionGranted=$activityRecognitionGranted",
     )
 }
@@ -794,11 +978,17 @@ private fun registerRecordingSensors(
         ) {
             registered += token
         }
+        DebugTelemetry.log("TraceRecordingSensors") {
+            "event=sensor_registration source=$token registered=${token in registered} " +
+                "wakeUp=${sensor.isWakeUpSensor} reportingMode=${sensor.reportingMode} " +
+                "samplingPeriodUs=$samplingPeriodUs maxReportLatencyUs=$maxReportLatencyUs " +
+                "thread=$RECORDING_SENSOR_THREAD_NAME"
+        }
     }
 
     if (
         selectedMetricIds.any { it in heartRateSensorMetricIds } &&
-        hasPermission(context, Manifest.permission.BODY_SENSORS)
+        hasPermission(context, recordingHeartRatePermission())
     ) {
         register(Sensor.TYPE_HEART_RATE, "heart_rate")
     }
@@ -825,9 +1015,9 @@ private fun recordingSensorPermissionsToRequest(
     buildList {
         if (
             selectedMetricIds.any { it in heartRateSensorMetricIds } &&
-            !hasPermission(context, Manifest.permission.BODY_SENSORS)
+            !hasPermission(context, recordingHeartRatePermission())
         ) {
-            add(Manifest.permission.BODY_SENSORS)
+            add(recordingHeartRatePermission())
         }
         if (
             (
@@ -894,6 +1084,8 @@ private val cadenceSensorMetricIds =
     )
 
 private const val CADENCE_WINDOW_MS = 30_000L
+private const val COUNTER_CADENCE_MIN_WINDOW_MS = 5_000L
+private const val MAX_COUNTER_CADENCE_SPM = 300
 private const val RECORDING_SENSOR_STATUS_INTERVAL_MS = 60_000L
 private const val RECORDING_SENSOR_THREAD_NAME = "RecordingSensorThread"
 private const val RECORDING_CONTINUOUS_SENSOR_PERIOD_US = 1_000_000
@@ -912,7 +1104,8 @@ internal object RecordingSensorPublishPolicy {
         bpm: Int?,
         lastPublishedBpm: Int?,
     ): Boolean {
-        if (lastPublishedAtElapsedMs == 0L) return true
+        // An on-change sensor may not repeat the first usable reading after no-reading.
+        if (lastPublishedAtElapsedMs == 0L || (bpm != null && lastPublishedBpm == null)) return true
         val elapsedSincePublish = nowElapsedMs - lastPublishedAtElapsedMs
         val meaningfullyChanged =
             bpm != null &&

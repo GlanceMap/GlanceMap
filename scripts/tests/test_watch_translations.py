@@ -3,6 +3,7 @@ import base64
 import contextlib
 import importlib.util
 import io
+import json
 import os
 import re
 import shutil
@@ -45,6 +46,75 @@ class FrenchEditorialCaptionTest(unittest.TestCase):
         ):
             with self.subTest(resource=resource, translated=translated), self.assertRaises(AssertionError):
                 french.check_english_leftovers(resource, original, translated)
+
+
+class FrenchFallbackTest(unittest.TestCase):
+    def setUp(self):
+        spec = importlib.util.spec_from_file_location("watch_french_fallback", SCRIPTS / "check-watch-french.py")
+        self.check = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(self.check)
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.root = Path(temporary.name)
+        self.res = self.root / "app/src/main/res"
+        (self.res / "values").mkdir(parents=True)
+        (self.res / "values-fr").mkdir()
+        (self.res / "values/strings.xml").write_text(BASE)
+        self.target = self.res / "values-fr/strings.xml"
+        self.target.write_text('<resources><string name="save">Enregistrer</string></resources>')
+        self.report = self.root / "reports"
+
+    def audit(self):
+        output = io.StringIO()
+        with patch.object(self.check, "ROOT", self.root), contextlib.redirect_stdout(output):
+            self.check.run(self.report)
+        return output.getvalue()
+
+    def test_missing_entries_warn_without_blocking_french_editorial_checks(self):
+        output = self.audit()
+        self.assertIn("English fallback", output)
+        self.assertIn("1 strings, 0 plurals", output)
+        self.assertIn("Enregistrer", (self.report / "length-audit.csv").read_text())
+
+    def test_fallback_does_not_hide_invalid_french_arguments(self):
+        self.target.write_text('<resources><string name="format">%2$s - %1$s %%</string></resources>')
+        with self.assertRaisesRegex(AssertionError, "argument type/precision/count"):
+            self.audit()
+
+    def test_moved_french_entries_keep_editorial_validation(self):
+        self.target.write_text('<resources/>')
+        (self.target.parent / "actions.xml").write_text('<resources><string name="save">Settings</string></resources>')
+        with self.assertRaisesRegex(AssertionError, "possible English leftover"):
+            self.audit()
+
+    def test_moved_french_entries_are_counted_and_reported(self):
+        self.target.write_text('<resources/>')
+        (self.target.parent / "actions.xml").write_text('<resources><string name="save">Enregistrer</string></resources>')
+        self.assertIn("1 strings, 0 plurals", self.audit())
+        self.assertIn("Enregistrer", (self.report / "length-audit.csv").read_text())
+
+    def test_english_entries_in_other_xml_files_are_checked(self):
+        (self.res / "values/changelog.xml").write_text('<resources><string name="changelog_title">Changelog</string></resources>')
+        (self.target.parent / "changelog.xml").write_text('<resources><string name="changelog_title">Historique</string></resources>')
+        self.assertIn("2 strings, 0 plurals", self.audit())
+        self.assertIn("Historique", (self.report / "length-audit.csv").read_text())
+
+    def test_duplicate_english_entries_across_xml_files_fail(self):
+        (self.res / "values/other.xml").write_text('<resources><string name="save">Save</string></resources>')
+        with self.assertRaisesRegex(AssertionError, "Duplicate English resource"):
+            self.audit()
+
+    def test_duplicate_french_entries_across_xml_files_fail(self):
+        (self.target.parent / "actions.xml").write_text('<resources><string name="save">Enregistrer</string></resources>')
+        with self.assertRaisesRegex(AssertionError, "Duplicate French resource"):
+            self.audit()
+
+    def test_empty_french_audits_still_write_csv_headers(self):
+        self.target.write_text('<resources/>')
+        self.assertIn("English fallback", self.audit())
+        for name in ("length-audit.csv", "unchanged-text-audit.csv"):
+            with self.subTest(name=name):
+                self.assertEqual(1, len((self.report / name).read_text().splitlines()))
 
 
 class LocaleDiscoveryTest(unittest.TestCase):
@@ -127,6 +197,22 @@ class TranslationValidationTest(unittest.TestCase):
         self.assertEqual(6, inventory[0]["strings"])
         self.assertEqual(1, inventory[0]["plurals"])
 
+    def test_changelog_arrays_in_separate_files_are_checked(self):
+        self.write('values/changelog.xml', '<resources><string name="changelog_title">Changelog</string><string-array name="changelog_1_0_4_notes"><item>Map %1$s</item></string-array></resources>')
+        target = self.write('values-de/changelog.xml', '<resources><string name="changelog_title">Änderungen</string><string-array name="changelog_1_0_4_notes"><item>Karte %1$s</item></string-array></resources>')
+        self.validate()
+        target.write_text(target.read_text().replace('%1$s', '%1$d'))
+        with self.assertRaisesRegex(ValueError, 'placeholder'):
+            self.validate()
+        target.write_text(target.read_text().replace('%1$d', '%1$s</item><item>extra'))
+        with self.assertRaisesRegex(ValueError, 'item count'):
+            self.validate()
+
+    def test_missing_changelog_array_fails(self):
+        self.write('values/changelog.xml', '<resources><string-array name="changelog_1_0_4_notes"><item>Map</item></string-array></resources>')
+        with self.assertRaisesRegex(ValueError, 'missing changelog'):
+            self.validate()
+
     def test_supported_format_tokens_and_modifiers_pass(self):
         for text in ('%1$s', '%1$d', '%1$.1f', '%1$.0f', '%%', '%n', '%1$-8.3s', '%1$08d', '%1$+08.2f'):
             with self.subTest(text=text):
@@ -183,8 +269,44 @@ class TranslationValidationTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.validate()
 
-    def test_missing_string_fails(self):
-        self.changed_target_fails('<string name="save">Speichern</string>', '')
+    def test_missing_string_warns_and_reports_english_fallback_coverage(self):
+        self.target.write_text(TARGET.replace('<string name="save">Speichern</string>', ''))
+        output = io.StringIO()
+        report = self.res / "reports"
+        try:
+            with contextlib.redirect_stdout(output):
+                inventory, _ = CHECK.validate(self.res, report)
+        except ValueError as error:
+            self.fail(f"Expected English fallback instead of rejection: {error}")
+        self.assertIn("English fallback", output.getvalue())
+        self.assertIn("save", output.getvalue())
+        self.assertEqual(5, inventory[0]["strings"])
+        self.assertEqual(1, inventory[0]["missing_strings"])
+        self.assertEqual(0, inventory[0]["missing_plurals"])
+        self.assertEqual(85.7, inventory[0]["coverage_percent"])
+        self.assertEqual(["save"], json.loads((report / "inventory.json").read_text())[0]["missing_resources"])
+
+    def test_missing_whole_plural_uses_english_fallback(self):
+        target = ET.fromstring(TARGET)
+        target.remove(target.find("plurals"))
+        self.target.write_text(ET.tostring(target, encoding="unicode"))
+        try:
+            inventory, records = self.validate()
+        except ValueError as error:
+            self.fail(f"Expected whole-resource fallback: {error}")
+        self.assertEqual(1, inventory[0]["missing_plurals"])
+        self.assertIn(("plural", "en", "values/files", "one,other"), records)
+        self.assertFalse(any(row[0] == "plural" and row[1] == "de" for row in records))
+
+    def test_missing_ui_does_not_hide_invalid_existing_placeholders(self):
+        self.target.write_text(TARGET.replace('<string name="save">Speichern</string>', '').replace('%1$d %%', '%1$s %%'))
+        with self.assertRaisesRegex(ValueError, "placeholder index/type/precision/count mismatch"):
+            self.validate()
+
+    def test_untranslated_new_english_format_is_still_validated(self):
+        self.write("values/strings.xml", BASE.replace('</resources>', '<string name="new_label">%1$q</string></resources>'))
+        with self.assertRaisesRegex(ValueError, "values/new_label: malformed/unsupported Java format"):
+            self.validate()
 
     def test_extra_or_nontranslatable_copy_fails(self):
         self.changed_target_fails('</resources>', '<string name="brand">GlanceMap</string></resources>')
@@ -248,15 +370,51 @@ class TranslationValidationTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'placeholder index/type/precision/count mismatch'):
             self.validate()
 
+    def preserve(self, files=None):
+        files = files or {"app/src/main/res/values-de/strings.xml": TARGET}
+        base = "a" * 40
+
+        def git_output(args, **kwargs):
+            if args == ["git", "ls-tree", "-r", "--name-only", base, "--", "app/src/main/res/"]:
+                return "\n".join(files) + "\n"
+            if args[:2] == ["git", "show"]:
+                prefix, separator, path = args[2].partition(":")
+                self.assertEqual(base, prefix)
+                self.assertEqual(":", separator)
+                return files[path]
+            self.fail(f"Unexpected Git command: {args}")
+
+        with patch.object(CHECK.subprocess, "check_output", side_effect=git_output):
+            CHECK.preserve_existing_files(self.res, base)
+
     def test_existing_locale_and_legal_files_cannot_disappear(self):
-        listing = 'app/src/main/res/values-de/strings.xml\napp/src/main/res/raw-de/legal_safety.md\n'
-        with patch.object(CHECK.subprocess, 'check_output', return_value=listing):
-            with self.assertRaisesRegex(ValueError, 'Existing translation file deleted'):
-                CHECK.preserve_existing_files(self.res, 'a' * 40)
-            self.write('raw-de/legal_safety.md', '# Sicherheit\n')
-            CHECK.preserve_existing_files(self.res, 'a' * 40)
+        files = {"app/src/main/res/values-de/strings.xml": TARGET,
+                 "app/src/main/res/raw-de/legal_safety.md": "# Sicherheit\n"}
+        with self.assertRaisesRegex(ValueError, "Existing translation file deleted"):
+            self.preserve(files)
+        self.write("raw-de/legal_safety.md", "# Sicherheit\n")
+        self.preserve(files)
         with self.assertRaises(ValueError):
-            CHECK.preserve_existing_files(self.res, '--not-a-commit')
+            CHECK.preserve_existing_files(self.res, "--not-a-commit")
+
+    def test_existing_translations_cannot_be_deleted_to_force_fallback(self):
+        self.target.write_text(TARGET.replace('<string name="save">Speichern</string>', ''))
+        with self.assertRaisesRegex(ValueError, "Existing translations removed.*save"):
+            self.preserve()
+
+    def test_new_english_key_does_not_require_immediate_translation(self):
+        self.write("values/strings.xml", BASE.replace('</resources>', '<string name="new_label">New label</string></resources>'))
+        self.preserve()
+
+    def test_retired_source_key_can_be_removed_from_translations(self):
+        self.write("values/strings.xml", BASE.replace('<string name="save">Save</string>', ''))
+        self.target.write_text(TARGET.replace('<string name="save">Speichern</string>', ''))
+        self.preserve()
+
+    def test_existing_translation_can_move_between_locale_xml_files(self):
+        self.target.write_text(TARGET.replace('<string name="save">Speichern</string>', ''))
+        self.write("values-de/actions.xml", '<resources><string name="save">Speichern</string></resources>')
+        self.preserve()
 
     def test_legal_documents_preserve_urls_and_cannot_be_silently_removed(self):
         source = '# Safety\nUse `GPX`. https://example.com/ 2026-10-23\n'

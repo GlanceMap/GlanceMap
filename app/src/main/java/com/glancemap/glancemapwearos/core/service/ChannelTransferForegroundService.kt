@@ -142,8 +142,10 @@ class ChannelTransferForegroundService : Service() {
         fileName: String,
         inputStream: InputStream,
         expectedSize: Long? = null,
+        expectedSha256: String? = null,
         resumeOffset: Long = 0L,
         keepPartialOnFailure: Boolean = false,
+        keepPartialOnCancel: Boolean = false,
         computeSha256: Boolean = true,
         diagnosticContext: String? = null,
         onProgress: (Long) -> Unit,
@@ -152,8 +154,10 @@ class ChannelTransferForegroundService : Service() {
             fileName = fileName,
             inputStream = inputStream,
             expectedSize = expectedSize,
+            expectedSha256 = expectedSha256,
             resumeOffset = resumeOffset,
             keepPartialOnFailure = keepPartialOnFailure,
+            keepPartialOnCancel = keepPartialOnCancel,
             computeSha256 = computeSha256,
             diagnosticContext = diagnosticContext,
             onProgress = onProgress,
@@ -213,6 +217,7 @@ class ChannelTransferForegroundService : Service() {
             channelReceiver = ChannelClientStrategy(),
             sendAck = dataLayerRepository::sendAck,
             expectedChecksum = request.handoff.expectedChecksum,
+            expectedSize = request.handoff.expectedSize,
             admissionOwner = request.admissionOwner,
         )
 
@@ -222,7 +227,7 @@ class ChannelTransferForegroundService : Service() {
             TransferDiagnostics.log(
                 "Channel",
                 "event=fgs_start_attempt id=${request.transferId} file=${request.fileName} " +
-                    "size=-1 fgsType=dataSync",
+                    "size=${request.handoff.expectedSize ?: "na"} fgsType=dataSync",
             )
             notificationHelper.startForeground(
                 request.notificationId,

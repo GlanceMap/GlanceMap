@@ -1,5 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Health Services is loaded only on API 30+; older watches retain raw recording sensors. -->
+    <uses-sdk tools:overrideLibrary="androidx.health.services.client" />
 
     <uses-feature android:name="android.hardware.type.watch" />
     <uses-feature
@@ -49,8 +53,14 @@
         android:usesPermissionFlags="neverForLocation" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
     <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
-    <uses-permission android:name="android.permission.BODY_SENSORS" />
-    <uses-permission android:name="android.permission.BODY_SENSORS_BACKGROUND" />
+    <uses-permission
+        android:name="android.permission.BODY_SENSORS"
+        android:maxSdkVersion="35" />
+    <uses-permission
+        android:name="android.permission.BODY_SENSORS_BACKGROUND"
+        android:maxSdkVersion="35" />
+    <uses-permission android:name="android.permission.health.READ_HEART_RATE" />
+    <uses-permission android:name="android.permission.health.READ_HEALTH_DATA_IN_BACKGROUND" />
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.VIBRATE" />
@@ -63,6 +73,7 @@
     <!-- Foreground service permissions -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_HEALTH" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
 
     <queries>
@@ -110,6 +121,11 @@
             android:exported="false" />
 
         <service
+            android:name=".presentation.features.recording.health.RecordingHealthForegroundService"
+            android:foregroundServiceType="health"
+            android:exported="false" />
+
+        <service
             android:name=".core.service.WatchTransferForegroundService"
             android:foregroundServiceType="dataSync"
             android:exported="false" />
@@ -121,6 +137,11 @@
 
         <service
             android:name=".presentation.features.download.OamDownloadForegroundService"
+            android:foregroundServiceType="dataSync"
+            android:exported="false" />
+
+        <service
+            android:name=".presentation.features.maps.theme.StandaloneDemDownloadForegroundService"
             android:foregroundServiceType="dataSync"
             android:exported="false" />
 

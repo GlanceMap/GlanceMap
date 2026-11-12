@@ -1,6 +1,8 @@
 package com.glancemap.glancemapwearos.presentation.features.recording
 
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
+import com.glancemap.glancemapwearos.presentation.features.recording.sensors.RecordingSensorMetrics
+import com.glancemap.glancemapwearos.presentation.features.recording.sensors.freshForRecording
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -200,6 +202,114 @@ class RecordingTraceSmoothingTest {
         assertFalse(result.evidence.stepDataAvailable)
         assertFalse(result.evidence.stepsUnchanged)
         assertFalse(result.evidence.cadenceDataAvailable)
+    }
+
+    @Test
+    fun unknownSensorsDoNotTurnUncertainFusedSpeedIntoStationaryEvidence() {
+        val gate = RecordingMovementConfidenceGate()
+        val previous =
+            point(latitude = 45.0, longitude = 6.0, timeMillis = 1_000L, speedMps = 1.8f)
+                .copy(stepCount = 231)
+        val held =
+            gate.evaluate(
+                previous = previous,
+                candidate =
+                    sample(latitude = 45.0003714, elapsedMillis = 11_706L, speedMps = 1.77f)
+                        .copy(accuracyMeters = 16.1f, speedAccuracyMps = 2.5f, stepCount = null, cadenceSpm = null),
+                activityProfile = HIKE,
+            )
+
+        assertEquals(RecordingMotionStatus.HELD, held.status)
+        assertEquals(RecordingMotionReason.UNCONFIRMED_SLOW_PROGRESS, held.reason)
+        assertFalse(held.evidence.stepDataAvailable)
+        assertFalse(held.evidence.cadenceDataAvailable)
+        assertFalse(held.evidence.stepsUnchanged)
+        assertTrue(held.evidence.speedAboveThreshold)
+        assertFalse(held.evidence.reportedSpeedCredible)
+
+        val recovered =
+            gate.evaluate(
+                previous = previous,
+                candidate =
+                    sample(latitude = 45.0004803, elapsedMillis = 25_048L, speedMps = 1.48f)
+                        .copy(accuracyMeters = 13.3f, speedAccuracyMps = 1.5f, stepCount = null, cadenceSpm = null),
+                activityProfile = HIKE,
+            )
+        assertTrue(recovered.accepted)
+        assertEquals(RecordingMotionReason.REPORTED_MOTION, recovered.reason)
+        assertFalse(recovered.evidence.stepsUnchanged)
+    }
+
+    @Test
+    fun sensorOutageOf118SecondsCannotEstablishStepStillness() {
+        val sensors =
+            RecordingSensorMetrics(
+                stepCount = 438,
+                stepCountUpdatedAtMillis = 1_000L,
+                cadenceSpm = 12,
+                cadenceUpdatedAtMillis = 1_000L,
+                barometricPressureHpa = 979.0,
+                barometricPressureUpdatedAtMillis = 119_000L,
+            ).freshForRecording(nowMillis = 119_000L)
+        val result =
+            RecordingMovementConfidenceGate().evaluate(
+                previous =
+                    point(
+                        latitude = 45.0,
+                        longitude = 6.0,
+                        timeMillis = 1_000L,
+                        speedMps = 1.4f,
+                    ).copy(stepCount = 438),
+                candidate =
+                    sample(latitude = 45.0003, elapsedMillis = 119_000L, speedMps = 1.4f)
+                        .copy(
+                            accuracyMeters = 24f,
+                            speedAccuracyMps = 0.3f,
+                            stepCount = sensors?.stepCount,
+                            cadenceSpm = sensors?.cadenceSpm,
+                        ),
+                activityProfile = HIKE,
+            )
+
+        assertTrue(result.accepted)
+        assertEquals(RecordingMotionReason.REPORTED_MOTION, result.reason)
+        assertFalse(result.evidence.stepDataAvailable)
+        assertFalse(result.evidence.cadenceDataAvailable)
+        assertFalse(result.evidence.stepsUnchanged)
+    }
+
+    @Test
+    fun staleSensorsCannotMakeUncertainGpsLookStationary() {
+        val sensors =
+            RecordingSensorMetrics(
+                stepCount = 438,
+                stepCountUpdatedAtMillis = 1_000L,
+                cadenceSpm = 12,
+                cadenceUpdatedAtMillis = 1_000L,
+            ).freshForRecording(nowMillis = 119_000L)
+        val result =
+            RecordingMovementConfidenceGate().evaluate(
+                previous =
+                    point(
+                        latitude = 45.0,
+                        longitude = 6.0,
+                        timeMillis = 1_000L,
+                        speedMps = 1.4f,
+                    ).copy(stepCount = 438),
+                candidate =
+                    sample(latitude = 45.0003714, elapsedMillis = 119_000L, speedMps = 1.77f)
+                        .copy(
+                            accuracyMeters = 16.1f,
+                            speedAccuracyMps = 2.5f,
+                            stepCount = sensors?.stepCount,
+                            cadenceSpm = sensors?.cadenceSpm,
+                        ),
+                activityProfile = HIKE,
+            )
+
+        assertEquals(RecordingMotionReason.UNCONFIRMED_SLOW_PROGRESS, result.reason)
+        assertFalse(result.evidence.stepsUnchanged)
+        assertFalse(result.evidence.stepDataAvailable)
     }
 
     @Test

@@ -86,6 +86,26 @@ android {
         vectorDrawables { useSupportLibrary = true }
         buildConfigField("String", "GIT_SHA", "\"${gitSha.get()}\"")
         buildConfigField("String", "GIT_BRANCH", "\"${gitBranch.get()}\"")
+        buildConfigField(
+            "boolean",
+            "RECORDING_WAKE_LOCK_EXPERIMENT",
+            providers
+                .gradleProperty("recordingWakeLockExperiment")
+                .map { it.toBooleanStrict() }
+                .orElse(false)
+                .get()
+                .toString(),
+        )
+        buildConfigField(
+            "boolean",
+            "RECORDING_HEALTH_SERVICES_EXPERIMENT",
+            providers
+                .gradleProperty("recordingHealthServicesExperiment")
+                .map { it.toBooleanStrict() }
+                .orElse(false)
+                .get()
+                .toString(),
+        )
 
         // 2MB channel buffer (tune if you measured better throughput)
         manifestPlaceholders["channelBufferSize"] = "2097152"
@@ -179,6 +199,8 @@ dependencies {
         // Mapsforge provides the same AndroidSVG classes.
         exclude(group = "com.caverock", module = "androidsvg-aar")
     }
+    // JVM counterpart of Android's built-in JSON classes for draft checkpoint regression tests.
+    testImplementation("org.json:json:20240303")
     implementation(platform(libs.compose.bom))
 
     // Compose / Wear
@@ -206,6 +228,7 @@ dependencies {
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.androidx.wear.ongoing)
     implementation(libs.androidx.wear.ambient)
+    implementation(libs.androidx.health.services)
 
     // Play Services / Coroutines
     implementation(libs.play.services.wearable)

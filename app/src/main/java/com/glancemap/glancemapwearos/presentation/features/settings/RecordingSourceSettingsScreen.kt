@@ -1,6 +1,7 @@
 package com.glancemap.glancemapwearos.presentation.features.settings
 
 import android.content.res.Resources
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
@@ -232,7 +233,7 @@ private val RECORDING_STEPS_SOURCE_OPTIONS =
 
 @Composable
 // Keep the existing UI API; resource-backed defaults and labels do not change its inputs.
-@Suppress("FunctionNaming", "LongParameterList")
+@Suppress("FunctionNaming", "LongParameterList", "LongMethod")
 private fun RecordingSourceSplitSetting(
     label: String,
     source: String,
@@ -278,9 +279,9 @@ private fun RecordingSourceSplitSetting(
             label = {
                 Text(
                     text = label,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.weight(1f).basicMarquee(),
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                    overflow = TextOverflow.Visible,
                 )
                 if (options.size > 1) {
                     Icon(
@@ -293,8 +294,9 @@ private fun RecordingSourceSplitSetting(
             secondaryLabel = {
                 Text(
                     text = if (enabled) secondaryLabel else stringResource(R.string.glancemap_state_off),
+                    modifier = Modifier.basicMarquee(),
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                    overflow = TextOverflow.Visible,
                 )
             },
         )

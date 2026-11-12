@@ -17,6 +17,7 @@ import com.glancemap.glancemapwearos.core.maps.DemSource
 import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -25,6 +26,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.updateAndGet
 import kotlinx.coroutines.launch
 
 data class DownloadUiState(
@@ -33,8 +35,10 @@ data class DownloadUiState(
     val suggestedAreaIds: List<String> = emptyList(),
     val selection: OamDownloadSelection = OamDownloadSelection(),
     val installedBundles: List<OamInstalledBundle> = emptyList(),
+    val deletingBundleId: String? = null,
     val bundleHealthByAreaId: Map<String, OamBundleLocalHealth> = emptyMap(),
     val isDownloading: Boolean = false,
+    val isExtracting: Boolean = false,
     val phase: String? = null,
     val detail: String? = null,
     val bytesDone: Long = 0L,
@@ -50,6 +54,12 @@ data class DownloadUiState(
     val networkWarningMessage: String? = null,
     val lastLibraryChangedAtMillis: Long = 0L,
 ) {
+    val visibleInstalledBundles: List<OamInstalledBundle>
+        get() = installedBundles.filterNot { it.areaId == deletingBundleId }
+
+    val isLibraryBusy: Boolean
+        get() = isDownloading || deletingBundleId != null
+
     val selectedAreas: List<OamDownloadArea>
         get() = areas.filter { it.id in selectedAreaIds }
 
@@ -61,10 +71,11 @@ data class DownloadUiState(
 
     val canStartOrResumeDownload: Boolean
         get() =
-            when (pausedOperation) {
-                DownloadOperation.REFRESH -> true
-                DownloadOperation.DOWNLOAD, null -> selection.canDownload && selectedAreas.isNotEmpty()
-            }
+            !isLibraryBusy &&
+                when (pausedOperation) {
+                    DownloadOperation.REFRESH -> true
+                    DownloadOperation.DOWNLOAD, null -> selection.canDownload && selectedAreas.isNotEmpty()
+                }
 }
 
 enum class DownloadOperation {
@@ -82,6 +93,16 @@ class DownloadViewModel(
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(DownloadUiState())
     val uiState: StateFlow<DownloadUiState> = _uiState.asStateFlow()
+    private val refreshProgressPublisher =
+        OamRefreshProgressPublisher(_uiState) { progress ->
+            notificationController.showProgress(
+                title = progress.title,
+                detail = progress.detail,
+                bytesDone = progress.bytesDone,
+                totalBytes = progress.totalBytes,
+                isExtracting = progress.isExtracting,
+            )
+        }
 
     private var downloadJob: Job? = null
     private var stopRequest: DownloadStopRequest? = null
@@ -268,7 +289,7 @@ class DownloadViewModel(
 
     private fun downloadSelectedBundleInternal(allowNonWifi: Boolean) {
         val serviceIsDownloading = downloadServiceClient.state.value.status == OamOwnedDownloadStatus.RUNNING
-        if (downloadJob?.isActive == true || serviceIsDownloading) {
+        if (downloadJob?.isActive == true || serviceIsDownloading || _uiState.value.deletingBundleId != null) {
             return
         }
         val state = _uiState.value
@@ -394,7 +415,7 @@ class DownloadViewModel(
     }
 
     fun checkBundleForRefresh(bundle: OamInstalledBundle) {
-        if (_uiState.value.isDownloading || _uiState.value.isCheckingUpdates) return
+        if (_uiState.value.isLibraryBusy || _uiState.value.isCheckingUpdates) return
         viewModelScope.launch {
             _uiState.update {
                 it.copy(
@@ -423,15 +444,6 @@ class DownloadViewModel(
                     it.bundleHealthByAreaId +
                         (bundle.areaId to OamBundleLocalHealth(check.repairFileNames))
                 when (check.status) {
-                    OamBundleUpdateStatus.REPAIR_NEEDED ->
-                        it.copy(
-                            bundleHealthByAreaId = updatedHealth,
-                            isCheckingUpdates = false,
-                            statusMessage = resources.getString(R.string.download_repair_needed),
-                            errorMessage = null,
-                            refreshPrompt = check,
-                            networkWarningMessage = null,
-                        )
                     OamBundleUpdateStatus.UP_TO_DATE ->
                         it.copy(
                             bundleHealthByAreaId = updatedHealth,
@@ -484,7 +496,7 @@ class DownloadViewModel(
     }
 
     fun toggleRefreshBundleSelection(areaId: String) {
-        if (_uiState.value.isDownloading || _uiState.value.isCheckingUpdates) return
+        if (_uiState.value.isLibraryBusy || _uiState.value.isCheckingUpdates) return
         _uiState.update { state ->
             val nextSelection =
                 if (areaId in state.selectedRefreshBundleIds) {
@@ -504,7 +516,7 @@ class DownloadViewModel(
     }
 
     fun clearRefreshBundleSelection() {
-        if (_uiState.value.isDownloading || _uiState.value.isCheckingUpdates) return
+        if (_uiState.value.isLibraryBusy || _uiState.value.isCheckingUpdates) return
         _uiState.update {
             it.copy(
                 selectedRefreshBundleIds = emptySet(),
@@ -516,7 +528,7 @@ class DownloadViewModel(
 
     fun checkSelectedBundlesForRefresh() {
         val state = _uiState.value
-        if (state.isDownloading || state.isCheckingUpdates) return
+        if (state.isLibraryBusy || state.isCheckingUpdates) return
         val bundles = state.installedBundles.filter { it.areaId in state.selectedRefreshBundleIds }
         if (bundles.isEmpty()) {
             _uiState.update {
@@ -573,12 +585,6 @@ class DownloadViewModel(
                     refreshSummaryPrompt = summary,
                     statusMessage =
                         when {
-                            summary.repairNeededCount > 0 ->
-                                resources.getQuantityString(
-                                    R.plurals.download_bundle_s_need_repair,
-                                    summary.repairNeededCount,
-                                    summary.repairNeededCount,
-                                )
                             summary.updateAvailableCount > 0 ->
                                 resources.getQuantityString(
                                     R.plurals.download_bundle_s_need_refresh,
@@ -624,42 +630,19 @@ class DownloadViewModel(
     }
 
     fun deleteBundle(bundle: OamInstalledBundle) {
-        if (_uiState.value.isDownloading) return
-        viewModelScope.launch {
-            try {
-                downloader.deleteBundle(bundle)
-                val (installed, healthByAreaId) = loadInstalledBundlesAndHealth()
-                _uiState.update {
-                    it.copy(
-                        installedBundles = installed,
-                        bundleHealthByAreaId = healthByAreaId,
-                        statusMessage = resources.getString(R.string.download_bundle_deleted),
-                        errorMessage = null,
-                        networkWarningMessage = null,
-                        lastLibraryChangedAtMillis = System.currentTimeMillis(),
-                    )
-                }
-            } catch (error: Throwable) {
-                _uiState.update {
-                    it.copy(
-                        statusMessage = resources.getString(R.string.download_delete_failed),
-                        errorMessage = error.message ?: resources.getString(R.string.download_delete_failed),
-                        networkWarningMessage = null,
-                    )
-                }
-            }
+        viewModelScope.launch(start = CoroutineStart.UNDISPATCHED) {
+            _uiState.deleteInstalledBundle(
+                bundle = bundle,
+                delete = downloader::deleteBundle,
+                reload = ::loadInstalledBundlesAndHealth,
+                failureMessage = resources.getString(R.string.download_delete_failed),
+            )
         }
     }
 
     fun refreshInstalledBundles() {
         viewModelScope.launch {
-            val (installed, healthByAreaId) = loadInstalledBundlesAndHealth()
-            _uiState.update {
-                it.copy(
-                    installedBundles = installed,
-                    bundleHealthByAreaId = healthByAreaId,
-                )
-            }
+            _uiState.refreshInstalledBundleState(::loadInstalledBundlesAndHealth)
         }
     }
 
@@ -676,7 +659,7 @@ class DownloadViewModel(
         requests: List<BundleRefreshRequest>,
         allowNonWifi: Boolean,
     ) {
-        if (downloadJob?.isActive == true) return
+        if (downloadJob?.isActive == true || _uiState.value.isLibraryBusy) return
         val targets =
             requests.mapNotNull { request ->
                 _uiState.value.areas.firstOrNull { it.id == request.bundle.areaId }?.let { area ->
@@ -729,6 +712,7 @@ class DownloadViewModel(
         _uiState.update {
             it.copy(
                 isDownloading = true,
+                isExtracting = false,
                 phase = "STARTING",
                 detail = resources.getQuantityString(R.plurals.download_bundle_s, targets.size, targets.size),
                 bytesDone = 0L,
@@ -761,6 +745,18 @@ class DownloadViewModel(
                             forceRefugesInfo = target.forces.forceRefugesInfo,
                             forceRoutingFileNames = target.forces.forceRoutingFileNames,
                             forceDemTileIds = target.forces.forceDemTileIds,
+                            onExtractionRunningChanged = { isExtracting ->
+                                refreshProgressPublisher.publishExtractionState(
+                                    isExtracting = isExtracting,
+                                    title = resources.getString(R.string.download_refreshing_offline_bundle),
+                                    fallbackDetail =
+                                        resources.getQuantityString(
+                                            R.plurals.download_bundle_s,
+                                            targets.size,
+                                            targets.size,
+                                        ),
+                                )
+                            },
                         ) { progress ->
                             if (!progress.shouldShowInBundleProgress()) return@downloadBundle
                             if (!progressThrottler.shouldEmit(progress)) return@downloadBundle
@@ -772,25 +768,11 @@ class DownloadViewModel(
                                     target.area.region,
                                     progress.detail,
                                 )
-                            notificationController.showProgress(
+                            refreshProgressPublisher.publishProgress(
+                                progress = progress,
                                 title = resources.getString(R.string.download_refreshing_offline_bundle),
                                 detail = detail,
-                                bytesDone = progress.bytesDone,
-                                totalBytes = progress.totalBytes,
                             )
-                            _uiState.update {
-                                it.copy(
-                                    phase = progress.phase,
-                                    detail = detail,
-                                    bytesDone = progress.bytesDone,
-                                    totalBytes = progress.totalBytes,
-                                    statusMessage =
-                                        progress.phase
-                                            .lowercase()
-                                            .replaceFirstChar { char -> char.uppercase() },
-                                    errorMessage = null,
-                                )
-                            }
                         }
                     }
                     val (installed, healthByAreaId) = loadInstalledBundlesAndHealth()
@@ -801,6 +783,7 @@ class DownloadViewModel(
                             selectedAreaIds = emptySet(),
                             selectedRefreshBundleIds = emptySet(),
                             isDownloading = false,
+                            isExtracting = false,
                             phase = "READY",
                             detail =
                                 resources.getQuantityString(
@@ -852,6 +835,7 @@ class DownloadViewModel(
                         if (request == DownloadStopRequest.CANCEL) {
                             it.copy(
                                 isDownloading = false,
+                                isExtracting = false,
                                 phase = "CANCELED",
                                 detail =
                                     resources.getQuantityString(
@@ -870,6 +854,7 @@ class DownloadViewModel(
                         } else {
                             it.copy(
                                 isDownloading = false,
+                                isExtracting = false,
                                 phase = "PAUSED",
                                 isPausedDownload = true,
                                 pausedOperation = DownloadOperation.REFRESH,
@@ -884,6 +869,7 @@ class DownloadViewModel(
                     _uiState.update {
                         it.copy(
                             isDownloading = false,
+                            isExtracting = false,
                             phase = "FAILED",
                             statusMessage = resources.getString(R.string.download_refresh_failed),
                             isPausedDownload = false,
@@ -896,6 +882,7 @@ class DownloadViewModel(
                         error.message ?: resources.getString(R.string.download_refresh_failed),
                     )
                 } finally {
+                    _uiState.update { it.copy(isExtracting = false) }
                     DebugTelemetry.log(
                         OAM_DOWNLOAD_TELEMETRY_TAG,
                         "event=progress_throttle_summary owner=refresh " +
@@ -921,6 +908,7 @@ class DownloadViewModel(
                         selectedAreaIds = state.areaIds.toSet().ifEmpty { it.selectedAreaIds },
                         selection = state.selection ?: it.selection,
                         isDownloading = true,
+                        isExtracting = state.isExtracting,
                         refreshPrompt = null,
                         refreshSummaryPrompt = null,
                         phase = state.phase ?: "STARTING",
@@ -944,6 +932,7 @@ class DownloadViewModel(
                         selectedAreaIds = state.areaIds.toSet().ifEmpty { it.selectedAreaIds },
                         selection = state.selection ?: it.selection,
                         isDownloading = false,
+                        isExtracting = false,
                         phase = "PAUSED",
                         detail = state.detail,
                         bytesDone = state.bytesDone,
@@ -965,6 +954,7 @@ class DownloadViewModel(
                         bundleHealthByAreaId = healthByAreaId,
                         selectedAreaIds = emptySet(),
                         isDownloading = false,
+                        isExtracting = false,
                         phase = "READY",
                         detail = state.detail,
                         bytesDone = 0L,
@@ -986,6 +976,7 @@ class DownloadViewModel(
                 _uiState.update {
                     it.copy(
                         isDownloading = false,
+                        isExtracting = false,
                         phase = "CANCELED",
                         detail = state.detail,
                         bytesDone = 0L,
@@ -1002,6 +993,7 @@ class DownloadViewModel(
                 _uiState.update {
                     it.copy(
                         isDownloading = false,
+                        isExtracting = false,
                         phase = "FAILED",
                         detail = state.detail,
                         isPausedDownload = false,
@@ -1022,6 +1014,7 @@ class DownloadViewModel(
                     OAM_DOWNLOAD_TELEMETRY_TAG,
                     "event=wifi_recovered ${state.telemetryFields}",
                 )
+                downloader.requestNetworkHandoff()
             }
         return networkMonitor.watchNetworkState(observer::onChanged)
     }
@@ -1034,6 +1027,66 @@ class DownloadViewModel(
 private fun String.telemetryValue(): String = replace(' ', '_')
 
 internal fun OamDownloadProgress.shouldShowInBundleProgress(): Boolean = !phase.equals("SKIPPED", ignoreCase = true)
+
+internal fun shouldKeepOamInstallationScreenOn(
+    isExtracting: Boolean,
+    isInstallationScreenActive: Boolean = true,
+): Boolean = isExtracting && isInstallationScreenActive
+
+/** Keeps refresh UI state and its foreground-notification snapshot in the same ordering. */
+internal class OamRefreshProgressPublisher(
+    private val uiState: MutableStateFlow<DownloadUiState>,
+    private val notify: (OamForegroundProgress) -> Unit,
+) {
+    @Synchronized
+    fun publishExtractionState(
+        isExtracting: Boolean,
+        title: String,
+        fallbackDetail: String,
+    ) {
+        val state = uiState.updateAndGet { it.copy(isExtracting = isExtracting) }
+        notify(
+            OamForegroundProgress(
+                title = title,
+                detail = state.detail ?: fallbackDetail,
+                bytesDone = state.bytesDone,
+                totalBytes = state.totalBytes,
+                isExtracting = state.isExtracting,
+            ),
+        )
+    }
+
+    @Synchronized
+    fun publishProgress(
+        progress: OamDownloadProgress,
+        title: String,
+        detail: String,
+    ) {
+        val state =
+            uiState.updateAndGet {
+                it.copy(
+                    phase = progress.phase,
+                    detail = detail,
+                    bytesDone = progress.bytesDone,
+                    totalBytes = progress.totalBytes,
+                    statusMessage =
+                        progress.phase
+                            .lowercase()
+                            .replaceFirstChar { char -> char.uppercase() },
+                    errorMessage = null,
+                )
+            }
+        notify(
+            OamForegroundProgress(
+                title = title,
+                detail = detail,
+                bytesDone = progress.bytesDone,
+                totalBytes = progress.totalBytes,
+                isExtracting = state.isExtracting,
+            ),
+        )
+    }
+}
 
 private enum class DownloadStopRequest {
     PAUSE,

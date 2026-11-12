@@ -2,6 +2,7 @@
 
 package com.glancemap.glancemapwearos.core.service.location.service
 
+import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
 import com.glancemap.glancemapwearos.core.service.location.adapters.CurrentLocationRequestParams
 import com.glancemap.glancemapwearos.core.service.location.adapters.LocationGateway
 import com.glancemap.glancemapwearos.core.service.location.adapters.LocationUpdateEvent
@@ -29,7 +30,7 @@ class LocationRequestCoordinatorTest {
     fun appliesBurstRequestAfterBurstTriggeredRefreshSupersedesInteractiveApply() =
         runBlocking {
             val telemetry = LocationServiceTelemetry(tag = "LocTelemetryTest", summaryIntervalMs = 60_000L)
-            telemetry.setDebugEnabled(false)
+            DebugTelemetry.setEnabledFromCaptureSettings(false)
             val engine = LocationEngine(telemetry)
             val gateway = CapturingLocationGateway()
             val scope = CoroutineScope(coroutineContext + SupervisorJob())
@@ -108,7 +109,7 @@ class LocationRequestCoordinatorTest {
     fun screenOffBackgroundGpsUsesActiveCadenceWhenBackgroundGpsIsEnabled() =
         runBlocking {
             val telemetry = LocationServiceTelemetry(tag = "LocTelemetryTest", summaryIntervalMs = 60_000L)
-            telemetry.setDebugEnabled(false)
+            DebugTelemetry.setEnabledFromCaptureSettings(false)
             val engine = LocationEngine(telemetry)
             val gateway = CapturingLocationGateway()
             var requestedSourceMode: LocationSourceMode? = null
@@ -181,7 +182,7 @@ class LocationRequestCoordinatorTest {
     fun screenOffGuidanceGpsUsesActiveCadenceWhenBackgroundGpsIsEnabled() =
         runBlocking {
             val telemetry = LocationServiceTelemetry(tag = "LocTelemetryTest", summaryIntervalMs = 60_000L)
-            telemetry.setDebugEnabled(false)
+            DebugTelemetry.setEnabledFromCaptureSettings(false)
             val engine = LocationEngine(telemetry)
             val gateway = CapturingLocationGateway()
             var requestedSourceMode: LocationSourceMode? = null
@@ -256,7 +257,7 @@ class LocationRequestCoordinatorTest {
     fun screenOffRecordingGuidanceGpsUsesActiveCadenceWhenBackgroundGpsIsEnabled() =
         runBlocking {
             val telemetry = LocationServiceTelemetry(tag = "LocTelemetryTest", summaryIntervalMs = 60_000L)
-            telemetry.setDebugEnabled(false)
+            DebugTelemetry.setEnabledFromCaptureSettings(false)
             val engine = LocationEngine(telemetry)
             val gateway = CapturingLocationGateway()
             var requestedSourceMode: LocationSourceMode? = null
@@ -331,7 +332,7 @@ class LocationRequestCoordinatorTest {
     fun retriesRequestApplicationAfterTransientGatewayFailure() =
         runBlocking {
             val telemetry = LocationServiceTelemetry(tag = "LocTelemetryTest", summaryIntervalMs = 60_000L)
-            telemetry.setDebugEnabled(false)
+            DebugTelemetry.setEnabledFromCaptureSettings(false)
             val engine = LocationEngine(telemetry)
             val gateway = FailingOnceLocationGateway()
             val scope = CoroutineScope(coroutineContext + SupervisorJob())
@@ -400,7 +401,7 @@ class LocationRequestCoordinatorTest {
     fun passiveExperimentAppliesPassiveExternalSource() =
         runBlocking {
             val telemetry = LocationServiceTelemetry(tag = "LocTelemetryTest", summaryIntervalMs = 60_000L)
-            telemetry.setDebugEnabled(false)
+            DebugTelemetry.setEnabledFromCaptureSettings(false)
             val engine = LocationEngine(telemetry)
             val gateway = CapturingLocationGateway()
             var requestedSourceMode: LocationSourceMode? = null
@@ -473,7 +474,7 @@ class LocationRequestCoordinatorTest {
     fun passiveExperimentKeepsPassiveListenerWhenTrackingIsOffButServiceIsOpen() =
         runBlocking {
             val telemetry = LocationServiceTelemetry(tag = "LocTelemetryTest", summaryIntervalMs = 60_000L)
-            telemetry.setDebugEnabled(false)
+            DebugTelemetry.setEnabledFromCaptureSettings(false)
             val engine = LocationEngine(telemetry)
             val gateway = CapturingLocationGateway()
             var requestedSourceMode: LocationSourceMode? = null
@@ -546,7 +547,7 @@ class LocationRequestCoordinatorTest {
     fun sameSourceRequestReconfigurationKeepsActiveBackendRegistered() =
         runBlocking {
             val telemetry = LocationServiceTelemetry(tag = "LocTelemetryTest", summaryIntervalMs = 60_000L)
-            telemetry.setDebugEnabled(false)
+            DebugTelemetry.setEnabledFromCaptureSettings(false)
             val engine = LocationEngine(telemetry)
             val gateway = CapturingLocationGateway()
             val scope = CoroutineScope(coroutineContext + SupervisorJob())

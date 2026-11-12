@@ -1,5 +1,6 @@
 package com.glancemap.glancemapwearos.presentation.features.settings
 
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Info
@@ -363,16 +364,17 @@ fun CompassSettingsScreen(
                     label = {
                         WearText(
                             text = stringResource(R.string.settings_north_reference),
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier.fillMaxWidth().basicMarquee(),
                             textAlign = TextAlign.Start,
-                            overflow = TextOverflow.Ellipsis,
+                            overflow = TextOverflow.Visible,
                             maxLines = 1,
                         )
                     },
                     secondaryLabel = {
                         WearText(
                             text = automaticNorthReferenceStatusLabel(activeProviderType, resources = resources),
-                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.basicMarquee(),
+                            overflow = TextOverflow.Visible,
                             maxLines = 1,
                         )
                     },
@@ -439,10 +441,10 @@ fun CompassSettingsScreen(
                     label = {
                         WearText(
                             text = stringResource(R.string.settings_recalibrate_compass),
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier.fillMaxWidth().basicMarquee(),
                             textAlign = TextAlign.Center,
-                            overflow = TextOverflow.Ellipsis,
-                            maxLines = 2,
+                            overflow = TextOverflow.Visible,
+                            maxLines = 1,
                         )
                     },
                     onClick = { showCalibrationDialog = true },
@@ -462,16 +464,17 @@ fun CompassSettingsScreen(
                     label = {
                         WearText(
                             text = stringResource(R.string.settings_run_source_test),
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier.fillMaxWidth().basicMarquee(),
                             textAlign = TextAlign.Start,
-                            overflow = TextOverflow.Ellipsis,
+                            overflow = TextOverflow.Visible,
                             maxLines = 1,
                         )
                     },
                     secondaryLabel = {
                         WearText(
                             text = stringResource(R.string.settings_checks_still_turn_response),
-                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.basicMarquee(),
+                            overflow = TextOverflow.Visible,
                             maxLines = 1,
                         )
                     },
@@ -521,16 +524,17 @@ fun CompassSettingsScreen(
                 label = {
                     WearText(
                         text = stringResource(R.string.settings_compass_help),
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth().basicMarquee(),
                         textAlign = TextAlign.Start,
-                        overflow = TextOverflow.Ellipsis,
+                        overflow = TextOverflow.Visible,
                         maxLines = 1,
                     )
                 },
                 secondaryLabel = {
                     WearText(
                         text = stringResource(R.string.settings_how_to_test_compass),
-                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.basicMarquee(),
+                        overflow = TextOverflow.Visible,
                         maxLines = 1,
                     )
                 },

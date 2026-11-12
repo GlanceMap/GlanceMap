@@ -559,6 +559,14 @@ internal class LocationServiceTelemetry(
         log("sourceFailover: cleared reason=$reason")
     }
 
+    fun logWatchGpsConstantAccuracyLearned(accuracyM: Float) {
+        log("watchGpsAccuracy: learned_constant accuracyM=$accuracyM")
+    }
+
+    fun logPhoneConnectionRecheckRequested(reason: String) {
+        log("sourceFailover: phone_recheck_requested reason=$reason")
+    }
+
     fun logAutoFusedRecoveryTriggered(
         reason: String,
         fallbackDurationMs: Long,
@@ -809,10 +817,6 @@ internal class LocationServiceTelemetry(
                 "accepted=$acceptedCandidates fallback=$fallbackUsed " +
                 "origin=$callbackOrigin duplicatesDropped=$duplicateCandidatesDropped"
         }
-    }
-
-    fun setDebugEnabled(enabled: Boolean) {
-        DebugTelemetry.setEnabledFromLocationService(enabled)
     }
 
     private fun recordAcceptedFix(nowElapsedMs: Long): Long? {

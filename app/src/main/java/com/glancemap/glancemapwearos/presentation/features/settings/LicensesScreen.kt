@@ -3,6 +3,7 @@ package com.glancemap.glancemapwearos.presentation.features.settings
 import android.content.Context
 import androidx.annotation.RawRes
 import androidx.annotation.StringRes
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -14,6 +15,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringArrayResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -40,6 +42,7 @@ fun LicensesScreen(onOpenGeneralSettings: () -> Unit) {
             expandedBottom = 68.dp,
         )
     var selectedDocument by remember { mutableStateOf<LicenseDocument?>(null) }
+    var showChangelog by remember { mutableStateOf(false) }
 
     WearSettingsListScreen(listTokens = listTokens, horizontalAlignment = Alignment.CenterHorizontally) {
         item {
@@ -69,25 +72,17 @@ fun LicensesScreen(onOpenGeneralSettings: () -> Unit) {
                 textAlign = TextAlign.Center,
             )
         }
+        item {
+            LegalDocumentChip(
+                label = stringResource(R.string.changelog_title),
+                secondaryLabel = stringResource(R.string.watch_whats_new_title, "1.3.0"),
+                onClick = { showChangelog = true },
+            )
+        }
         items(LICENSE_DOCUMENTS) { document ->
-            Chip(
-                modifier = Modifier.fillMaxWidth(),
-                label = {
-                    WearText(
-                        text = stringResource(document.labelRes),
-                        modifier = Modifier.fillMaxWidth(),
-                        textAlign = TextAlign.Start,
-                        overflow = TextOverflow.Ellipsis,
-                        maxLines = 1,
-                    )
-                },
-                secondaryLabel = {
-                    WearText(
-                        text = stringResource(document.secondaryLabelRes),
-                        overflow = TextOverflow.Ellipsis,
-                        maxLines = 1,
-                    )
-                },
+            LegalDocumentChip(
+                label = stringResource(document.labelRes),
+                secondaryLabel = stringResource(document.secondaryLabelRes),
                 onClick = { selectedDocument = document },
             )
         }
@@ -96,11 +91,82 @@ fun LicensesScreen(onOpenGeneralSettings: () -> Unit) {
         }
     }
 
+    if (showChangelog) {
+        ChangelogDialog(onDismiss = { showChangelog = false })
+    }
+
     selectedDocument?.let { document ->
         LicenseDocumentDialog(
             document = document,
             onDismiss = { selectedDocument = null },
         )
+    }
+}
+
+@Composable
+@Suppress("FunctionNaming")
+private fun LegalDocumentChip(
+    label: String,
+    secondaryLabel: String,
+    onClick: () -> Unit,
+) {
+    Chip(
+        modifier = Modifier.fillMaxWidth(),
+        label = {
+            WearText(
+                text = label,
+                modifier = Modifier.fillMaxWidth().basicMarquee(),
+                textAlign = TextAlign.Start,
+                overflow = TextOverflow.Visible,
+                maxLines = 1,
+            )
+        },
+        secondaryLabel = {
+            WearText(
+                text = secondaryLabel,
+                modifier = Modifier.basicMarquee(),
+                overflow = TextOverflow.Visible,
+                maxLines = 1,
+            )
+        },
+        onClick = onClick,
+    )
+}
+
+@Composable
+@Suppress("FunctionNaming")
+private fun ChangelogDialog(onDismiss: () -> Unit) {
+    val releases =
+        listOf(
+            "1.3.0" to stringArrayResource(R.array.changelog_1_3_0_notes),
+            "1.2.3" to stringArrayResource(R.array.changelog_1_2_3_notes),
+            "1.2.2" to stringArrayResource(R.array.changelog_1_2_2_notes),
+            "1.2.1" to stringArrayResource(R.array.changelog_1_2_1_notes),
+            "1.2.0" to stringArrayResource(R.array.changelog_1_2_0_notes),
+            "1.1.3" to stringArrayResource(R.array.changelog_1_1_3_notes),
+            "1.1.2" to stringArrayResource(R.array.changelog_1_1_2_notes),
+            "1.1.0" to stringArrayResource(R.array.changelog_1_1_0_notes),
+            "1.0.5" to stringArrayResource(R.array.changelog_1_0_5_notes),
+            "1.0.4" to stringArrayResource(R.array.changelog_1_0_4_notes),
+        )
+    WearInfoDialog(
+        visible = true,
+        title = stringResource(R.string.changelog_title),
+        onDismiss = onDismiss,
+    ) {
+        releases.forEach { (version, notes) ->
+            item {
+                Text(text = version, style = MaterialTheme.typography.titleMedium)
+            }
+            items(notes.size) { index ->
+                Text(
+                    text = "• ${notes[index]}",
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        }
+        item { Spacer(modifier = Modifier.height(48.dp)) }
     }
 }
 
@@ -222,6 +288,7 @@ private fun LicenseDocumentDialog(
                 modifier = Modifier.fillMaxWidth(),
             )
         }
+        item { Spacer(modifier = Modifier.height(48.dp)) }
     }
 }
 

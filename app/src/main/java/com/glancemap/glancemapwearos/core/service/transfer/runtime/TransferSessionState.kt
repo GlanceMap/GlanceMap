@@ -1,5 +1,6 @@
 package com.glancemap.glancemapwearos.core.service.transfer.runtime
 
+import com.glancemap.glancemapwearos.core.service.transfer.storage.partialFileUseGuard
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.sync.Mutex
@@ -34,6 +35,7 @@ internal class TransferSessionState {
         sourceNodeId: String,
     ) {
         if (job == null) return
+        partialFileUseGuard.protectUntilComplete(job)
         synchronized(lock) {
             activeTransferId = transferId
             activeTransferJob = job
@@ -66,6 +68,7 @@ internal class TransferSessionState {
         }
 
     fun registerHttpTransfer(transfer: ActiveHttpTransfer) {
+        transfer.job?.let(partialFileUseGuard::protectUntilComplete)
         synchronized(lock) {
             activeHttpTransfersByKey[key(transfer.sourceNodeId, transfer.fileName)] = transfer
             transfer.job?.let { jobsById[transfer.transferId] = it }

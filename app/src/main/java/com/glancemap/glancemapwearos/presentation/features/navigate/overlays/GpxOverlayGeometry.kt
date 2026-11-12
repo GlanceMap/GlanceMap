@@ -130,6 +130,11 @@ internal fun List<TrackPoint>.splitTrackSegments(): List<List<TrackPoint>> =
         if (current.isNotEmpty()) add(current)
     }
 
+internal fun List<TrackPoint>.allLatLongSegments(): List<List<LatLong>> {
+    val segments = splitTrackSegments()
+    return segments.map { segment -> segment.map(TrackPoint::latLong) }
+}
+
 internal fun List<TrackPoint>.latLongSegments(): List<List<LatLong>> =
     splitTrackSegments()
         .filter { it.size >= 2 }

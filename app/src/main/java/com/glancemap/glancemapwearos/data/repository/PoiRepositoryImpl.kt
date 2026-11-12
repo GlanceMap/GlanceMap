@@ -50,10 +50,23 @@ class PoiRepositoryImpl(
         expectedSize: Long?,
         resumeOffset: Long,
         diagnosticContext: String?,
+        expectedSha256: String?,
+        keepPartialOnCancel: Boolean,
+        keepPartialOnFailure: Boolean,
     ): String? =
         withContext(Dispatchers.IO) {
             val checksum =
-                poiFiles.saveAtomic(fileName, inputStream, onProgress, expectedSize, resumeOffset, diagnosticContext)
+                poiFiles.saveAtomic(
+                    fileName,
+                    inputStream,
+                    onProgress,
+                    expectedSize,
+                    resumeOffset,
+                    diagnosticContext,
+                    expectedSha256,
+                    keepPartialOnCancel,
+                    keepPartialOnFailure,
+                )
             invalidateMetadata(File(poiDir, fileName).absolutePath)
             checksum
         }

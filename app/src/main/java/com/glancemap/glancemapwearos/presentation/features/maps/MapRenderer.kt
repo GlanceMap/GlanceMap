@@ -102,6 +102,7 @@ internal fun shouldShowVisibleHillshadeTerrainUnavailable(
 class MapRenderer(
     private val context: Context,
     private val mapView: MapView,
+    private val onMapFileOpenFailed: (String) -> Unit = {},
 ) {
     private data class TileCacheConfig(
         val firstLevelTiles: Int,
@@ -903,6 +904,8 @@ class MapRenderer(
         var cacheRecreated = false
         var warmStartupCache = false
         var cleanLayerSwap = false
+        var mapFileOpenAttempted = false
+        var mapFileOpenSucceeded = false
         val newMapSignature = workOwner.read { computeMapRendererMapSignature(mapPath) }
         val newDemSignature = computeDemSignatureOrNull()
         val timingMarker = MapHotPathDiagnostics.beginAsync("mapRenderer.updateMapLayer")
@@ -960,6 +963,7 @@ class MapRenderer(
                 currentDemSignature = newDemSignature
                 rebuildTileCacheRequested = true
                 Log.w(TAG, "updateMapLayer: Map file does not exist: $mapPath")
+                onMapFileOpenFailed(mapPath)
                 updateReliefOverlayLayer()
                 purgeTileCache(reason = "missing_map_file")
                 forceRedraw()
@@ -1002,9 +1006,11 @@ class MapRenderer(
                         stage = "mapRenderer.openMapFile",
                         detail = "file=${mapFile.name}",
                     ) {
+                        mapFileOpenAttempted = true
                         MapFile(mapFile)
                     }
                 }
+            mapFileOpenSucceeded = true
             currentStore = mapDataStore
             warmStartupCache =
                 shouldWarmMapStartupTileCache(
@@ -1045,6 +1051,7 @@ class MapRenderer(
         } catch (e: Exception) {
             timingStatus = "error_${e.javaClass.simpleName}"
             cancelFirstVisibleMapTiming(reason = timingStatus)
+            if (mapFileOpenAttempted && !mapFileOpenSucceeded) mapPath?.let(onMapFileOpenFailed)
             Log.e(TAG, "updateMapLayer: Error loading map file: $mapPath", e)
             clearCurrentLayer()
             currentMapPath = null

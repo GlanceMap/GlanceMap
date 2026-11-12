@@ -65,6 +65,9 @@ interface PoiRepository {
         expectedSize: Long? = null,
         resumeOffset: Long = 0L,
         diagnosticContext: String? = null,
+        expectedSha256: String? = null,
+        keepPartialOnCancel: Boolean = true,
+        keepPartialOnFailure: Boolean = true,
     ): String?
 
     suspend fun deletePoiFile(path: String): Boolean

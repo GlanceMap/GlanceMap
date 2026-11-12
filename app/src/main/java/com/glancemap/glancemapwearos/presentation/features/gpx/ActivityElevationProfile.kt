@@ -5,7 +5,10 @@ internal data class ActivityElevationProfile(
     val totalDistance: Double,
 )
 
-internal fun buildActivityElevationProfile(profile: TrackProfile): ActivityElevationProfile {
+internal fun buildElevationProfileSamples(
+    profile: TrackProfile,
+    etaProjection: GpxEtaProjection?,
+): List<ElevationSample> {
     val samples = mutableListOf<ElevationSample>()
     var gapBefore = false
     profile.points.forEachIndexed { index, point ->
@@ -18,18 +21,42 @@ internal fun buildActivityElevationProfile(profile: TrackProfile): ActivityEleva
                 ElevationSample(
                     distance = profile.cumDist[index],
                     elevation = elevation,
-                    cumulativeAscent = profile.cumAscent[index],
-                    cumulativeDescent = profile.cumDescent[index],
-                    cumulativeDurationSec = null,
+                    cumulativeAscent = profile.cumAscent.getOrElse(index) { profile.cumAscent.lastOrNull() ?: 0.0 },
+                    cumulativeDescent =
+                        profile.cumDescent.getOrElse(index) { profile.cumDescent.lastOrNull() ?: 0.0 },
+                    cumulativeDurationSec = etaProjection?.secondsAtPointIndex(index),
                     gapBefore = gapBefore && samples.isNotEmpty(),
                 )
             gapBefore = false
         }
     }
-    return ActivityElevationProfile(
-        samples = downsampleActivityElevationSamples(samples),
+    return samples
+}
+
+internal fun buildActivityElevationProfile(profile: TrackProfile): ActivityElevationProfile =
+    ActivityElevationProfile(
+        samples = downsampleActivityElevationSamples(buildElevationProfileSamples(profile, etaProjection = null)),
         totalDistance = profile.totalDistance,
     )
+
+/** Keeps the popup's uniform sampling while retaining both ends of every gap for grey rendering. */
+internal fun downsampleElevationSamples(
+    samples: List<ElevationSample>,
+    maxSamples: Int = 120,
+): List<ElevationSample> {
+    if (samples.size <= maxSamples || maxSamples <= 1) return samples
+
+    val lastIndex = samples.lastIndex
+    val step = lastIndex.toDouble() / (maxSamples - 1).toDouble()
+    val keep =
+        (0 until maxSamples)
+            .map { sampleIndex -> (sampleIndex * step).toInt().coerceIn(0, lastIndex) }
+            .toMutableSet()
+    samples.indices.filter { samples[it].gapBefore }.forEach { index ->
+        keep += index
+        if (index > 0) keep += index - 1
+    }
+    return keep.sorted().map(samples::get)
 }
 
 /** Gap endpoints take priority over the target size so downsampling never hides a discontinuity. */

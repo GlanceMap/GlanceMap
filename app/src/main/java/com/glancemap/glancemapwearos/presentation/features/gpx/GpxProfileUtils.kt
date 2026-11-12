@@ -74,7 +74,17 @@ internal data class GpxActivitySummary(
     val averagePowerWatts: Int?,
     val maxPowerWatts: Int?,
     val barometricPressureHpa: Double?,
+    val heartRateCoveredSeconds: Double? = null,
+    val heartRateAverageMethod: String? = null,
+    val cadenceAverageMethod: String? = null,
 )
+
+// An explicitly computed session mean can be unknown; point sampling must not replace it.
+internal fun resolveImportedSensorAverage(
+    savedAverage: Int?,
+    method: String?,
+    legacyAverage: Int?,
+): Int? = if (method != null) savedAverage else savedAverage ?: legacyAverage
 
 internal fun resolveGpxDisplayDistance(
     profileDistance: Double,
@@ -128,7 +138,7 @@ internal fun buildProfile(
 
         val d =
             if (b.startsNewSegment) {
-                0.0
+                b.countedGapDistanceMeters()
             } else {
                 haversine(
                     a.latLong.latitude,
@@ -157,12 +167,19 @@ internal fun buildProfile(
 internal fun reverseTrackPointsForProfile(points: List<TrackPoint>): List<TrackPoint> =
     points.asReversed().mapIndexed { reversedIndex, point ->
         val originalIndex = points.lastIndex - reversedIndex
+        val originalBoundary = points.getOrNull(originalIndex + 1)?.takeIf { it.startsNewSegment }
         point.copy(
-            startsNewSegment =
-                reversedIndex == 0 ||
-                    points.getOrNull(originalIndex + 1)?.startsNewSegment == true,
+            startsNewSegment = reversedIndex == 0 || originalBoundary != null,
+            // The counted gap moves with its boundary so a reversed track keeps the same length.
+            gapDistanceMeters = originalBoundary?.takeIf { reversedIndex != 0 }?.gapDistanceMeters,
         )
     }
+
+/** Distance across a segment boundary: a recorded GPS gap's counted distance, otherwise none. */
+internal fun TrackPoint.countedGapDistanceMeters(): Double {
+    val meters = gapDistanceMeters ?: return 0.0
+    return meters.takeIf { it.isFinite() && it >= 0.0 } ?: 0.0
+}
 
 internal fun readBestGpxTitle(file: File): String? = parseGpxData(file).title
 
@@ -220,6 +237,9 @@ internal fun parseGpxData(file: File): ParsedGpxData {
     var summaryCyclingPhysicsSegments: Int? = null
     var summaryHeartRateBpm: Int? = null
     var summaryAverageHeartRateBpm: Int? = null
+    var summaryHeartRateCoveredSeconds: Double? = null
+    var summaryHeartRateAverageMethod: String? = null
+    var summaryCadenceAverageMethod: String? = null
     var summaryMaxHeartRateBpm: Int? = null
     var summaryStepCount: Int? = null
     var summaryCadenceSpm: Int? = null
@@ -247,6 +267,7 @@ internal fun parseGpxData(file: File): ParsedGpxData {
     var currentPowerWatts: Int? = null
     var currentPressureHpa: Double? = null
     var currentSegmentStartReason: String? = null
+    var currentGapDistanceMeters: Double? = null
     var currentDesc: String? = null
     var currentSym: String? = null
     var currentBrouterVoiceHint: String? = null
@@ -415,6 +436,7 @@ internal fun parseGpxData(file: File): ParsedGpxData {
                                 currentPowerWatts = null
                                 currentPressureHpa = null
                                 currentSegmentStartReason = null
+                                currentGapDistanceMeters = null
                                 currentDesc = null
                                 currentSym = null
                                 currentBrouterVoiceHint = null
@@ -482,6 +504,12 @@ internal fun parseGpxData(file: File): ParsedGpxData {
                                     currentSegmentStartReason = parser.nextText()?.trim()?.takeIf { it.isNotBlank() }
                                 }
                             }
+                            "gapDistanceMeters" -> {
+                                if (inGeometryPoint) {
+                                    currentGapDistanceMeters =
+                                        parser.nextTextDouble()?.takeIf { it.isFinite() && it >= 0.0 }
+                                }
+                            }
                             "heartRateBpm" -> {
                                 if (inMetadataExtensions) {
                                     summaryHeartRateBpm = parser.nextTextInt()
@@ -491,6 +519,22 @@ internal fun parseGpxData(file: File): ParsedGpxData {
                             }
                             "averageHeartRateBpm" -> {
                                 if (inMetadataExtensions) summaryAverageHeartRateBpm = parser.nextTextInt()
+                            }
+                            "heartRateCoveredSeconds" -> {
+                                if (inMetadataExtensions) {
+                                    summaryHeartRateCoveredSeconds = parser.nextTextDouble()?.takeIf { it >= 0.0 }
+                                }
+                            }
+                            "heartRateAverageMethod" -> {
+                                if (inMetadataExtensions) {
+                                    summaryHeartRateAverageMethod =
+                                        parser.nextText()?.trim()?.takeIf(String::isNotBlank)
+                                }
+                            }
+                            "cadenceAverageMethod" -> {
+                                if (inMetadataExtensions) {
+                                    summaryCadenceAverageMethod = parser.nextText()?.trim()?.takeIf(String::isNotBlank)
+                                }
                             }
                             "maxHeartRateBpm" -> {
                                 if (inMetadataExtensions) summaryMaxHeartRateBpm = parser.nextTextInt()
@@ -561,6 +605,8 @@ internal fun parseGpxData(file: File): ParsedGpxData {
                                                 elevation = currentElevation,
                                                 startsNewSegment = currentStartsNewSegment,
                                                 segmentStartReason = currentSegmentStartReason,
+                                                gapDistanceMeters =
+                                                    currentGapDistanceMeters.takeIf { currentStartsNewSegment },
                                                 hasTimestamp = currentHasTimestamp,
                                                 timeMillis = currentTimestampMillis,
                                                 accuracyMeters = currentAccuracyMeters,
@@ -582,6 +628,9 @@ internal fun parseGpxData(file: File): ParsedGpxData {
 
                                         if (currentPointIsTrack) {
                                             trackPoints += point
+                                            if (currentStartsNewSegment) {
+                                                trackDistance += point.countedGapDistanceMeters()
+                                            }
                                             lastTrackPoint?.takeUnless { currentStartsNewSegment }?.let { previous ->
                                                 trackDistance +=
                                                     haversine(
@@ -631,6 +680,7 @@ internal fun parseGpxData(file: File): ParsedGpxData {
                                 currentPowerWatts = null
                                 currentPressureHpa = null
                                 currentSegmentStartReason = null
+                                currentGapDistanceMeters = null
                                 currentDesc = null
                                 currentSym = null
                                 currentBrouterVoiceHint = null
@@ -684,6 +734,9 @@ internal fun parseGpxData(file: File): ParsedGpxData {
                     cyclingPhysicsSegments = summaryCyclingPhysicsSegments,
                     heartRateBpm = summaryHeartRateBpm,
                     averageHeartRateBpm = summaryAverageHeartRateBpm,
+                    heartRateCoveredSeconds = summaryHeartRateCoveredSeconds,
+                    heartRateAverageMethod = summaryHeartRateAverageMethod,
+                    cadenceAverageMethod = summaryCadenceAverageMethod,
                     maxHeartRateBpm = summaryMaxHeartRateBpm,
                     stepCount = summaryStepCount,
                     cadenceSpm = summaryCadenceSpm,
@@ -734,6 +787,9 @@ private fun buildGpxActivitySummary(
     cyclingPhysicsSegments: Int?,
     heartRateBpm: Int?,
     averageHeartRateBpm: Int?,
+    heartRateCoveredSeconds: Double?,
+    heartRateAverageMethod: String?,
+    cadenceAverageMethod: String?,
     maxHeartRateBpm: Int?,
     stepCount: Int?,
     cadenceSpm: Int?,
@@ -779,6 +835,9 @@ private fun buildGpxActivitySummary(
         cyclingPhysicsSegments = cyclingPhysicsSegments,
         heartRateBpm = heartRateBpm,
         averageHeartRateBpm = averageHeartRateBpm,
+        heartRateCoveredSeconds = heartRateCoveredSeconds,
+        heartRateAverageMethod = heartRateAverageMethod,
+        cadenceAverageMethod = cadenceAverageMethod,
         maxHeartRateBpm = maxHeartRateBpm,
         stepCount = stepCount,
         cadenceSpm = cadenceSpm,

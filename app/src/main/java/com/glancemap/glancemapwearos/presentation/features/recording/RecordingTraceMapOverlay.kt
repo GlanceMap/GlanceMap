@@ -44,7 +44,15 @@ internal fun RecordingTraceOverlayEffect(
                 strokeWidth = 5f
             }
         }
-    val traceLayers = remember(mapView) { RecordingTraceLayers(paint) }
+    val gapPaint =
+        remember {
+            AndroidGraphicFactory.INSTANCE.createPaint().apply {
+                setStyle(Style.STROKE)
+                color = Color.argb(240, 128, 128, 128)
+                strokeWidth = 5f
+            }
+        }
+    val traceLayers = remember(mapView) { RecordingTraceLayers(paint, gapPaint) }
     val cachedGeometry = remember(mapView) { mutableStateOf<RecordingTraceGeometry?>(null) }
 
     LaunchedEffect(
@@ -69,7 +77,8 @@ internal fun RecordingTraceOverlayEffect(
                     segments = geometry.segments,
                     followLocationMarker = followLocationMarker && locationMarker != null,
                 )
-            var changed = traceLayers.sync(layers, renderState, locationMarker)
+            var changed =
+                traceLayers.sync(layers, renderState, recordingGapConnectors(geometry.segments), locationMarker)
             changed = topOverlayCoordinator.sync(layers) || changed
             if (changed) {
                 mapView.requestLayerRedrawSafely()
@@ -122,23 +131,38 @@ internal fun recordingTraceRenderState(
 
 private class RecordingTraceLayers(
     paint: Paint,
+    gapPaint: Paint,
 ) {
+    private val gapLayer = RecordingTraceHistoryLayer(gapPaint)
     private val historyLayer = RecordingTraceHistoryLayer(paint)
     private val liveTailLayer = RecordingTraceLiveTailLayer(paint)
 
     fun sync(
         layers: Layers,
         renderState: RecordingTraceRenderState,
+        gapSegments: List<List<LatLong>>,
         locationMarker: RotatableMarker?,
     ): Boolean {
+        gapLayer.segments = gapSegments
+        var changed =
+            if (gapSegments.isNotEmpty() && !layers.contains(gapLayer)) {
+                layers.add(gapLayer)
+                true
+            } else if (gapSegments.isEmpty()) {
+                layers.remove(gapLayer)
+            } else {
+                true
+            }
         historyLayer.segments = renderState.segments
-        var changed = syncHistory(layers, renderState.segments.any { it.size >= MIN_RECORDING_TRACE_POINTS })
+        changed = syncHistory(layers, renderState.segments.any { it.size >= MIN_RECORDING_TRACE_POINTS }) || changed
         changed = syncLiveTail(layers, renderState.liveTailStart, locationMarker) || changed
         return changed
     }
 
     fun clear(layers: Layers): Boolean {
-        var changed = layers.remove(historyLayer)
+        var changed = layers.remove(gapLayer)
+        gapLayer.segments = emptyList()
+        changed = layers.remove(historyLayer) || changed
         historyLayer.segments = emptyList()
         liveTailLayer.anchorMarker = null
         liveTailLayer.startLatLong = null

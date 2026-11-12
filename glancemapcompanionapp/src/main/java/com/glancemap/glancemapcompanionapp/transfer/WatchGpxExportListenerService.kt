@@ -3,16 +3,12 @@ package com.glancemap.glancemapcompanionapp.transfer
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
-import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
-import android.os.Environment
-import android.provider.MediaStore
 import android.util.Log
 import androidx.core.app.NotificationCompat
-import androidx.core.content.FileProvider
 import com.glancemap.glancemapcompanionapp.MainActivityMobile
 import com.glancemap.glancemapcompanionapp.R
 import com.glancemap.shared.transfer.TransferDataLayerContract
@@ -30,33 +26,6 @@ import java.security.MessageDigest
 
 private const val WATCH_GPX_COPY_BUFFER_BYTES = 64 * 1024
 private const val WATCH_GPX_MIME_TYPE = "application/gpx+xml"
-
-internal data class WatchGpxSuccessNotificationDescription(
-    val contentText: String,
-    val expandedText: String,
-    val saveCopyActionLabel: String,
-    val openActionLabel: String,
-    val shareActionLabel: String,
-)
-
-internal fun buildWatchGpxSuccessNotificationDescription(
-    fileName: String,
-    downloadsUriAvailable: Boolean,
-): WatchGpxSuccessNotificationDescription {
-    val location =
-        if (downloadsUriAvailable) {
-            "Saved to Downloads/GlanceMap"
-        } else {
-            "Received from watch"
-        }
-    return WatchGpxSuccessNotificationDescription(
-        contentText = "$location. $fileName",
-        expandedText = "$location\n$fileName",
-        saveCopyActionLabel = "Save copy",
-        openActionLabel = "Open",
-        shareActionLabel = "Share",
-    )
-}
 
 class WatchGpxExportListenerService : WearableListenerService() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -117,109 +86,12 @@ class WatchGpxExportListenerService : WearableListenerService() {
                 tempFile.delete()
             }
 
-            val downloadsUri = runCatching { copyToDownloads(finalFile) }.getOrNull()
-            showCompletion(finalFile, downloadsUri)
+            WatchFileExportNotifier(this, CHANNEL_ID, WATCH_GPX_MIME_TYPE, "GPX")
+                .showCompletion(finalFile)
         } finally {
             tempFile.delete()
             runCatching { channelClient.close(channel).await() }
         }
-    }
-
-    private fun copyToDownloads(file: File): Uri? =
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
-            null
-        } else {
-            val values =
-                ContentValues().apply {
-                    put(MediaStore.MediaColumns.DISPLAY_NAME, file.name)
-                    put(MediaStore.MediaColumns.MIME_TYPE, WATCH_GPX_MIME_TYPE)
-                    put(
-                        MediaStore.MediaColumns.RELATIVE_PATH,
-                        "${Environment.DIRECTORY_DOWNLOADS}/GlanceMap",
-                    )
-                    put(MediaStore.MediaColumns.IS_PENDING, 1)
-                }
-
-            val resolver = contentResolver
-            resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)?.also { uri ->
-                runCatching {
-                    resolver.openOutputStream(uri)?.use { output ->
-                        file.inputStream().use { input ->
-                            input.copyTo(output, WATCH_GPX_COPY_BUFFER_BYTES)
-                        }
-                    } ?: error("Unable to open Downloads destination.")
-
-                    values.clear()
-                    values.put(MediaStore.MediaColumns.IS_PENDING, 0)
-                    resolver.update(uri, values, null, null)
-                }.onFailure {
-                    resolver.delete(uri, null, null)
-                    throw it
-                }
-            }
-        }
-
-    private fun showCompletion(
-        file: File,
-        downloadsUri: Uri?,
-    ) {
-        val fileUri = file.shareUri(this)
-        val openIntent =
-            Intent(Intent.ACTION_VIEW).apply {
-                setDataAndType(downloadsUri ?: fileUri, WATCH_GPX_MIME_TYPE)
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            }
-        val openPendingIntent =
-            PendingIntent.getActivity(
-                this,
-                file.name.hashCode(),
-                openIntent,
-                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
-            )
-        val savePendingIntent =
-            PendingIntent.getActivity(
-                this,
-                file.name.hashCode() + SAVE_REQUEST_OFFSET,
-                buildWatchGpxSaveIntent(
-                    context = this,
-                    fileUri = fileUri,
-                    fileName = file.name,
-                ),
-                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
-            )
-        val shareIntent =
-            Intent(Intent.ACTION_SEND).apply {
-                type = WATCH_GPX_MIME_TYPE
-                putExtra(Intent.EXTRA_STREAM, fileUri)
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            }
-        val sharePendingIntent =
-            PendingIntent.getActivity(
-                this,
-                file.name.hashCode() + SHARE_REQUEST_OFFSET,
-                Intent.createChooser(shareIntent, "Share GPX"),
-                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
-            )
-        val description =
-            buildWatchGpxSuccessNotificationDescription(
-                fileName = file.name,
-                downloadsUriAvailable = downloadsUri != null,
-            )
-
-        val notification =
-            NotificationCompat
-                .Builder(this, CHANNEL_ID)
-                .setSmallIcon(R.mipmap.ic_launcher_companionapp_foreground)
-                .setContentTitle("GPX ready")
-                .setContentText(description.contentText)
-                .setStyle(NotificationCompat.BigTextStyle().bigText(description.expandedText))
-                .setAutoCancel(true)
-                .addAction(android.R.drawable.ic_menu_save, description.saveCopyActionLabel, savePendingIntent)
-                .addAction(android.R.drawable.ic_menu_view, description.openActionLabel, openPendingIntent)
-                .addAction(android.R.drawable.ic_menu_share, description.shareActionLabel, sharePendingIntent)
-                .build()
-
-        runCatching { notificationManager.notify(file.name.hashCode(), notification) }
     }
 
     private fun showError(message: String) {
@@ -299,30 +171,8 @@ class WatchGpxExportListenerService : WearableListenerService() {
         const val CHANNEL_ID = "watch_gpx_exports"
         const val EXPORT_DIR_NAME = "watch-gpx-exports"
         const val ERROR_NOTIFICATION_ID = 57_230
-        const val SHARE_REQUEST_OFFSET = 10_000
-        const val SAVE_REQUEST_OFFSET = 20_000
     }
 }
-
-private fun buildWatchGpxSaveIntent(
-    context: Context,
-    fileUri: Uri,
-    fileName: String,
-): Intent =
-    Intent(context, MainActivityMobile::class.java).apply {
-        action = WatchGpxSaveIntentContract.ACTION_SAVE_WATCH_GPX
-        setDataAndType(fileUri, WATCH_GPX_MIME_TYPE)
-        putExtra(WatchGpxSaveIntentContract.EXTRA_FILE_NAME, fileName)
-        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-    }
-
-private fun File.shareUri(context: Context): Uri =
-    FileProvider.getUriForFile(
-        context,
-        "${context.packageName}.fileprovider",
-        this,
-    )
 
 private fun sanitizeGpxFileName(name: String): String {
     val clean =

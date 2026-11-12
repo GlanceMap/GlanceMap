@@ -27,6 +27,7 @@ data class OamOwnedDownloadState(
     val detail: String? = null,
     val bytesDone: Long = 0L,
     val totalBytes: Long? = null,
+    val isExtracting: Boolean = false,
     val errorMessage: String? = null,
 )
 
@@ -136,6 +137,29 @@ private object OamOwnedDownloadRuntime {
     fun publish(state: OamOwnedDownloadState) {
         mutableState.value = state
     }
+}
+
+/** Serializes progress and writer-lifecycle publication so stale progress cannot overwrite it. */
+internal class OamOwnedDownloadStatePublisher(
+    private val currentState: () -> OamOwnedDownloadState,
+    private val publish: (OamOwnedDownloadState) -> Unit,
+) {
+    @Synchronized
+    fun updateExtractionState(isExtracting: Boolean): OamOwnedDownloadState? {
+        val current = currentState()
+        if (current.isExtracting == isExtracting) return null
+        return current.copy(isExtracting = isExtracting).also(publish)
+    }
+
+    @Synchronized
+    fun publishProgress(
+        progressState: OamOwnedDownloadState,
+    ): OamOwnedDownloadState = progressState.copy(isExtracting = currentState().isExtracting).also(publish)
+
+    @Synchronized
+    fun update(
+        transform: (OamOwnedDownloadState) -> OamOwnedDownloadState,
+    ): OamOwnedDownloadState = transform(currentState()).also(publish)
 }
 
 class OamDownloadServiceClient(

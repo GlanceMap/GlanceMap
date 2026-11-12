@@ -82,7 +82,7 @@ internal fun startsRecordedTraceSegment(
     point: RecordedTracePoint,
 ): Boolean = previous != null && point.startsNewSegment && !shouldVisuallyBridgeRecordedPause(previous, point)
 
-private fun shouldVisuallyBridgeRecordedPause(
+internal fun shouldVisuallyBridgeRecordedPause(
     previous: RecordedTracePoint,
     resumed: RecordedTracePoint,
 ): Boolean {
@@ -151,7 +151,11 @@ data class RecordedTraceSummary(
     val smartElevationGpsFallbackPointCount: Long? = null,
     val recordingLocationCallbackCount: Int? = null,
     val recordingQualityRejectedFixCount: Int? = null,
+    val recordingQualityHeldFixCount: Int? = null,
+    val recordingMotionSuppressedFixCount: Int? = null,
     val recordingCountersScope: String? = null,
+    val heartRateCoveredSeconds: Double? = null,
+    val cadenceAverageMethod: String? = null,
 )
 
 private fun StringWriter.writeRecordingSummaryExtensions(summary: RecordedTraceSummary) {
@@ -163,6 +167,12 @@ private fun StringWriter.writeRecordingSummaryExtensions(summary: RecordedTraceS
     }
     summary.recordingQualityRejectedFixCount?.takeIf { it >= 0 }?.let {
         textTag("gmap:recordingQualityRejectedFixCount", it.toString())
+    }
+    summary.recordingQualityHeldFixCount?.takeIf { it >= 0 }?.let {
+        textTag("gmap:recordingQualityHeldFixCount", it.toString())
+    }
+    summary.recordingMotionSuppressedFixCount?.takeIf { it >= 0 }?.let {
+        textTag("gmap:recordingMotionSuppressedFixCount", it.toString())
     }
     summary.recordingCountersScope?.takeIf { it.isNotBlank() }?.let {
         textTag("gmap:recordingCountersScope", it)
@@ -254,6 +264,7 @@ private fun StringWriter.writeRecordingSensorSummary(summary: RecordedTraceSumma
     summary.averageHeartRateBpm?.takeIf { it > 0 }?.let {
         textTag("gmap:averageHeartRateBpm", it.toString())
     }
+    writeHeartRateCoverage(summary.heartRateCoveredSeconds)
     summary.maxHeartRateBpm?.takeIf { it > 0 }?.let {
         textTag("gmap:maxHeartRateBpm", it.toString())
     }
@@ -263,9 +274,10 @@ private fun StringWriter.writeRecordingSensorSummary(summary: RecordedTraceSumma
     summary.cadenceSpm?.takeIf { it > 0 }?.let {
         textTag("gmap:cadenceSpm", it.toString())
     }
-    summary.averageCadenceSpm?.takeIf { it > 0 }?.let {
+    summary.averageCadenceSpm?.takeIf { it >= 0 }?.let {
         textTag("gmap:averageCadenceSpm", it.toString())
     }
+    summary.cadenceAverageMethod?.let { textTag("gmap:cadenceAverageMethod", it) }
     summary.maxCadenceSpm?.takeIf { it > 0 }?.let {
         textTag("gmap:maxCadenceSpm", it.toString())
     }
@@ -280,6 +292,13 @@ private fun StringWriter.writeRecordingSensorSummary(summary: RecordedTraceSumma
     }
     summary.barometricPressureHpa?.takeIf { it.isFinite() && it > 0.0 }?.let {
         textTag("gmap:pressureHpa", formatDouble(it))
+    }
+}
+
+private fun StringWriter.writeHeartRateCoverage(coveredSeconds: Double?) {
+    coveredSeconds?.takeIf { it.isFinite() && it >= 0.0 }?.let {
+        textTag("gmap:heartRateCoveredSeconds", formatDouble(it))
+        textTag("gmap:heartRateAverageMethod", "active_time_weighted_v1")
     }
 }
 
@@ -355,6 +374,9 @@ private fun StringWriter.writePointExtensions(point: RecordedTracePoint) {
         segmentStartReason?.let {
             textTag("gmap:segmentStartReason", it)
         }
+        point.gapDistanceMeters?.takeIf { it.isFinite() && it >= 0.0 }?.let {
+            textTag("gmap:gapDistanceMeters", formatDouble(it))
+        }
         point.locationQuality?.let { writeLocationQualityExtensions(it) }
         heartRateBpm?.takeIf { it in 1..255 }?.let {
             textTag("gpxtpx:TrackPointExtension") {
@@ -374,6 +396,10 @@ private fun StringWriter.writeLocationQualityExtensions(quality: RecordedLocatio
         textTag("gmap:gpsSpeedAccuracyMps", formatFloat(it))
     }
     quality.ageMillis?.takeIf { it >= 0L }?.let { textTag("gmap:locationAgeMillis", it.toString()) }
+    quality.gnssSatellitesUsed?.takeIf { it > 0 }?.let { textTag("gmap:gnssSatellitesUsed", it.toString()) }
+    quality.gnssUsedCn0AvgDbHz?.takeIf { it.isFinite() && it > 0f }?.let {
+        textTag("gmap:gnssUsedCn0AvgDbHz", formatFloat(it))
+    }
 }
 
 private fun StringWriter.textTag(

@@ -1,13 +1,27 @@
 package com.glancemap.glancemapwearos.core.service.location.policy
 
 import android.location.Location
+import com.glancemap.glancemapwearos.core.service.location.config.isKnownWatchGpsAccuracyFloor
 import com.glancemap.glancemapwearos.core.service.location.model.resolveLocationTimingProfile
 import kotlin.math.max
 
 internal data class FixAcceptancePolicy(
     val maxAgeMs: Long,
     val maxAccuracyM: Float,
-)
+    /**
+     * When set, a fix reporting the known fixed watch-GPS accuracy (125 m) is accepted up to
+     * this limit. Used for fused fixes while the phone is not confirmed connected: Wear OS fused
+     * location then comes from the watch's own GNSS chip and reports the same fixed value.
+     */
+    val knownWatchGpsFloorMaxAccuracyM: Float? = null,
+) {
+    fun rejectsAccuracy(accuracyM: Float): Boolean {
+        val floorLimitM = knownWatchGpsFloorMaxAccuracyM
+        val acceptedAsWatchGpsFloor =
+            floorLimitM != null && isKnownWatchGpsAccuracyFloor(accuracyM) && accuracyM <= floorLimitM
+        return !accuracyM.isFinite() || (accuracyM > maxAccuracyM && !acceptedAsWatchGpsFloor)
+    }
+}
 
 internal object LocationFixPolicy {
     fun resolveAcceptancePolicy(
@@ -61,6 +75,23 @@ internal object LocationFixPolicy {
         if (sourceMode != LocationSourceMode.WATCH_GPS) return policy
         val relaxedMaxAccuracyM = max(policy.maxAccuracyM, watchGpsMaxAccuracyM)
         return policy.copy(maxAccuracyM = relaxedMaxAccuracyM)
+    }
+
+    /**
+     * Placeholder accuracies from the watch chip are accepted above the normal limit: always for
+     * watch GPS, and for fused fixes while the phone is not confirmed connected (fused location
+     * then comes from the same chip).
+     */
+    fun allowKnownWatchGpsFloor(
+        policy: FixAcceptancePolicy,
+        sourceMode: LocationSourceMode,
+        phoneConnected: Boolean?,
+        floorMaxAccuracyM: Float,
+    ): FixAcceptancePolicy {
+        val allowed =
+            sourceMode == LocationSourceMode.WATCH_GPS ||
+                (sourceMode == LocationSourceMode.AUTO_FUSED && phoneConnected != true)
+        return if (allowed) policy.copy(knownWatchGpsFloorMaxAccuracyM = floorMaxAccuracyM) else policy
     }
 
     fun resolveWatchGpsAcceptanceAccuracyM(

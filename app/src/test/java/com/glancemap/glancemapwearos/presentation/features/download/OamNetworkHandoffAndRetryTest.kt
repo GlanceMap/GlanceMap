@@ -1,11 +1,15 @@
 package com.glancemap.glancemapwearos.presentation.features.download
 
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
+import kotlin.coroutines.EmptyCoroutineContext
 
 class OamNetworkHandoffAndRetryTest {
     @Test
@@ -41,6 +45,49 @@ class OamNetworkHandoffAndRetryTest {
         }
         assertFalse(budget.shouldRetry(attemptStartOffset = 124L, resumeOffsetAfterFailure = 124L))
         assertEquals(3, budget.currentRetryCount())
+    }
+
+    @Test
+    fun plannedHandoffDoesNotSpendOrResetNoProgressFailureBudget() {
+        val budget = OamDownloadRetryBudget(maxNoProgressRetries = 1)
+        assertTrue(budget.shouldRetry(100, 100))
+        assertTrue(budget.shouldRetry(100, 100, networkHandoff = true))
+        assertEquals(1, budget.currentRetryCount())
+        assertFalse(budget.shouldRetry(100, 100))
+    }
+
+    @Test
+    fun bytesWrittenBeforeHandoffStillResetTheFailureBudget() {
+        val budget = OamDownloadRetryBudget(maxNoProgressRetries = 1)
+        assertTrue(budget.shouldRetry(100, 100))
+        assertTrue(budget.shouldRetry(100, 124, networkHandoff = true))
+        assertEquals(0, budget.currentRetryCount())
+        assertTrue(budget.shouldRetry(124, 124))
+    }
+
+    @Test
+    fun userCancellationWinsOverPendingHandoffWithoutSpendingRetryBudget() {
+        val budget = OamDownloadRetryBudget(maxNoProgressRetries = 1)
+        val owner = Job().apply { cancel() }
+        val failure =
+            runCatching {
+                budget.shouldRetryAfterFailure(IOException("Socket closed"), 4, 4, true, owner)
+            }.exceptionOrNull()
+        assertTrue(failure is CancellationException)
+        assertEquals(0, budget.currentRetryCount())
+    }
+
+    @Test
+    fun ordinaryIoAndHttpErrorsKeepTheirRetryPolicy() {
+        val budget = OamDownloadRetryBudget(maxNoProgressRetries = 1)
+        assertTrue(budget.shouldRetryAfterFailure(IOException("Socket closed"), 0, 0, false, EmptyCoroutineContext))
+        assertFalse(budget.shouldRetryAfterFailure(IOException("Socket closed"), 0, 0, false, EmptyCoroutineContext))
+        val http = IOException("HTTP 404")
+        val failure =
+            runCatching {
+                budget.shouldRetryAfterFailure(http, 0, 0, true, EmptyCoroutineContext)
+            }.exceptionOrNull()
+        assertEquals(http, failure)
     }
 
     @Test

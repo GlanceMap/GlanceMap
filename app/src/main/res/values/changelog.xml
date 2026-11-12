@@ -1,0 +1,86 @@
+<resources>
+    <string name="changelog_title">Changelog</string>
+    <string-array name="changelog_1_3_0_notes">
+        <item>Added French, German, Spanish, Italian and Polish, with language selection.</item>
+        <item>Added fullscreen map controls and an auto-recenter shortcut.</item>
+        <item>Added experimental 3D terrain and a hiking theme.</item>
+        <item>Added support for custom Mapsforge themes sent from the phone.</item>
+        <item>Improved recording continuity, GPS gap handling and sensor recovery.</item>
+        <item>Improved offline map downloads and extraction.</item>
+    </string-array>
+
+    <string-array name="changelog_1_2_3_notes">
+        <item>Improved map startup, rendering and navigation performance.</item>
+        <item>Improved compass behavior after wake and during magnetic interference.</item>
+        <item>Smoother compass rotation and navigation response.</item>
+        <item>Preserves map position when returning from the menu.</item>
+        <item>Improved POI, GPX and recording performance.</item>
+        <item>Added clearer startup, location and no-active-map feedback.</item>
+        <item>Added compatibility with older Android 9 and 10 Wear OS watches.</item>
+    </string-array>
+    <string-array name="changelog_1_2_2_notes">
+        <item>More reliable compass and turn-by-turn guidance, including after pauses.</item>
+        <item>Smoother recording and more consistent distance and speed.</item>
+        <item>Pinch-to-zoom, map long-press actions and clearer route progress.</item>
+        <item>Better terrain handling and elevation profiles with your location shown.</item>
+        <item>More reliable watch–phone transfers and map/GPX loading.</item>
+        <item>Stability and performance improvements.</item>
+    </string-array>
+    <string-array name="changelog_1_2_1_notes">
+        <item>Improved battery performance during navigation and recording.</item>
+        <item>Auto-pause is now enabled by default.</item>
+        <item>More efficient GPS and compass handling.</item>
+        <item>Better behavior when the screen is off or the watch is idle.</item>
+        <item>More reliable track recording, distance and elevation.</item>
+        <item>Improved GPS recovery and Watch GPS fallback when the phone disconnects.</item>
+        <item>Improved offline map downloads and extraction recovery.</item>
+        <item>Improved map zoom, hillshade stability, turn-by-turn navigation and rotary controls.</item>
+    </string-array>
+    <string-array name="changelog_1_2_0_notes">
+        <item>Added recording activities.</item>
+        <item>Added turn-by-turn navigation.</item>
+        <item>Added support for external sensors, including HR straps and Stryd pods.</item>
+        <item>Added Hike and Bike activity profiles.</item>
+        <item>Improved GPS behavior during recording and navigation.</item>
+        <item>Improved performance and map responsiveness.</item>
+        <item>Improved battery efficiency, especially during long recordings and navigation sessions.</item>
+        <item>Improved the UI layout.</item>
+    </string-array>
+    <string-array name="changelog_1_1_3_notes">
+        <item>Added creation of recorded activities directly from the watch.</item>
+        <item>Added creation of turn-by-turn navigation directly from the watch.</item>
+        <item>Added support for external sensors, including HR straps and Stryd pods.</item>
+        <item>Added Hike and Bike activity profiles.</item>
+        <item>Improved GPS behavior during recording and navigation.</item>
+        <item>Improved performance and map responsiveness.</item>
+        <item>Improved battery efficiency, especially during long recordings and navigation sessions.</item>
+        <item>Improved the UI layout.</item>
+    </string-array>
+    <string-array name="changelog_1_1_2_notes">
+        <item>Added a GPX track direction arrow option.</item>
+        <item>Added back button support on compatible watches.</item>
+        <item>Added adjustable position marker placement.</item>
+        <item>Redesigned POI icons, settings and navigation.</item>
+        <item>Added higher-quality elevation data.</item>
+        <item>Added GPX track export from watch to phone.</item>
+        <item>Updated download bundles with Refuge.info POIs and improved bundle navigation.</item>
+        <item>Added quick guides for POI, GPX and Maps, plus battery, stability and performance improvements.</item>
+    </string-array>
+    <string-array name="changelog_1_1_0_notes">
+        <item>Fixed the download cancel button and other minor issues.</item>
+        <item>Added direct download bundles from the watch.</item>
+        <item>Added a new home screen.</item>
+        <item>Fixed marker and POI-creation issues and improved overall stability.</item>
+    </string-array>
+    <string-array name="changelog_1_0_5_notes">
+        <item>Fixed compass issues on Samsung watches.</item>
+        <item>Fixed zoom levels on large maps.</item>
+        <item>Fixed theme cache issues.</item>
+        <item>Fixed layouts on small screens.</item>
+        <item>Added the OS Map theme.</item>
+        <item>Added a shortcut to the night-mode theme.</item>
+    </string-array>
+    <string-array name="changelog_1_0_4_notes">
+        <item>Fixed DEM downloads for some areas.</item>
+    </string-array>
+</resources>

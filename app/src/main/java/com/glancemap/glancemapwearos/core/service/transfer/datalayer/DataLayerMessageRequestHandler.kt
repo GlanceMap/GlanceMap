@@ -45,11 +45,10 @@ internal class DataLayerMessageRequestHandler(
 ) {
     private val appScope get() = service.appScope()
 
-    // Checksum storage for channel transfers: transferId -> sha256
-    // Populated from pre-warm messages, consumed by DataLayerChannelOpenedHandler
-    private val pendingChannelChecksums = ConcurrentHashMap<String, String>()
+    // Pre-warm size and checksum are consumed with the matching channel handoff.
+    private val pendingChannelMetadata = ConcurrentHashMap<String, ChannelTransferPrewarmMetadata>()
 
-    fun popChannelChecksum(transferId: String): String? = pendingChannelChecksums.remove(transferId)
+    fun popChannelMetadata(transferId: String): ChannelPrewarmMetadata? = pendingChannelMetadata.remove(transferId)
 
     private val wifiRequestHandler =
         DataLayerWifiTransferRequestHandler(
@@ -108,15 +107,7 @@ internal class DataLayerMessageRequestHandler(
 
             TransferConstants.PATH_PREPARE_CHANNEL -> {
                 TransferDiagnostics.log("MsgReq", "Prewarm request")
-                // Extract and store checksum for the upcoming channel transfer
-                runCatching {
-                    val json = JSONObject(String(messageEvent.data, Charsets.UTF_8))
-                    val id = json.optString("id", "")
-                    val sha256 = json.optString("sha256", "")
-                    if (id.isNotBlank() && sha256.isNotBlank()) {
-                        pendingChannelChecksums[id] = sha256
-                    }
-                }
+                pendingChannelMetadata.storeChannelPrewarmMetadata(messageEvent.data)
                 service.holdPrewarmWakeLock(
                     reason = "prepare_channel:${messageEvent.sourceNodeId}",
                     timeoutMs = TransferConstants.PREWARM_WAKELOCK_MS,
@@ -459,6 +450,27 @@ internal class DataLayerMessageRequestHandler(
                 Log.d(TAG, "Delete-file reply send failed: ${it.message}")
             }
         }
+    }
+}
+
+private fun ConcurrentHashMap<String, ChannelTransferPrewarmMetadata>.storeChannelPrewarmMetadata(data: ByteArray) {
+    runCatching {
+        val json = JSONObject(String(data, Charsets.UTF_8))
+        val id = json.optString("id", "")
+        if (id.isBlank()) return
+
+        val size = json.optLong("size", -1L).takeIf { it >= 0L }
+        val sha256 = json.optString("sha256", "").takeIf { it.isNotBlank() }
+        this[id] =
+            ChannelTransferPrewarmMetadata(
+                expectedSize = size,
+                expectedChecksum = sha256,
+            )
+        TransferDiagnostics.log(
+            "MsgReq",
+            "Prewarm metadata stored id=$id expectedBytes=${size ?: "na"} " +
+                "checksumAvailable=${sha256 != null}",
+        )
     }
 }
 

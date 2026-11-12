@@ -924,11 +924,27 @@ class GpxViewModel(
                         cyclingPhysicsSegments = cyclingPhysicsSegments ?: 0,
                     ),
             heartRateBpm = fallbackPoints.lastMappedNotNull { it.heartRateBpm },
-            averageHeartRateBpm = averageHeartRateBpm ?: heartRateBpm ?: fallbackPoints.averageHeartRateBpm(),
-            maxHeartRateBpm = maxHeartRateBpm ?: fallbackPoints.maxHeartRateBpm() ?: heartRateBpm,
+            averageHeartRateBpm =
+                resolveImportedSensorAverage(
+                    averageHeartRateBpm,
+                    heartRateAverageMethod,
+                    heartRateBpm ?: fallbackPoints.averageHeartRateBpm(),
+                ),
+            heartRateCoveredSeconds = heartRateCoveredSeconds,
+            maxHeartRateBpm =
+                resolveImportedSensorAverage(
+                    maxHeartRateBpm,
+                    heartRateAverageMethod,
+                    fallbackPoints.maxHeartRateBpm() ?: heartRateBpm,
+                ),
             stepCount = stepCount ?: fallbackPoints.lastMappedNotNull { it.stepCount },
             cadenceSpm = cadenceSpm ?: fallbackPoints.lastMappedNotNull { it.cadenceSpm },
-            averageCadenceSpm = averageCadenceSpm ?: fallbackPoints.averageCadenceSpm(),
+            averageCadenceSpm =
+                resolveImportedSensorAverage(
+                    averageCadenceSpm,
+                    cadenceAverageMethod,
+                    fallbackPoints.averageCadenceSpm(),
+                ),
             maxCadenceSpm = maxCadenceSpm ?: fallbackPoints.maxCadenceSpm() ?: cadenceSpm,
             powerWatts = powerWatts ?: fallbackPoints.lastMappedNotNull { it.powerWatts },
             averagePowerWatts = averagePowerWatts ?: fallbackPoints.averagePowerWatts(),
@@ -1487,18 +1503,7 @@ class GpxViewModel(
                     val totalDescent = profile.totalDescent
                     val etaProjection = getOrBuildEtaProjection(path = path, sig = profile.sig, profile = profile)
                     val totalDurationSec = etaProjection?.totalSeconds
-                    val rawSamples =
-                        profile.points.mapIndexedNotNull { index, point ->
-                            val elevation = point.elevation ?: return@mapIndexedNotNull null
-                            val distance = profile.cumDist.getOrElse(index) { totalDistance }
-                            ElevationSample(
-                                distance = distance,
-                                elevation = elevation,
-                                cumulativeAscent = profile.cumAscent.getOrElse(index) { totalAscent },
-                                cumulativeDescent = profile.cumDescent.getOrElse(index) { totalDescent },
-                                cumulativeDurationSec = etaProjection?.secondsAtPointIndex(index),
-                            )
-                        }
+                    val rawSamples = buildElevationProfileSamples(profile = profile, etaProjection = etaProjection)
                     val samples = downsampleElevationSamples(rawSamples, maxSamples = 120)
                     val trackTitle =
                         _gpxFiles.value.firstOrNull { it.path == path }?.displayTitle
@@ -1600,6 +1605,7 @@ class GpxViewModel(
                         elevationGain = profile.totalAscent,
                         startPoint = start,
                         endPoint = end,
+                        isActivity = fileState.isActivity,
                     )
                 }
             }
@@ -1687,20 +1693,6 @@ class GpxViewModel(
         val openProfilePath = _elevationProfileUiState.value?.trackPath
         if (openProfilePath != null) {
             showElevationProfile(openProfilePath)
-        }
-    }
-
-    private fun downsampleElevationSamples(
-        samples: List<ElevationSample>,
-        maxSamples: Int,
-    ): List<ElevationSample> {
-        if (samples.size <= maxSamples || maxSamples <= 1) return samples
-
-        val lastIndex = samples.lastIndex
-        val step = lastIndex.toDouble() / (maxSamples - 1).toDouble()
-        return List(maxSamples) { sampleIndex ->
-            val pointIndex = (sampleIndex * step).toInt().coerceIn(0, lastIndex)
-            samples[pointIndex]
         }
     }
 
@@ -2080,6 +2072,7 @@ private fun List<TrackPoint>.toRecordedTracePoints(): List<RecordedTracePoint> =
             speedMps = point.speedMps,
             startsNewSegment = point.startsNewSegment,
             segmentStartReason = point.segmentStartReason,
+            gapDistanceMeters = point.gapDistanceMeters,
             heartRateBpm = point.heartRateBpm,
             stepCount = point.stepCount,
             cadenceSpm = point.cadenceSpm,

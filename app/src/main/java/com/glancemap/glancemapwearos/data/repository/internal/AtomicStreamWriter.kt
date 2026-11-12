@@ -30,6 +30,7 @@ internal object AtomicStreamWriter {
         val failIfExists: Boolean = false,
         val expectedSize: Long? = null,
         val requireExactSize: Boolean = false,
+        val expectedSha256: String? = null,
         // ✅ Resume support
         val resumeOffset: Long = 0L, // append starting at this offset
         val keepPartialOnCancel: Boolean = false, // keep .part on pause
@@ -62,10 +63,22 @@ internal object AtomicStreamWriter {
             throw IOException("FILE_EXISTS: $safeName")
         }
 
+        if (options.requireExactSize && options.expectedSize?.takeIf { it >= 0L } == null) {
+            throw IOException("missing_expected_size")
+        }
+        if (!options.expectedSha256.isNullOrBlank() && !options.computeSha256) {
+            throw IOException("checksum_compute_failed")
+        }
+
         // ✅ Stable hidden partial file name (resume-friendly)
         val partFile = File(dir, ".$safeName.part")
 
-        val expected = options.expectedSize?.takeIf { it > 0L }
+        val expected =
+            if (options.requireExactSize) {
+                options.expectedSize?.takeIf { it >= 0L }
+            } else {
+                options.expectedSize?.takeIf { it > 0L }
+            }
 
         var existingLen = if (partFile.exists()) partFile.length() else 0L
         if (expected != null && existingLen > expected) {
@@ -148,9 +161,18 @@ internal object AtomicStreamWriter {
             onProgress(bytesCopied)
 
             if (options.requireExactSize) {
-                val exp = expected ?: -1L
-                if (exp > 0 && bytesCopied != exp) {
+                val exp = expected ?: throw IOException("missing_expected_size")
+                if (bytesCopied != exp) {
                     throw IOException("INCOMPLETE_FILE: expected=$exp got=$bytesCopied")
+                }
+            }
+
+            val sha256 = digest?.digest()?.joinToString("") { b -> "%02x".format(b) }
+            val expectedSha256 = options.expectedSha256?.takeIf { it.isNotBlank() }
+            if (expectedSha256 != null) {
+                if (sha256 == null) throw IOException("checksum_compute_failed")
+                if (!sha256.equals(expectedSha256, ignoreCase = true)) {
+                    throw IOException("checksum_mismatch")
                 }
             }
 
@@ -189,8 +211,6 @@ internal object AtomicStreamWriter {
                     "$timingSummary fsync=${options.fsync}"
             safeLogDebug(TAG, logMessage)
             if (captureTiming) DebugTelemetry.log(TAG, telemetryMessage)
-
-            val sha256 = digest?.digest()?.joinToString("") { b -> "%02x".format(b) }
 
             return WriteResult(
                 bytesCopied = bytesCopied,
@@ -277,7 +297,7 @@ internal object AtomicStreamWriter {
 
                     if (requireExactSize) {
                         val exp = expected ?: -1L
-                        if (exp > 0 && bytesCopied + read > exp) {
+                        if (exp >= 0 && bytesCopied + read > exp) {
                             reader.cancel()
                             throw IOException("TOO_MUCH_DATA: expected=$exp got>${bytesCopied + read}")
                         }

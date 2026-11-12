@@ -22,6 +22,9 @@ import org.mapsforge.core.model.LatLong
 class NavigateViewModel(
     application: Application,
 ) : AndroidViewModel(application) {
+    // Written by NavigateScreen when the user enters or explicitly exits map focus.
+    internal val mapFocusMode = MutableStateFlow(false)
+
     private val _uiState = MutableStateFlow(NavigateUiState())
     val uiState: StateFlow<NavigateUiState> = _uiState.asStateFlow()
     val presentationState = uiState.distinctUntilChanged(::sameNavigatePresentationState)

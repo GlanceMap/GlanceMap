@@ -6,6 +6,7 @@ import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.content.res.Resources
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -312,9 +313,9 @@ fun DebuggingSettingsScreen(
                 label = {
                     WearText(
                         text = stringResource(R.string.settings_1_clean_previous_logs),
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth().basicMarquee(),
                         textAlign = TextAlign.Start,
-                        overflow = TextOverflow.Ellipsis,
+                        overflow = TextOverflow.Visible,
                         maxLines = 1,
                     )
                 },
@@ -327,7 +328,8 @@ fun DebuggingSettingsScreen(
                                 } else {
                                     cleanCaptureStatus
                                 },
-                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.basicMarquee(),
+                            overflow = TextOverflow.Visible,
                             maxLines = 1,
                         )
                     },
@@ -460,9 +462,9 @@ fun DebuggingSettingsScreen(
                                 } else {
                                     stringResource(R.string.settings_3_export_diagnostic)
                                 },
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier.fillMaxWidth().basicMarquee(),
                             textAlign = TextAlign.Start,
-                            overflow = TextOverflow.Ellipsis,
+                            overflow = TextOverflow.Visible,
                             maxLines = 1,
                         )
                     },
@@ -477,7 +479,8 @@ fun DebuggingSettingsScreen(
                                 } else {
                                     diagnosticsExportStatus
                                 },
-                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.basicMarquee(),
+                            overflow = TextOverflow.Visible,
                             maxLines = 1,
                         )
                     },
@@ -518,9 +521,9 @@ fun DebuggingSettingsScreen(
                                     detail = "source=export",
                                 )
                                 CompassHeadingDiagnostics.flush(reason = "capture_export")
-                                viewModel.setGpsDebugTelemetry(false)
                                 DebugTelemetry.freezeForExport()
                                 captureFrozenForExport = true
+                                viewModel.setGpsDebugTelemetry(false)
                                 CompassHeadingDiagnostics.reset()
                                 EnergyDiagnostics.configure(captureActive = false, fullDiagnostics = false)
                                 ScreenStateDiagnostics.configure(captureActive = false)
@@ -701,10 +704,10 @@ fun DebuggingSettingsScreen(
                             exportDialogMessage =
                                 resources.getString(R.string.settings_export_failed_tap_resend_diagnostic_to_try_again)
                         } finally {
-                            viewModel.setGpsDebugTelemetry(false)
                             if (captureWasEnabled && !captureFrozenForExport) {
                                 DebugTelemetry.freezeForExport()
                             }
+                            viewModel.setGpsDebugTelemetry(false)
                             EnergyDiagnostics.configure(captureActive = false, fullDiagnostics = false)
                             ScreenStateDiagnostics.configure(captureActive = false)
                             if (exportDialogMode == DiagnosticsExportDialogMode.GENERATING) {
@@ -825,9 +828,9 @@ fun DebuggingSettingsScreen(
                                     },
                                 ),
                             ),
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth().basicMarquee(),
                         textAlign = TextAlign.Start,
-                        overflow = TextOverflow.Ellipsis,
+                        overflow = TextOverflow.Visible,
                         maxLines = 1,
                     )
                 },
@@ -842,7 +845,8 @@ fun DebuggingSettingsScreen(
                                 CompassHeadingReferenceBasis.UNKNOWN ->
                                     stringResource(R.string.settings_select_before_starting_the_test)
                             },
-                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.basicMarquee(),
+                        overflow = TextOverflow.Visible,
                         maxLines = 1,
                     )
                 },
@@ -865,9 +869,9 @@ fun DebuggingSettingsScreen(
                             } else {
                                 stringResource(R.string.settings_start_heading_reference_test)
                             },
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth().basicMarquee(),
                         textAlign = TextAlign.Start,
-                        overflow = TextOverflow.Ellipsis,
+                        overflow = TextOverflow.Visible,
                         maxLines = 1,
                     )
                 },
@@ -879,7 +883,8 @@ fun DebuggingSettingsScreen(
                             } else {
                                 stringResource(R.string.settings_deep_trace_active_measures_absolute_heading_error)
                             },
-                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.basicMarquee(),
+                        overflow = TextOverflow.Visible,
                         maxLines = 1,
                     )
                 },
@@ -894,16 +899,17 @@ fun DebuggingSettingsScreen(
                     label = {
                         WearText(
                             text = stringResource(R.string.settings_force_close_app),
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier.fillMaxWidth().basicMarquee(),
                             textAlign = TextAlign.Start,
-                            overflow = TextOverflow.Ellipsis,
+                            overflow = TextOverflow.Visible,
                             maxLines = 1,
                         )
                     },
                     secondaryLabel = {
                         WearText(
                             text = stringResource(R.string.settings_debug_crash_test),
-                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.basicMarquee(),
+                            overflow = TextOverflow.Visible,
                             maxLines = 1,
                         )
                     },

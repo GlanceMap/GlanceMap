@@ -1,7 +1,9 @@
 package com.glancemap.glancemapwearos.presentation.features.download
 
+import androidx.lifecycle.Lifecycle
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -60,7 +62,7 @@ class OamBundlePipelineTest {
     }
 
     @Test
-    fun `extraction progress stays hidden while download remains active`() =
+    fun `completed background extraction is not replayed after download`() =
         runTest {
             val emitted = mutableListOf<OamDownloadProgress>()
             val arbiter = OamBundleProgressArbiter(emitted::add)
@@ -76,18 +78,194 @@ class OamBundlePipelineTest {
                     }
                 }
 
-            extractionStarted.await()
-            arbiter.runNetwork { progress ->
-                progress(OamDownloadProgress("DOWNLOADING", "POI zip", 50L, 100L))
+            try {
+                extractionStarted.await()
+                arbiter.runNetwork { progress ->
+                    progress(OamDownloadProgress("DOWNLOADING", "POI zip", 50L, 100L))
+                    finishExtraction.complete(Unit)
+                    extraction.await()
+                }
+                arbiter.awaitExtraction(extraction)
+
+                assertEquals(listOf("DOWNLOADING"), emitted.map(OamDownloadProgress::phase))
+            } finally {
                 finishExtraction.complete(Unit)
                 extraction.await()
             }
-
-            assertEquals(listOf("EXTRACTING", "DOWNLOADING"), emitted.map(OamDownloadProgress::phase))
         }
 
     @Test
-    fun `latest extraction progress appears when download finishes first`() =
+    fun `latest extraction progress and live updates appear when waiting for extraction`() =
+        runTest {
+            val emitted = mutableListOf<OamDownloadProgress>()
+            val waitingStarted = CompletableDeferred<Unit>()
+            val arbiter =
+                OamBundleProgressArbiter { progress ->
+                    emitted.add(progress)
+                    if (progress.phase == "EXTRACTING") waitingStarted.complete(Unit)
+                }
+            val extractionStarted = CompletableDeferred<Unit>()
+            val updateExtraction = CompletableDeferred<Unit>()
+            val extractionUpdated = CompletableDeferred<Unit>()
+            val finishExtraction = CompletableDeferred<Unit>()
+            val extraction =
+                async {
+                    arbiter.runExtraction { progress ->
+                        progress(OamDownloadProgress("EXTRACTING", "Area.map", 25L, 100L))
+                        extractionStarted.complete(Unit)
+                        updateExtraction.await()
+                        progress(OamDownloadProgress("EXTRACTING", "Area.map", 75L, 100L))
+                        extractionUpdated.complete(Unit)
+                        finishExtraction.await()
+                        progress(OamDownloadProgress("EXTRACTING", "Area.map", 100L, 100L))
+                    }
+                }
+
+            try {
+                extractionStarted.await()
+                arbiter.runNetwork { progress ->
+                    progress(OamDownloadProgress("DOWNLOADING", "POI zip", 100L, 100L))
+                    updateExtraction.complete(Unit)
+                    extractionUpdated.await()
+                }
+                assertEquals(listOf("DOWNLOADING"), emitted.map(OamDownloadProgress::phase))
+                val waiting = async { arbiter.awaitExtraction(extraction) }
+                waitingStarted.await()
+                finishExtraction.complete(Unit)
+                waiting.await()
+
+                assertEquals(
+                    listOf(
+                        OamDownloadProgress("DOWNLOADING", "POI zip", 100L, 100L),
+                        OamDownloadProgress("EXTRACTING", "Area.map", 75L, 100L),
+                        OamDownloadProgress("EXTRACTING", "Area.map", 100L, 100L),
+                    ),
+                    emitted,
+                )
+            } finally {
+                updateExtraction.complete(Unit)
+                finishExtraction.complete(Unit)
+                extraction.await()
+            }
+        }
+
+    @Test
+    fun `cancelling an extraction wait hides subsequent background progress`() =
+        runTest {
+            val emitted = mutableListOf<OamDownloadProgress>()
+            val waitingStarted = CompletableDeferred<Unit>()
+            val arbiter =
+                OamBundleProgressArbiter { progress ->
+                    emitted.add(progress)
+                    waitingStarted.complete(Unit)
+                }
+            val extractionStarted = CompletableDeferred<Unit>()
+            val updateExtraction = CompletableDeferred<Unit>()
+            val extractionUpdated = CompletableDeferred<Unit>()
+            val finishExtraction = CompletableDeferred<Unit>()
+            val extraction =
+                async {
+                    arbiter.runExtraction { progress ->
+                        progress(OamDownloadProgress("EXTRACTING", "Area.map", 25L, 100L))
+                        extractionStarted.complete(Unit)
+                        updateExtraction.await()
+                        progress(OamDownloadProgress("EXTRACTING", "Area.map", 50L, 100L))
+                        extractionUpdated.complete(Unit)
+                        finishExtraction.await()
+                    }
+                }
+            val waiting =
+                async {
+                    extractionStarted.await()
+                    arbiter.awaitExtraction(extraction)
+                }
+
+            try {
+                waitingStarted.await()
+                waiting.cancelAndJoin()
+                updateExtraction.complete(Unit)
+                extractionUpdated.await()
+
+                assertEquals(listOf(25L), emitted.map(OamDownloadProgress::bytesDone))
+            } finally {
+                waiting.cancelAndJoin()
+                updateExtraction.complete(Unit)
+                finishExtraction.complete(Unit)
+                extraction.await()
+            }
+        }
+
+    @Test
+    fun `waiting for a completed map does not reveal background POI extraction`() =
+        runTest {
+            val emitted = mutableListOf<OamDownloadProgress>()
+            val arbiter = OamBundleProgressArbiter(emitted::add)
+            val completedMap =
+                async {
+                    arbiter.runExtraction { progress ->
+                        progress(OamDownloadProgress("EXTRACTING", "Area.map", 100L, 100L))
+                    }
+                }
+            completedMap.await()
+            val poiStarted = CompletableDeferred<Unit>()
+            val finishPoi = CompletableDeferred<Unit>()
+            val poi =
+                async {
+                    arbiter.runExtraction { progress ->
+                        progress(OamDownloadProgress("EXTRACTING", "Area.poi", 25L, 100L))
+                        poiStarted.complete(Unit)
+                        finishPoi.await()
+                    }
+                }
+            try {
+                poiStarted.await()
+                arbiter.awaitExtraction(completedMap)
+                assertTrue(emitted.isEmpty())
+            } finally {
+                finishPoi.complete(Unit)
+                poi.await()
+            }
+        }
+
+    @Test
+    fun `failed progress publication closes the extraction wait`() =
+        runTest {
+            val emitted = mutableListOf<OamDownloadProgress>()
+            var rejectNext = true
+            val arbiter =
+                OamBundleProgressArbiter { progress ->
+                    if (rejectNext) {
+                        rejectNext = false
+                        error("Publication failed")
+                    }
+                    emitted.add(progress)
+                }
+            val extractionStarted = CompletableDeferred<Unit>()
+            val finishExtraction = CompletableDeferred<Unit>()
+            val extraction =
+                async {
+                    arbiter.runExtraction { progress ->
+                        progress(OamDownloadProgress("EXTRACTING", "Area.map", 25L, 100L))
+                        extractionStarted.complete(Unit)
+                        finishExtraction.await()
+                        progress(OamDownloadProgress("EXTRACTING", "Area.map", 50L, 100L))
+                    }
+                }
+            try {
+                extractionStarted.await()
+                val failure = runCatching { arbiter.awaitExtraction(extraction) }.exceptionOrNull()
+                assertTrue(failure is IllegalStateException)
+                finishExtraction.complete(Unit)
+                extraction.await()
+                assertTrue(emitted.isEmpty())
+            } finally {
+                finishExtraction.complete(Unit)
+                extraction.await()
+            }
+        }
+
+    @Test
+    fun `background extraction does not replace download progress between files`() =
         runTest {
             val emitted = mutableListOf<OamDownloadProgress>()
             val arbiter = OamBundleProgressArbiter(emitted::add)
@@ -102,18 +280,114 @@ class OamBundlePipelineTest {
                     }
                 }
 
-            extractionStarted.await()
-            arbiter.runNetwork { progress ->
-                progress(OamDownloadProgress("DOWNLOADING", "POI zip", 100L, 100L))
+            try {
+                extractionStarted.await()
+                arbiter.runNetwork { progress ->
+                    progress(OamDownloadProgress("DOWNLOADING", "POI zip", 100L, 100L))
+                }
+                assertEquals(listOf("DOWNLOADING"), emitted.map(OamDownloadProgress::phase))
+                arbiter.runNetwork { progress ->
+                    progress(OamDownloadProgress("DOWNLOADING", "Routing", 50L, 100L))
+                }
+                assertEquals(listOf("POI zip", "Routing"), emitted.map(OamDownloadProgress::detail))
+            } finally {
+                finishExtraction.complete(Unit)
+                extraction.await()
             }
-            finishExtraction.complete(Unit)
-            extraction.await()
-
-            assertEquals(
-                listOf("EXTRACTING", "DOWNLOADING", "EXTRACTING"),
-                emitted.map(OamDownloadProgress::phase),
-            )
         }
+
+    @Test
+    fun `extraction lifecycle stays active while download progress remains visible`() =
+        runTest {
+            val visibleProgress = mutableListOf<OamDownloadProgress>()
+            val lifecycle = mutableListOf<Boolean>()
+            val arbiter = OamBundleProgressArbiter(visibleProgress::add)
+            val extractionStarted = CompletableDeferred<Unit>()
+            val finishExtraction = CompletableDeferred<Unit>()
+            val extraction =
+                async {
+                    arbiter.runExtraction {
+                        runInlineOamExtraction(lifecycle::add) {
+                            extractionStarted.complete(Unit)
+                            finishExtraction.await()
+                        }
+                    }
+                }
+
+            try {
+                extractionStarted.await()
+                arbiter.runNetwork { progress ->
+                    progress(OamDownloadProgress("DOWNLOADING", "POI zip", 50L, 100L))
+                }
+
+                assertEquals(listOf(true), lifecycle)
+                assertEquals(listOf("DOWNLOADING"), visibleProgress.map(OamDownloadProgress::phase))
+            } finally {
+                finishExtraction.complete(Unit)
+                extraction.await()
+            }
+
+            assertEquals(listOf(true, false), lifecycle)
+        }
+
+    @Test
+    fun `extraction lifecycle clears after cancellation or failure`() =
+        runTest {
+            val lifecycle = mutableListOf<Boolean>()
+            val arbiter = OamBundleProgressArbiter(emit = {})
+            val cancellationStarted = CompletableDeferred<Unit>()
+            val cancelled =
+                async {
+                    arbiter.runExtraction {
+                        runInlineOamExtraction(
+                            onExtractionRunningChanged = { running ->
+                                lifecycle.add(running)
+                                if (running) cancellationStarted.complete(Unit)
+                            },
+                        ) {
+                            kotlinx.coroutines.awaitCancellation()
+                        }
+                    }
+                }
+
+            cancellationStarted.await()
+            cancelled.cancelAndJoin()
+            assertEquals(listOf(true, false), lifecycle)
+
+            lifecycle.clear()
+            val failure =
+                runCatching {
+                    arbiter.runExtraction {
+                        runInlineOamExtraction(lifecycle::add) { error("write failed") }
+                    }
+                }.exceptionOrNull()
+
+            assertTrue(failure is IllegalStateException)
+            assertEquals(listOf(true, false), lifecycle)
+        }
+
+    @Test
+    fun `installation screen hold follows extraction lifecycle instead of visible phase`() {
+        val downloadingWhileExtracting =
+            OamOwnedDownloadState(
+                status = OamOwnedDownloadStatus.RUNNING,
+                phase = "DOWNLOADING",
+                isExtracting = true,
+            )
+        val extracting = downloadingWhileExtracting.copy(isExtracting = false)
+
+        assertTrue(shouldKeepOamInstallationScreenOn(downloadingWhileExtracting.isExtracting))
+        assertFalse(shouldKeepOamInstallationScreenOn(extracting.isExtracting))
+    }
+
+    @Test
+    fun `installation screen hold releases in background and resumes in foreground`() {
+        val paused = oamInstallationScreenActiveAfter(isScreenResumed = true, event = Lifecycle.Event.ON_PAUSE)
+        val resumed = oamInstallationScreenActiveAfter(isScreenResumed = paused, event = Lifecycle.Event.ON_RESUME)
+
+        assertFalse(shouldKeepOamInstallationScreenOn(isExtracting = true, isInstallationScreenActive = paused))
+        assertTrue(shouldKeepOamInstallationScreenOn(isExtracting = true, isInstallationScreenActive = resumed))
+    }
 
     @Test
     fun `progress throttler emits phase changes and periodic updates`() {

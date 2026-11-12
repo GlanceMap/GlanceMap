@@ -2,11 +2,13 @@ package com.glancemap.glancemapwearos.presentation.features.settings
 
 import android.content.res.Resources
 import android.widget.Toast
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Gavel
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.runtime.*
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.pluralStringResource
@@ -94,9 +96,10 @@ fun SettingsScreen(
         item {
             Text(
                 stringResource(R.string.settings_general),
+                modifier = Modifier.basicMarquee(),
                 style = MaterialTheme.typography.titleMedium,
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+                overflow = TextOverflow.Visible,
             )
         }
         item {
@@ -369,7 +372,9 @@ fun SettingsScreen(
                         Toast
                             .makeText(
                                 context,
-                                if (result.removedFiles > 0) {
+                                if (result.skippedInUseFiles > 0) {
+                                    resources.getString(R.string.settings_partial_files_in_use)
+                                } else if (result.removedFiles > 0) {
                                     resources.getQuantityString(
                                         R.plurals.settings_partial_files_cleared,
                                         result.removedFiles,

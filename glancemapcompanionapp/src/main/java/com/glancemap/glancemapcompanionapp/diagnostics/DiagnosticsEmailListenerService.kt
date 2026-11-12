@@ -1,20 +1,13 @@
 package com.glancemap.glancemapcompanionapp.diagnostics
 
-import android.Manifest
-import android.annotation.SuppressLint
 import android.app.NotificationChannel
 import android.app.NotificationManager
-import android.app.PendingIntent
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.os.Build
 import android.util.Base64
 import android.util.Log
-import androidx.core.app.NotificationCompat
-import androidx.core.app.NotificationManagerCompat
-import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
-import com.glancemap.glancemapcompanionapp.R
+import com.glancemap.glancemapcompanionapp.transfer.WatchFileExportNotifier
 import com.glancemap.shared.transfer.TransferDataLayerContract
 import com.google.android.gms.wearable.MessageEvent
 import com.google.android.gms.wearable.WearableListenerService
@@ -48,16 +41,9 @@ class DiagnosticsEmailListenerService : WearableListenerService() {
                 truncated = payload.truncated,
             )
 
-        val chooserIntent =
-            Intent.createChooser(emailIntent, "Send diagnostics").apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            }
-
-        runCatching { startActivity(chooserIntent) }
-            .onFailure { error ->
-                Log.w(TAG, "Could not launch email composer: ${error.message}")
-                showComposeNotification(chooserIntent, payload.subject)
-            }
+        ensureNotificationChannel()
+        WatchFileExportNotifier(this, CHANNEL_ID, "text/plain", "Diagnostics")
+            .showCompletion(diagnosticsFile, shareIntentOverride = emailIntent)
     }
 
     private fun parsePayload(data: ByteArray): DiagnosticsPayload? {
@@ -124,7 +110,7 @@ class DiagnosticsEmailListenerService : WearableListenerService() {
                 .trim()
                 .ifBlank { "glancemap_diagnostics.txt" }
 
-        val dir = File(cacheDir, "diagnostics_mail")
+        val dir = File(filesDir, "watch-diagnostics-exports")
         if (!dir.exists()) {
             dir.mkdirs()
         }
@@ -164,60 +150,16 @@ class DiagnosticsEmailListenerService : WearableListenerService() {
         }
     }
 
-    @SuppressLint("MissingPermission")
-    private fun showComposeNotification(
-        emailIntent: Intent,
-        subject: String,
-    ) {
-        if (!canPostNotifications()) {
-            Log.w(TAG, "Skipping diagnostics notification: POST_NOTIFICATIONS not granted")
-            return
-        }
-
-        ensureNotificationChannel()
-        val pendingIntent =
-            PendingIntent.getActivity(
-                this,
-                subject.hashCode(),
-                emailIntent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-            )
-        val notification =
-            NotificationCompat
-                .Builder(this, CHANNEL_ID)
-                .setSmallIcon(R.mipmap.ic_launcher_companionapp)
-                .setContentTitle("Diagnostics Ready")
-                .setContentText("Tap to open email draft")
-                .setPriority(NotificationCompat.PRIORITY_HIGH)
-                .setAutoCancel(true)
-                .setContentIntent(pendingIntent)
-                .build()
-
-        runCatching {
-            NotificationManagerCompat.from(this).notify(subject.hashCode(), notification)
-        }.onFailure {
-            Log.w(TAG, "Notification publish failed: ${it.message}")
-        }
-    }
-
-    private fun canPostNotifications(): Boolean {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return true
-        return ContextCompat.checkSelfPermission(
-            this,
-            Manifest.permission.POST_NOTIFICATIONS,
-        ) == PackageManager.PERMISSION_GRANTED
-    }
-
     private fun ensureNotificationChannel() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val manager = getSystemService(NotificationManager::class.java) ?: return
         val channel =
             NotificationChannel(
                 CHANNEL_ID,
-                "Diagnostics Email",
-                NotificationManager.IMPORTANCE_HIGH,
+                "Watch diagnostics",
+                NotificationManager.IMPORTANCE_DEFAULT,
             )
-        channel.description = "Notifications for diagnostics email drafts"
+        channel.description = "Received diagnostics files with save, open and share actions"
         manager.createNotificationChannel(channel)
     }
 

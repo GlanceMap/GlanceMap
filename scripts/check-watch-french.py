@@ -31,9 +31,10 @@ def arguments(value):
 
 def load(path):
     root = ET.parse(path).getroot()
-    names = [e.attrib["name"] for e in root]
+    entries = [e for e in root if e.tag in {"string", "plurals"}]
+    names = [e.attrib["name"] for e in entries]
     assert len(names) == len(set(names)), f"Duplicate resource name: {path}"
-    return {e.attrib["name"]: e for e in root}
+    return {e.attrib["name"]: e for e in entries}
 
 
 def identical_reason(value):
@@ -61,16 +62,26 @@ def run(report_dir):
     assert arguments("%1$d") != arguments("%1$s")
     assert arguments("%1$.1f") != arguments("%1$.2f")
     assert text(ET.fromstring('<string>" a\\nb "</string>')) == " a\nb "
-    base = load(ROOT / "app/src/main/res/values/strings.xml")
+    base = {}
+    for path in sorted((ROOT / "app/src/main/res/values").glob("*.xml")):
+        entries = load(path)
+        assert not base.keys() & entries.keys(), f"Duplicate English resource across files: {path}"
+        base.update(entries)
     english = {name: e for name, e in base.items() if e.get("translatable") != "false"}
-    french = load(ROOT / "app/src/main/res/values-fr/strings.xml")
-    assert english.keys() == french.keys(), {
-        "missing": sorted(english.keys() - french.keys()),
+    french = {}
+    for path in sorted((ROOT / "app/src/main/res/values-fr").glob("*.xml")):
+        entries = load(path)
+        assert not french.keys() & entries.keys(), f"Duplicate French resource across files: {path}"
+        french.update(entries)
+    assert french.keys() <= english.keys(), {
         "extra_or_nontranslatable": sorted(french.keys() - english.keys()),
     }
+    missing = sorted(english.keys() - french.keys())
+    if missing:
+        print(f"WARNING fr: {len(missing)} resources use English fallback: {', '.join(missing[:5])}")
     rows, identical = [], []
-    for name, en in english.items():
-        fr = french[name]
+    for name, fr in french.items():
+        en = english[name]
         assert fr.tag == en.tag and fr.get("translatable") != "false", name
         assert fr.get("formatted") == en.get("formatted"), (name, "formatted attribute")
         if en.tag == "string":
@@ -126,12 +137,16 @@ def run(report_dir):
     if report_dir:
         report_dir.mkdir(parents=True, exist_ok=True)
         rows.sort(key=lambda r: (r["english_length"] <= 40, r["expansion_percent"]), reverse=True)
-        for filename, data in (("length-audit.csv", rows), ("unchanged-text-audit.csv", identical)):
+        audits = (
+            ("length-audit.csv", rows, ("resource", "english", "french", "english_length", "french_length", "expansion_percent", "risk")),
+            ("unchanged-text-audit.csv", identical, ("resource", "value", "classification")),
+        )
+        for filename, data, fields in audits:
             with (report_dir / filename).open("w", newline="") as output:
-                writer = csv.DictWriter(output, fieldnames=data[0].keys())
+                writer = csv.DictWriter(output, fieldnames=fields)
                 writer.writeheader()
                 writer.writerows(data)
-    counts = Counter(e.tag for e in english.values())
+    counts = Counter(e.tag for e in french.values())
     print(f"PASS: {counts['string']} strings, {counts['plurals']} plurals, {len(rows)} French value variants.")
     print(f"PASS: {len(originals)} localized documents; names, placeholders, markup, whitespace, technical quotations and URLs preserved.")
     print(f"PASS: {len(identical)} identical variants classified; no accidental English leftovers detected.")

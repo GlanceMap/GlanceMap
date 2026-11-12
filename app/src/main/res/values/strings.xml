@@ -1,4 +1,13 @@
 <resources>
+    <string name="watch_whats_new_title">What’s new in %1$s</string>
+    <string-array name="watch_whats_new_notes">
+        <item>Added French, German, Spanish, Italian and Polish, with language selection.</item>
+        <item>Added fullscreen map controls and an auto-recenter shortcut.</item>
+        <item>Added experimental 3D terrain and a hiking theme.</item>
+        <item>Added support for custom Mapsforge themes sent from the phone.</item>
+        <item>Improved recording continuity, GPS gap handling and sensor recovery.</item>
+        <item>Improved offline map downloads and extraction.</item>
+    </string-array>
     <string name="app_name" translatable="false">GlanceMap</string>
     <string name="glancemap_state_on">On</string>
     <string name="glancemap_state_off">Off</string>
@@ -380,7 +389,7 @@
     <string name="download_clear_selected_areas">"Clear selected areas"</string>
     <string name="download_combined_summary">"%1$s\n\n%2$s"</string>
     <string name="download_components_available">"Components available"</string>
-    <string name="download_connect_the_watch_to_wi_fi_and_keep_it_on_the_charger">"Connect the watch to Wi-Fi and keep it on the charger."</string>
+    <string name="download_connect_the_watch_to_wi_fi_and_keep_it_on_the_charger">"Connect the watch to Wi-Fi and keep it on the charger. Without charger keep the screen on for large maps."</string>
     <string name="download_connect_the_watch_to_wi_fi_for_large_downloads_or_continue_and_the_app">"%1$s. Connect the watch to Wi-Fi for large downloads, or continue and the app will reconnect automatically if Wi-Fi appears."</string>
     <string name="download_connecting_to_phone_http">"Connecting to Phone (HTTP)…"</string>
     <string name="download_connection_interrupted_waiting_to_resume">"Connection interrupted. Waiting to resume…"</string>
@@ -408,8 +417,9 @@
     <string name="download_download_paused">"Download paused"</string>
     <string name="download_download_selected_areas">"Download selected areas"</string>
     <string name="download_downloading_offline_bundle">"Downloading offline bundle"</string>
+    <string name="download_installing_offline_bundle">"Installing offline bundle"</string>
     <string name="download_elevation">"%1$s elevation"</string>
-    <string name="download_elevation_adds_altitude_slope_and_terrain_shading">"Elevation adds altitude, slope, and terrain shading."</string>
+    <string name="download_elevation_adds_altitude_slope_and_terrain_shading">"Elevation adds altitude, slope, and terrain shading capability."</string>
     <string name="download_elevation_quality">"Elevation quality"</string>
     <string name="download_enable_maps_poi_routing_dem_or_refuges_info_in_bundle_settings">"Enable Maps, POI, Routing, DEM, or Refuges.info in Bundle settings."</string>
     <string name="download_enter_delete_mode">"Enter delete mode"</string>
@@ -1414,6 +1424,8 @@
     <string name="recording_speed_avg">"Speed (Avg)"</string>
     <string name="recording_speed_max">"Speed (Max)"</string>
     <string name="recording_start_anyway">"Start anyway"</string>
+    <string name="recording_battery_saver_on">"Battery Saver on"</string>
+    <string name="recording_battery_saver_can_stop_gps_screen_off">"Battery Saver can stop GPS while the screen is off, leaving gaps in your track. Turn it off for a complete recording, or start anyway."</string>
     <string name="recording_start_pending">"Starting REC…"</string>
     <string name="recording_this_recording_will_be_permanently_deleted_and_cannot_be_recovered">"This recording will be permanently deleted and cannot be recovered."</string>
     <string name="recording_time_active">"Time (Active)"</string>
@@ -1503,12 +1515,12 @@
     <string name="settings_checks_still_turn_response">"Checks still + turn response"</string>
     <string name="settings_choose_source">"Choose %1$s source"</string>
     <string name="settings_clear_cache">"Clear cache"</string>
-    <string name="settings_clear_partial_transfer">"Clear partial transfer"</string>
-    <string name="settings_clear_partial_transfers">"Clear partial transfers"</string>
+    <string name="settings_clear_partial_transfer">"Clear partial files"</string>
+    <string name="settings_clear_partial_transfers">"Clear partial files"</string>
     <string name="settings_cleared_start_capture">"Cleared. Start capture."</string>
     <string name="settings_clearing">"Clearing..."</string>
     <string name="settings_clearing_cache">"Clearing cache..."</string>
-    <string name="settings_clearing_partial_transfer">"Clearing partial transfer..."</string>
+    <string name="settings_clearing_partial_transfer">"Clearing partial files..."</string>
     <string name="settings_closest_in">"Closest in"</string>
     <string name="settings_collapsed_section">"▸ %1$s"</string>
     <string name="settings_color_mode">"Color Mode"</string>
@@ -1644,7 +1656,7 @@
     <string name="settings_if_custom_compass_drifts">"If custom compass drifts"</string>
     <string name="settings_if_custom_drifts">"If custom drifts"</string>
     <string name="settings_if_off_cone_stays_green">"If off, cone stays green"</string>
-    <string name="settings_if_you_closed_the_phone_prompt_tap_button_3_again_to_resend">"If you closed the phone prompt, tap button 3 again to resend."</string>
+    <string name="settings_if_you_closed_the_phone_prompt_tap_button_3_again_to_resend">"If you closed the phone notification, tap button 3 again to resend."</string>
     <string name="settings_in_the_rec_popup_long_press_any_metric_to_change_it">"In the REC popup, long press any metric to change it."</string>
     <string name="settings_increase_interval">"Increase %1$s interval"</string>
     <string name="settings_increase_timeout">"Increase timeout"</string>
@@ -1727,7 +1739,7 @@
     <string name="settings_no_compatible_heading_source_found">"No compatible heading source found."</string>
     <string name="settings_no_logs_to_export_start_capturing_first">"No logs to export. Start capturing first."</string>
     <string name="settings_no_partial_files">"No partial files"</string>
-    <string name="settings_no_partial_transfer_files">"No partial transfer files"</string>
+    <string name="settings_no_partial_transfer_files">"No partial files"</string>
     <string name="settings_noise_threshold">"Noise threshold"</string>
     <string name="settings_normal">"Normal"</string>
     <string name="settings_normal_alert_timing">"Normal alert timing"</string>
@@ -1770,10 +1782,11 @@
         <item quantity="one">"%1$d file · %2$s"</item>
         <item quantity="other">"%1$d files · %2$s"</item>
     </plurals>
-    <string name="settings_partial_transfer_cleanup_failed">"Partial transfer cleanup failed"</string>
+    <string name="settings_partial_files_in_use">"Some files are in use. Pause or stop downloads before clearing."</string>
+    <string name="settings_partial_transfer_cleanup_failed">"Partial file cleanup failed"</string>
     <plurals name="settings_partial_transfer_delete_confirmation">
-        <item quantity="one">"Deletes %1$d partial transfer file and frees %2$s. Finished files stay on the watch."</item>
-        <item quantity="other">"Deletes %1$d partial transfer files and frees %2$s. Finished files stay on the watch."</item>
+        <item quantity="one">"Deletes %1$d partial file, including retained bundle archives, and frees %2$s. Installed files stay on the watch."</item>
+        <item quantity="other">"Deletes %1$d partial files, including retained bundle archives, and frees %2$s. Installed files stay on the watch."</item>
     </plurals>
     <string name="settings_path_preference">"Path preference"</string>
     <string name="settings_pause_rec_when_still">"Pause REC when still"</string>

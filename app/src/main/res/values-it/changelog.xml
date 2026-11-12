@@ -1,0 +1,86 @@
+<resources>
+    <string name="changelog_title">Cronologia delle modifiche</string>
+    <string-array name="changelog_1_3_0_notes">
+        <item>Aggiunti francese, tedesco, spagnolo, italiano e polacco, con selezione della lingua.</item>
+        <item>Aggiunti i controlli della mappa a schermo intero e un collegamento al ricentramento automatico.</item>
+        <item>Aggiunti il terreno 3D sperimentale e un tema escursionistico.</item>
+        <item>Aggiunto il supporto per temi Mapsforge personalizzati inviati dal telefono.</item>
+        <item>Migliorate la continuità della registrazione, la gestione delle interruzioni GPS e il ripristino dei sensori.</item>
+        <item>Migliorati il download e l’estrazione delle mappe offline.</item>
+    </string-array>
+
+    <string-array name="changelog_1_2_3_notes">
+        <item>Migliorati avvio, visualizzazione e navigazione della mappa.</item>
+        <item>Migliorato il comportamento della bussola dopo la sospensione e in presenza di interferenze magnetiche.</item>
+        <item>Rotazione della bussola e navigazione più fluide.</item>
+        <item>La posizione della mappa viene mantenuta tornando dal menu.</item>
+        <item>Migliorate le prestazioni di POI, GPX e registrazione.</item>
+        <item>Messaggi più chiari per avvio, posizione e assenza di una mappa attiva.</item>
+        <item>Aggiunta compatibilità con i vecchi orologi Wear OS con Android 9 e 10.</item>
+    </string-array>
+    <string-array name="changelog_1_2_2_notes">
+        <item>Bussola e indicazioni svolta per svolta più affidabili, anche dopo le pause.</item>
+        <item>Registrazione più fluida e distanza e velocità più coerenti.</item>
+        <item>Zoom con due dita, azioni con pressione prolungata e avanzamento del percorso più chiaro.</item>
+        <item>Migliore gestione del terreno e profili altimetrici con la tua posizione.</item>
+        <item>Trasferimenti orologio–telefono e caricamento di mappe e GPX più affidabili.</item>
+        <item>Miglioramenti di stabilità e prestazioni.</item>
+    </string-array>
+    <string-array name="changelog_1_2_1_notes">
+        <item>Migliorata la durata della batteria durante navigazione e registrazione.</item>
+        <item>La pausa automatica è attiva per impostazione predefinita.</item>
+        <item>Gestione più efficiente di GPS e bussola.</item>
+        <item>Miglior funzionamento con schermo spento o orologio inattivo.</item>
+        <item>Registrazione della traccia, distanza e altitudine più affidabili.</item>
+        <item>Miglior recupero GPS e uso del GPS dell’orologio quando il telefono si disconnette.</item>
+        <item>Migliorata la ripresa del download e dell’estrazione delle mappe offline.</item>
+        <item>Migliorati zoom, stabilità dell’ombreggiatura, navigazione e controlli rotanti.</item>
+    </string-array>
+    <string-array name="changelog_1_2_0_notes">
+        <item>Aggiunta la registrazione delle attività.</item>
+        <item>Aggiunta la navigazione svolta per svolta.</item>
+        <item>Aggiunto il supporto per sensori esterni, incluse fasce cardio e sensori Stryd.</item>
+        <item>Aggiunti i profili escursionismo e ciclismo.</item>
+        <item>Migliorato il GPS durante registrazione e navigazione.</item>
+        <item>Migliorate prestazioni e reattività della mappa.</item>
+        <item>Migliorata l’efficienza della batteria, soprattutto durante registrazioni e navigazioni lunghe.</item>
+        <item>Migliorato il layout dell’interfaccia.</item>
+    </string-array>
+    <string-array name="changelog_1_1_3_notes">
+        <item>Aggiunta la creazione di attività registrate direttamente dall’orologio.</item>
+        <item>Aggiunta la creazione di navigazioni svolta per svolta direttamente dall’orologio.</item>
+        <item>Aggiunto il supporto per sensori esterni, incluse fasce cardio e sensori Stryd.</item>
+        <item>Aggiunti i profili escursionismo e ciclismo.</item>
+        <item>Migliorato il GPS durante registrazione e navigazione.</item>
+        <item>Migliorate prestazioni e reattività della mappa.</item>
+        <item>Migliorata l’efficienza della batteria, soprattutto durante registrazioni e navigazioni lunghe.</item>
+        <item>Migliorato il layout dell’interfaccia.</item>
+    </string-array>
+    <string-array name="changelog_1_1_2_notes">
+        <item>Aggiunta un’opzione per la freccia di direzione della traccia GPX.</item>
+        <item>Aggiunto il supporto per il pulsante Indietro sugli orologi compatibili.</item>
+        <item>Aggiunta la posizione regolabile del marcatore.</item>
+        <item>Ridisegnati icone, impostazioni e navigazione dei POI.</item>
+        <item>Aggiunti dati altimetrici di qualità superiore.</item>
+        <item>Aggiunta l’esportazione delle tracce GPX dall’orologio al telefono.</item>
+        <item>Aggiunti i POI Refuge.info ai pacchetti e migliorata la navigazione tra i pacchetti.</item>
+        <item>Aggiunte guide rapide per POI, GPX e mappe e migliorati batteria, stabilità e prestazioni.</item>
+    </string-array>
+    <string-array name="changelog_1_1_0_notes">
+        <item>Corretti l’annullamento dei download e altri problemi minori.</item>
+        <item>Aggiunto il download diretto dei pacchetti dall’orologio.</item>
+        <item>Aggiunta una nuova schermata iniziale.</item>
+        <item>Corretti problemi dei marcatori e della creazione di POI e migliorata la stabilità.</item>
+    </string-array>
+    <string-array name="changelog_1_0_5_notes">
+        <item>Corretti problemi della bussola sugli orologi Samsung.</item>
+        <item>Corretti i livelli di zoom sulle mappe grandi.</item>
+        <item>Corretti problemi della cache dei temi.</item>
+        <item>Corretti i layout sugli schermi piccoli.</item>
+        <item>Aggiunto il tema OS Map.</item>
+        <item>Aggiunto un collegamento al tema notturno.</item>
+    </string-array>
+    <string-array name="changelog_1_0_4_notes">
+        <item>Corretto il download dei dati DEM per alcune aree.</item>
+    </string-array>
+</resources>

@@ -10,13 +10,13 @@ class DebugTelemetryLazyTest {
     @Before
     fun setUp() {
         DebugTelemetry.setTransitionMarkersEnabledForTests(false)
-        DebugTelemetry.setEnabledFromLocationService(false)
+        DebugTelemetry.setEnabledFromCaptureSettings(false)
         DebugTelemetry.clear()
     }
 
     @After
     fun tearDown() {
-        DebugTelemetry.setEnabledFromLocationService(false)
+        DebugTelemetry.setEnabledFromCaptureSettings(false)
         DebugTelemetry.clear()
         DebugTelemetry.setTransitionMarkersEnabledForTests(true)
     }
@@ -36,7 +36,7 @@ class DebugTelemetryLazyTest {
 
     @Test
     fun lazyMessageIsBuiltAndFormattedForFullCapture() {
-        DebugTelemetry.setEnabledFromLocationService(true)
+        DebugTelemetry.setEnabledFromCaptureSettings(true)
         var evaluated = false
 
         // The JVM test artifact does not provide android.util.Log.d; buffering happens before

@@ -1,0 +1,86 @@
+<resources>
+    <string name="changelog_title">Historia zmian</string>
+    <string-array name="changelog_1_3_0_notes">
+        <item>Dodano języki francuski, niemiecki, hiszpański, włoski i polski wraz z wyborem języka.</item>
+        <item>Dodano pełnoekranowe sterowanie mapą i skrót automatycznego ponownego wyśrodkowania.</item>
+        <item>Dodano eksperymentalny teren 3D i motyw turystyczny.</item>
+        <item>Dodano obsługę własnych motywów Mapsforge wysyłanych z telefonu.</item>
+        <item>Usprawniono ciągłość nagrywania, obsługę przerw GPS i przywracanie czujników.</item>
+        <item>Usprawniono pobieranie i rozpakowywanie map offline.</item>
+    </string-array>
+
+    <string-array name="changelog_1_2_3_notes">
+        <item>Usprawniono uruchamianie i wyświetlanie mapy oraz nawigację.</item>
+        <item>Poprawiono działanie kompasu po wybudzeniu i przy zakłóceniach magnetycznych.</item>
+        <item>Płynniejszy obrót kompasu i reakcja nawigacji.</item>
+        <item>Po powrocie z menu zachowywana jest pozycja mapy.</item>
+        <item>Poprawiono wydajność POI, GPX i nagrywania.</item>
+        <item>Dodano czytelniejsze komunikaty o uruchamianiu, lokalizacji i braku aktywnej mapy.</item>
+        <item>Dodano zgodność ze starszymi zegarkami Wear OS z Androidem 9 i 10.</item>
+    </string-array>
+    <string-array name="changelog_1_2_2_notes">
+        <item>Bardziej niezawodny kompas i wskazówki zakręt po zakręcie, również po pauzie.</item>
+        <item>Płynniejsze nagrywanie oraz bardziej spójne pomiary dystansu i prędkości.</item>
+        <item>Powiększanie dwoma palcami, akcje po długim naciśnięciu i czytelniejszy postęp trasy.</item>
+        <item>Lepsza obsługa terenu i profile wysokości z oznaczeniem pozycji.</item>
+        <item>Bardziej niezawodne przesyłanie między zegarkiem a telefonem oraz ładowanie map i GPX.</item>
+        <item>Poprawiono stabilność i wydajność.</item>
+    </string-array>
+    <string-array name="changelog_1_2_1_notes">
+        <item>Poprawiono czas pracy baterii podczas nawigacji i nagrywania.</item>
+        <item>Automatyczna pauza jest domyślnie włączona.</item>
+        <item>Wydajniejsza obsługa GPS i kompasu.</item>
+        <item>Lepsze działanie przy wyłączonym ekranie lub nieaktywnym zegarku.</item>
+        <item>Bardziej niezawodny zapis śladu, dystansu i wysokości.</item>
+        <item>Usprawniono przywracanie GPS i użycie GPS zegarka po rozłączeniu telefonu.</item>
+        <item>Usprawniono wznawianie pobierania i rozpakowywania map offline.</item>
+        <item>Poprawiono powiększanie mapy, stabilność cieniowania, nawigację i sterowanie pokrętłem.</item>
+    </string-array>
+    <string-array name="changelog_1_2_0_notes">
+        <item>Dodano nagrywanie aktywności.</item>
+        <item>Dodano nawigację zakręt po zakręcie.</item>
+        <item>Dodano obsługę czujników zewnętrznych, w tym pasów tętna i czujników Stryd.</item>
+        <item>Dodano profile aktywności pieszej i rowerowej.</item>
+        <item>Poprawiono działanie GPS podczas nagrywania i nawigacji.</item>
+        <item>Poprawiono wydajność i responsywność mapy.</item>
+        <item>Poprawiono zużycie baterii, szczególnie podczas długiego nagrywania i nawigacji.</item>
+        <item>Poprawiono układ interfejsu.</item>
+    </string-array>
+    <string-array name="changelog_1_1_3_notes">
+        <item>Dodano tworzenie nagrywanych aktywności bezpośrednio na zegarku.</item>
+        <item>Dodano tworzenie nawigacji zakręt po zakręcie bezpośrednio na zegarku.</item>
+        <item>Dodano obsługę czujników zewnętrznych, w tym pasów tętna i czujników Stryd.</item>
+        <item>Dodano profile aktywności pieszej i rowerowej.</item>
+        <item>Poprawiono działanie GPS podczas nagrywania i nawigacji.</item>
+        <item>Poprawiono wydajność i responsywność mapy.</item>
+        <item>Poprawiono zużycie baterii, szczególnie podczas długiego nagrywania i nawigacji.</item>
+        <item>Poprawiono układ interfejsu.</item>
+    </string-array>
+    <string-array name="changelog_1_1_2_notes">
+        <item>Dodano opcję strzałki kierunku śladu GPX.</item>
+        <item>Dodano obsługę przycisku Wstecz na zgodnych zegarkach.</item>
+        <item>Dodano regulację położenia znacznika pozycji.</item>
+        <item>Przeprojektowano ikony, ustawienia i nawigację POI.</item>
+        <item>Dodano dane wysokościowe lepszej jakości.</item>
+        <item>Dodano eksport śladów GPX z zegarka na telefon.</item>
+        <item>Dodano POI Refuge.info do pakietów i poprawiono nawigację po pakietach.</item>
+        <item>Dodano krótkie poradniki POI, GPX i map oraz poprawiono baterię, stabilność i wydajność.</item>
+    </string-array>
+    <string-array name="changelog_1_1_0_notes">
+        <item>Naprawiono anulowanie pobierania i inne drobne problemy.</item>
+        <item>Dodano bezpośrednie pobieranie pakietów z zegarka.</item>
+        <item>Dodano nowy ekran główny.</item>
+        <item>Naprawiono problemy ze znacznikami i tworzeniem POI oraz poprawiono stabilność.</item>
+    </string-array>
+    <string-array name="changelog_1_0_5_notes">
+        <item>Naprawiono problemy z kompasem na zegarkach Samsung.</item>
+        <item>Poprawiono poziomy powiększenia dużych map.</item>
+        <item>Naprawiono problemy z pamięcią podręczną motywów.</item>
+        <item>Poprawiono układ na małych ekranach.</item>
+        <item>Dodano motyw OS Map.</item>
+        <item>Dodano skrót do motywu nocnego.</item>
+    </string-array>
+    <string-array name="changelog_1_0_4_notes">
+        <item>Naprawiono pobieranie danych DEM dla niektórych obszarów.</item>
+    </string-array>
+</resources>

@@ -1,5 +1,6 @@
 package com.glancemap.glancemapwearos.presentation.features.settings
 
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material.icons.Icons
@@ -372,9 +373,10 @@ private fun RecenterDelaySetting(
     ) {
         Text(
             stringResource(R.string.map_recenter_delay_seconds, internalValue.toInt()),
+            modifier = Modifier.basicMarquee(),
             style = MaterialTheme.typography.titleMedium,
             maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
+            overflow = TextOverflow.Visible,
         )
         Slider(
             value = internalValue,

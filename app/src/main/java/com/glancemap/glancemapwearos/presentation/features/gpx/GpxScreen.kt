@@ -538,6 +538,7 @@ fun GpxScreen(
                 profile = profile,
                 locationMarker = elevationProfileLocationMarker,
                 isMetric = isMetric,
+                trackColor = if (gpxTrackColor != 0) Color(gpxTrackColor) else colorResource(R.color.default_gpx_track),
                 onDismiss = gpxViewModel::dismissElevationProfile,
             )
         }

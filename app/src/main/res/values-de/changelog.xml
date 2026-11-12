@@ -1,0 +1,86 @@
+<resources>
+    <string name="changelog_title">Änderungsprotokoll</string>
+    <string-array name="changelog_1_3_0_notes">
+        <item>Französisch, Deutsch, Spanisch, Italienisch und Polnisch mit Sprachauswahl hinzugefügt.</item>
+        <item>Vollbild-Kartensteuerung und eine Verknüpfung zur automatischen Neuzentrierung hinzugefügt.</item>
+        <item>Experimentelles 3D-Gelände und ein Wanderthema hinzugefügt.</item>
+        <item>Unterstützung für vom Smartphone gesendete benutzerdefinierte Mapsforge-Themen hinzugefügt.</item>
+        <item>Aufzeichnungskontinuität, Umgang mit GPS-Lücken und Wiederherstellung der Sensoren verbessert.</item>
+        <item>Downloads und Entpackung von Offline-Karten verbessert.</item>
+    </string-array>
+
+    <string-array name="changelog_1_2_3_notes">
+        <item>Kartenstart, Darstellung und Navigation verbessert.</item>
+        <item>Kompassverhalten nach dem Aufwachen und bei magnetischen Störungen verbessert.</item>
+        <item>Flüssigere Kompassdrehung und Navigation.</item>
+        <item>Kartenposition bleibt beim Zurückkehren aus dem Menü erhalten.</item>
+        <item>Leistung von POI, GPX und Aufzeichnung verbessert.</item>
+        <item>Klarere Hinweise zu Start, Standort und fehlender aktiver Karte.</item>
+        <item>Kompatibilität mit älteren Wear-OS-Uhren mit Android 9 und 10 hinzugefügt.</item>
+    </string-array>
+    <string-array name="changelog_1_2_2_notes">
+        <item>Zuverlässigerer Kompass und Abbiegehinweise, auch nach Pausen.</item>
+        <item>Flüssigere Aufzeichnung und gleichmäßigere Distanz- und Geschwindigkeitswerte.</item>
+        <item>Zoomen per Zweifingergeste, Aktionen durch langes Drücken und klarerer Routenfortschritt.</item>
+        <item>Verbesserte Geländeverarbeitung und Höhenprofile mit Standortanzeige.</item>
+        <item>Zuverlässigere Übertragungen zwischen Uhr und Smartphone sowie Karten- und GPX-Ladevorgänge.</item>
+        <item>Stabilität und Leistung verbessert.</item>
+    </string-array>
+    <string-array name="changelog_1_2_1_notes">
+        <item>Akkulaufzeit bei Navigation und Aufzeichnung verbessert.</item>
+        <item>Automatische Pause ist standardmäßig aktiviert.</item>
+        <item>Effizientere GPS- und Kompassverarbeitung.</item>
+        <item>Verbessertes Verhalten bei ausgeschaltetem Display oder inaktiver Uhr.</item>
+        <item>Zuverlässigere Streckenaufzeichnung sowie Distanz- und Höhenwerte.</item>
+        <item>Verbesserte GPS-Wiederherstellung und Rückgriff auf Uhren-GPS bei Smartphone-Verbindungsverlust.</item>
+        <item>Wiederaufnahme von Offline-Kartendownloads und Entpackung verbessert.</item>
+        <item>Kartenzoom, Schummerungsstabilität, Abbiegenavigation und Drehsteuerung verbessert.</item>
+    </string-array>
+    <string-array name="changelog_1_2_0_notes">
+        <item>Aktivitätsaufzeichnung hinzugefügt.</item>
+        <item>Abbiegenavigation hinzugefügt.</item>
+        <item>Unterstützung externer Sensoren einschließlich Brustgurten und Stryd-Pods hinzugefügt.</item>
+        <item>Aktivitätsprofile Wandern und Radfahren hinzugefügt.</item>
+        <item>GPS-Verhalten bei Aufzeichnung und Navigation verbessert.</item>
+        <item>Leistung und Reaktionsfähigkeit der Karte verbessert.</item>
+        <item>Akkueffizienz besonders bei langen Aufzeichnungen und Navigation verbessert.</item>
+        <item>Oberflächenlayout verbessert.</item>
+    </string-array>
+    <string-array name="changelog_1_1_3_notes">
+        <item>Erstellung aufgezeichneter Aktivitäten direkt auf der Uhr hinzugefügt.</item>
+        <item>Erstellung von Abbiegenavigation direkt auf der Uhr hinzugefügt.</item>
+        <item>Unterstützung externer Sensoren einschließlich Brustgurten und Stryd-Pods hinzugefügt.</item>
+        <item>Aktivitätsprofile Wandern und Radfahren hinzugefügt.</item>
+        <item>GPS-Verhalten bei Aufzeichnung und Navigation verbessert.</item>
+        <item>Leistung und Reaktionsfähigkeit der Karte verbessert.</item>
+        <item>Akkueffizienz besonders bei langen Aufzeichnungen und Navigation verbessert.</item>
+        <item>Oberflächenlayout verbessert.</item>
+    </string-array>
+    <string-array name="changelog_1_1_2_notes">
+        <item>Option für einen GPX-Richtungspfeil hinzugefügt.</item>
+        <item>Zurück-Taste auf kompatiblen Uhren unterstützt.</item>
+        <item>Position des Standortmarkers einstellbar.</item>
+        <item>POI-Symbole, Einstellungen und Navigation überarbeitet.</item>
+        <item>Hochwertigere Höhendaten hinzugefügt.</item>
+        <item>GPX-Export von der Uhr zum Smartphone hinzugefügt.</item>
+        <item>Downloadpakete um Refuge.info-POIs ergänzt und Paketnavigation verbessert.</item>
+        <item>Kurzanleitungen für POI, GPX und Karten sowie Verbesserungen bei Akku, Stabilität und Leistung.</item>
+    </string-array>
+    <string-array name="changelog_1_1_0_notes">
+        <item>Download-Abbruch und weitere kleinere Probleme behoben.</item>
+        <item>Direkte Downloads von Paketen auf der Uhr hinzugefügt.</item>
+        <item>Neuer Startbildschirm hinzugefügt.</item>
+        <item>Marker- und POI-Erstellungsprobleme behoben und Stabilität verbessert.</item>
+    </string-array>
+    <string-array name="changelog_1_0_5_notes">
+        <item>Kompassprobleme auf Samsung-Uhren behoben.</item>
+        <item>Zoomstufen bei großen Karten korrigiert.</item>
+        <item>Probleme mit dem Themen-Cache behoben.</item>
+        <item>Layout auf kleinen Displays korrigiert.</item>
+        <item>OS-Map-Thema hinzugefügt.</item>
+        <item>Verknüpfung zum Nachtthema hinzugefügt.</item>
+    </string-array>
+    <string-array name="changelog_1_0_4_notes">
+        <item>DEM-Downloads für einige Gebiete korrigiert.</item>
+    </string-array>
+</resources>

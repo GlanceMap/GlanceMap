@@ -508,9 +508,10 @@ fun MapsScreen(
                         ) {
                             Text(
                                 text = pack.name,
+                                modifier = Modifier.basicMarquee(),
                                 style = MaterialTheme.typography.labelMedium,
                                 maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
+                                overflow = TextOverflow.Visible,
                             )
                             Text(
                                 text = formatRoutingStorageSize(pack.sizeBytes, resources = resources),
@@ -1251,15 +1252,17 @@ private fun DemQualityChoiceRow(
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = stringResource(source.displayNameRes),
+                    modifier = Modifier.basicMarquee(),
                     style = MaterialTheme.typography.labelMedium,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                    overflow = TextOverflow.Visible,
                 )
                 Text(
                     text = stringResource(source.detailLabelRes),
+                    modifier = Modifier.basicMarquee(),
                     style = MaterialTheme.typography.bodySmall,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                    overflow = TextOverflow.Visible,
                 )
             }
             if (selected) {
@@ -1289,16 +1292,18 @@ private fun DemStorageSummaryRow(
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = stringResource(source.displayNameRes),
+                modifier = Modifier.basicMarquee(),
                 style = MaterialTheme.typography.labelMedium,
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+                overflow = TextOverflow.Visible,
             )
             Text(
                 text = demTileSummary(files, resources = resources),
+                modifier = Modifier.basicMarquee(),
                 style = MaterialTheme.typography.bodySmall,
                 color = Color.White.copy(alpha = 0.68f),
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+                overflow = TextOverflow.Visible,
             )
         }
         if (files.isNotEmpty()) {
@@ -1331,17 +1336,18 @@ private fun DemMapCoverageRow(
     ) {
         Text(
             text = mapFile.name,
-            modifier = Modifier.weight(1f),
+            modifier = Modifier.weight(1f).basicMarquee(),
             style = MaterialTheme.typography.bodySmall,
             maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
+            overflow = TextOverflow.Visible,
         )
         Text(
             text = demMapCoverageLabel(mapFile, resources = resources),
+            modifier = Modifier.basicMarquee(),
             style = MaterialTheme.typography.bodySmall,
             color = demMapCoverageColor(mapFile),
             maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
+            overflow = TextOverflow.Visible,
         )
     }
 }

@@ -19,6 +19,11 @@ data class RecordedTracePoint(
     val barometricPressureHpa: Double? = null,
     val startsNewSegment: Boolean = false,
     val segmentStartReason: String? = null,
+    /**
+     * Distance counted across a GPS-gap segment boundary: the straight line, capped at a
+     * believable speed. Written on the first point of a `GPS_GAP` segment; pauses have none.
+     */
+    val gapDistanceMeters: Double? = null,
     val locationQuality: RecordedLocationQuality? = null,
     /** Internal fixed-lag provenance; it is not written to GPX. */
     val trajectoryFinalized: Boolean = false,
@@ -60,6 +65,7 @@ data class TraceRecordingUiState(
     val recordingMaxGapMillis: Long = 0L,
     val heartRateBpm: Int? = null,
     val heartRateFromBluetooth: Boolean = false,
+    val heartRateStatistics: RecordingHeartRateStatisticsState? = null,
     val externalSpeedMps: Float? = null,
     val externalRawDistanceUnits: Long? = null,
     val externalDistanceMeters: Double? = null,
@@ -108,6 +114,7 @@ internal fun TraceRecordingUiState.toRecordingPresentationState(): TraceRecordin
     copy(
         heartRateBpm = null,
         heartRateFromBluetooth = false,
+        heartRateStatistics = null,
         externalSpeedMps = null,
         externalRawDistanceUnits = null,
         externalDistanceMeters = null,
@@ -124,6 +131,17 @@ internal fun TraceRecordingUiState.toRecordingPresentationState(): TraceRecordin
         cadenceFromBluetooth = false,
         barometricPressureHpa = null,
     )
+
+internal fun recordingMeasurementWallTimeMillis(
+    nowWallMillis: Long,
+    nowElapsedMillis: Long,
+    measurementElapsedMillis: Long,
+): Long = (nowWallMillis - (nowElapsedMillis - measurementElapsedMillis).coerceAtLeast(0L)).coerceAtLeast(0L)
+
+internal fun TraceRecordingUiState.canCommitRecordingPoint(
+    capturedGeneration: Long,
+    currentGeneration: Long,
+): Boolean = active && !paused && !saving && capturedGeneration == currentGeneration
 
 internal fun effectiveAutoPauseStartMillis(
     state: TraceRecordingUiState,

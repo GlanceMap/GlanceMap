@@ -24,10 +24,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.rotary.onPreRotaryScrollEvent
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -38,12 +43,14 @@ import kotlin.math.abs
 private const val INFO_DIALOG_DRAG_DISMISS_PX = 55f
 
 @Composable
+@Suppress("LongParameterList")
 fun WearInfoDialog(
     visible: Boolean,
     title: String,
     onDismiss: () -> Unit,
     dismissible: Boolean = true,
     backgroundColor: Color = Color.Black.copy(alpha = 0.82f),
+    swipeDownToDismiss: Boolean = false,
     content: LazyListScope.() -> Unit,
 ) {
     if (!visible) return
@@ -51,6 +58,7 @@ fun WearInfoDialog(
     val adaptive = rememberWearAdaptiveSpec()
     val listState = rememberLazyListState()
     val focusRequester = remember { FocusRequester() }
+    val dismissScroll = rememberInfoDismissScrollConnection(if (dismissible && swipeDownToDismiss) onDismiss else null)
     LaunchedEffect(visible, title) {
         focusRequester.requestFocus()
     }
@@ -73,6 +81,7 @@ fun WearInfoDialog(
                 modifier =
                     Modifier
                         .fillMaxSize()
+                        .nestedScroll(dismissScroll)
                         .onPreRotaryScrollEvent { event ->
                             val consumed = listState.dispatchRawDelta(event.verticalScrollPixels)
                             abs(consumed) > 0.5f
@@ -113,6 +122,37 @@ fun WearInfoDialog(
         }
     }
 }
+
+@Composable
+private fun rememberInfoDismissScrollConnection(onDismiss: (() -> Unit)?): NestedScrollConnection =
+    remember(onDismiss) {
+        object : NestedScrollConnection {
+            var drag = 0f
+
+            override fun onPostScroll(
+                consumed: Offset,
+                available: Offset,
+                source: NestedScrollSource,
+            ): Offset {
+                if (source == NestedScrollSource.UserInput && onDismiss != null) {
+                    drag = (drag + available.y).coerceAtLeast(0f)
+                    if (drag > INFO_DIALOG_DRAG_DISMISS_PX) {
+                        drag = 0f
+                        onDismiss()
+                    }
+                }
+                return Offset.Zero
+            }
+
+            override suspend fun onPostFling(
+                consumed: Velocity,
+                available: Velocity,
+            ): Velocity {
+                drag = 0f
+                return Velocity.Zero
+            }
+        }
+    }
 
 @Composable
 fun WearInfoText(

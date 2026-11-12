@@ -208,15 +208,18 @@ class MapFocusModeUiTest {
     }
 
     @Test
-    fun existingDashboardTakesOverAndEndsFocusWithoutChangingDashboardState() {
+    fun existingDashboardTakesOverWithoutEndingFocus() {
         launch()
         enterFocus()
         composeRule.runOnIdle { dashboardFullscreen = true }
         composeRule.runOnIdle {
-            assertFalse(focus.mapFocusMode)
+            assertTrue(focus.mapFocusMode)
             assertTrue(dashboardFullscreen)
         }
         composeRule.onNodeWithContentDescription("Exit full screen").assertDoesNotExist()
+        composeRule.runOnIdle { dashboardFullscreen = false }
+        composeRule.runOnIdle { assertTrue(focus.mapFocusMode) }
+        composeRule.onNodeWithContentDescription("Exit full screen").assertIsDisplayed()
     }
 
     @Test
@@ -384,7 +387,7 @@ class MapFocusModeUiTest {
             withWearDeviceConfig(config) {
                 GlanceMapTheme {
                     TestBackHandler()
-                    MapFocusModeEffects(focus, dashboardFullscreen) { focus.exit() }
+                    MapFocusModeEffects(focus)
                     Box(Modifier.fillMaxSize().testTag("map_focus_test_surface")) {
                         val chrome =
                             mapFocusChromePolicy(focus.mapFocusMode, dashboardFullscreen, visibleControls, toolsAvailable)

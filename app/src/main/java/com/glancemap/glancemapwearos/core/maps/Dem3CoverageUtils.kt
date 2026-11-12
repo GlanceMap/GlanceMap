@@ -244,7 +244,7 @@ object Dem3CoverageUtils {
             tileFileCandidates(demRoot, tileId)
         }
 
-    private fun tileFileCandidates(
+    internal fun tileFileCandidates(
         demRoot: File,
         tileId: String,
     ): List<File> {

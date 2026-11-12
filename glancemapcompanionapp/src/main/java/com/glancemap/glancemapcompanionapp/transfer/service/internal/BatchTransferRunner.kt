@@ -23,6 +23,8 @@ import com.glancemap.glancemapcompanionapp.transfer.strategy.TransferMetadata
 import com.glancemap.glancemapcompanionapp.transfer.strategy.TransferResult
 import com.glancemap.glancemapcompanionapp.transfer.strategy.TransferStrategy
 import com.glancemap.glancemapcompanionapp.transfer.util.NotificationHelper
+import com.glancemap.glancemapcompanionapp.transfer.util.Sha256Options
+import com.glancemap.glancemapcompanionapp.transfer.util.Sha256TransferUtils
 import com.glancemap.glancemapcompanionapp.transfer.util.TransferUtils
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -398,23 +400,27 @@ internal class BatchTransferRunner(
                             (index.toFloat() / n.toFloat()).coerceIn(0f, 1f),
                             "$prefix\nPreparing checksum…",
                         )
-                        TransferUtils.computeSha256Cached(
+                        Sha256TransferUtils.computeSha256Cached(
                             context = context,
                             uri = item.uri,
                             knownDisplayName = item.displayName,
-                            knownSize = item.size,
-                            awaitIfPaused = { awaitIfPaused() },
-                            onProgress = { hashProgress, hashText ->
-                                val p = hashProgress.coerceIn(0f, 1f)
-                                val overall =
-                                    (
-                                        index.toFloat() + (hashPhaseWeight * p)
-                                    ) / n.toFloat()
-                                uiUpdater.update(
-                                    overall.coerceIn(0f, 1f),
-                                    "$prefix\n$hashText",
-                                )
-                            },
+                            hashOptions =
+                                Sha256Options(
+                                    knownSize = item.size,
+                                    awaitIfPaused = { awaitIfPaused() },
+                                    onProgress = { hashProgress, hashText ->
+                                        val p = hashProgress.coerceIn(0f, 1f)
+                                        val overall =
+                                            (
+                                                index.toFloat() + (hashPhaseWeight * p)
+                                            ) / n.toFloat()
+                                        uiUpdater.update(
+                                            overall.coerceIn(0f, 1f),
+                                            "$prefix\n$hashText",
+                                        )
+                                    },
+                                    diagnosticContext = "transferId=$transferId file=$safeFileName",
+                                ),
                         ) ?: throw IllegalStateException("Failed to compute SHA-256 for ${item.displayName}")
                     }
 

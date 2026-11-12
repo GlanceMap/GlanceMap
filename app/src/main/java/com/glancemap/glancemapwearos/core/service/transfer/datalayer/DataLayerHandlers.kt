@@ -34,5 +34,5 @@ internal class DataLayerHandlers(
         messageHandler.handleMessage(messageEvent)
     }
 
-    fun popChannelChecksum(transferId: String): String? = messageHandler.popChannelChecksum(transferId)
+    fun popChannelMetadata(transferId: String): ChannelPrewarmMetadata? = messageHandler.popChannelMetadata(transferId)
 }

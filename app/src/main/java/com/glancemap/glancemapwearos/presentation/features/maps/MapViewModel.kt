@@ -227,6 +227,11 @@ internal fun shouldForceOfflineStartCenterForContext(
         else -> hasActiveGpx && appliedContextKey != contextKey
     }
 
+internal fun shouldClearFailedMapSelection(
+    failedPath: String,
+    selectedPath: String?,
+): Boolean = failedPath.isNotBlank() && failedPath == selectedPath
+
 class MapViewModel(
     private val context: Context,
     private val settingsRepository: SettingsRepository,
@@ -443,7 +448,7 @@ class MapViewModel(
 
         val renderer =
             MapHotPathDiagnostics.measure(stage = "mapViewModel.createMapRenderer") {
-                MapRenderer(appContext, mv)
+                MapRenderer(appContext, mv, onMapFileOpenFailed = ::handleMapFileOpenFailure)
             }
         val holder = MapHolder(mv, renderer)
 
@@ -761,6 +766,14 @@ class MapViewModel(
         }
         requestRendererConfigApply()
         schedulePendingRendererWorkIfReady()
+    }
+
+    private fun handleMapFileOpenFailure(failedPath: String) {
+        viewModelScope.launch {
+            if (shouldClearFailedMapSelection(failedPath, selectedMapPath.value)) {
+                settingsRepository.setSelectedMapPath(null)
+            }
+        }
     }
 
     fun recordCompletedZoomChange(
