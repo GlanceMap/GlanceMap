@@ -93,6 +93,17 @@ class FrenchFallbackTest(unittest.TestCase):
         self.assertIn("1 strings, 0 plurals", self.audit())
         self.assertIn("Enregistrer", (self.report / "length-audit.csv").read_text())
 
+    def test_english_entries_in_other_xml_files_are_checked(self):
+        (self.res / "values/changelog.xml").write_text('<resources><string name="changelog_title">Changelog</string></resources>')
+        (self.target.parent / "changelog.xml").write_text('<resources><string name="changelog_title">Historique</string></resources>')
+        self.assertIn("2 strings, 0 plurals", self.audit())
+        self.assertIn("Historique", (self.report / "length-audit.csv").read_text())
+
+    def test_duplicate_english_entries_across_xml_files_fail(self):
+        (self.res / "values/other.xml").write_text('<resources><string name="save">Save</string></resources>')
+        with self.assertRaisesRegex(AssertionError, "Duplicate English resource"):
+            self.audit()
+
     def test_duplicate_french_entries_across_xml_files_fail(self):
         (self.target.parent / "actions.xml").write_text('<resources><string name="save">Enregistrer</string></resources>')
         with self.assertRaisesRegex(AssertionError, "Duplicate French resource"):

@@ -62,7 +62,11 @@ def run(report_dir):
     assert arguments("%1$d") != arguments("%1$s")
     assert arguments("%1$.1f") != arguments("%1$.2f")
     assert text(ET.fromstring('<string>" a\\nb "</string>')) == " a\nb "
-    base = load(ROOT / "app/src/main/res/values/strings.xml")
+    base = {}
+    for path in sorted((ROOT / "app/src/main/res/values").glob("*.xml")):
+        entries = load(path)
+        assert not base.keys() & entries.keys(), f"Duplicate English resource across files: {path}"
+        base.update(entries)
     english = {name: e for name, e in base.items() if e.get("translatable") != "false"}
     french = {}
     for path in sorted((ROOT / "app/src/main/res/values-fr").glob("*.xml")):
