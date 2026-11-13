@@ -132,7 +132,14 @@ def run(report_dir):
         for pattern in (r"https?://[^\s" + TICK + "]+", TICK + "([^" + TICK + "]+)" + TICK, r"\b20\d{2}-\d{2}-\d{2}\b", r"\b[a-f0-9]{64}\b"):
             assert Counter(re.findall(pattern, en)) == Counter(re.findall(pattern, fr)), (name, pattern)
         assert re.findall(r"(?m)^(#+) ", en) == re.findall(r"(?m)^(#+) ", fr), (name, "heading structure")
-        prose = re.sub(TICK + "[^" + TICK + "]+" + TICK + r"|https?://\S+", "", fr)
+        if name == "legal_third_party_notices.md":
+            marker = "### Apache License 2.0\n"
+            _, en_licenses = en.split(marker, 1)
+            fr_prose, fr_licenses = fr.split(marker, 1)
+            assert en_licenses == fr_licenses, (name, "verbatim licence texts")
+        else:
+            fr_prose = fr
+        prose = re.sub(TICK + "[^" + TICK + "]+" + TICK + r"|https?://\S+", "", fr_prose)
         assert not re.search(r"\b(?:the|with|without|from|Last reviewed|Last updated)\b", prose.replace("AI and the Commons", "")), name
     if report_dir:
         report_dir.mkdir(parents=True, exist_ok=True)

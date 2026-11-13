@@ -91,8 +91,8 @@ Voir `AI_ACKNOWLEDGEMENT.md` pour la déclaration complète et les références 
 
 ## WorldWind Kotlin
 
-WorldWind Community Edition contributors — 3D globe and terrain rendering.
+Contributeurs de WorldWind Community Edition — rendu 3D du globe et du terrain.
 https://github.com/WorldWindEarth/WorldWindKotlin
 
-NASA Blue Marble Next Generation — bundled low-resolution globe background.
+NASA Blue Marble Next Generation — fond de globe intégré en basse résolution.
 https://earthobservatory.nasa.gov/features/BlueMarble

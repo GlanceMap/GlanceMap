@@ -17,7 +17,7 @@ Ce document couvre les logiciels et ressources libres utilisés par l’appli mo
 | Gson | `com.google.code.gson:gson` | Apache License 2.0 | https://github.com/google/gson |
 | Accompanist | `com.google.accompanist:*` | Apache License 2.0 | https://github.com/google/accompanist |
 | AndroidSVG | `com.caverock:androidsvg` | Apache License 2.0 | https://github.com/BigBadaboom/androidsvg |
-| WorldWind Kotlin | `earth.worldwind:worldwind:2.1.1`, `earth.worldwind:worldwind-assets:1.0.0` | Apache License 2.0; bundled GLU code includes the licence below | https://github.com/WorldWindEarth/WorldWindKotlin |
+| WorldWind Kotlin | `earth.worldwind:worldwind:2.1.1`, `earth.worldwind:worldwind-assets:1.0.0` | Apache License 2.0 ; le code GLU intégré comprend la licence ci-dessous | https://github.com/WorldWindEarth/WorldWindKotlin |
 | Mapsforge | `com.github.mapsforge.mapsforge:*` (`mapsforge-map`, `mapsforge-map-android`, `mapsforge-themes`, etc.) | LGPL-3.0-or-later (avec dérogation annoncée par Mapsforge pour liaison statique/œuvres dérivées dans le README) | https://github.com/mapsforge/mapsforge |
 | MapLibre Native Android | `org.maplibre.gl:*` (`android-sdk`, `android-sdk-geojson`, `android-sdk-turf`, `maplibre-android-gestures`) | BSD 2-Clause License | https://github.com/maplibre/maplibre-native |
 | BRouter | Modules intégrés `:brouter-core`, `:brouter-codec`, `:brouter-expressions`, `:brouter-mapaccess`, `:brouter-util` de `third_party/brouter/*` | MIT License | https://github.com/abrensch/brouter |

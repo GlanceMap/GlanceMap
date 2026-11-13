@@ -116,6 +116,23 @@ class FrenchFallbackTest(unittest.TestCase):
             with self.subTest(name=name):
                 self.assertEqual(1, len((self.report / name).read_text().splitlines()))
 
+    def test_french_notices_preserve_verbatim_licences_and_check_prose(self):
+        for directory in ("raw", "raw-fr"):
+            (self.res / directory).mkdir()
+        name = "legal_third_party_notices.md"
+        marker = "### Apache License 2.0\n"
+        english = self.res / "raw" / name
+        french = self.res / "raw-fr" / name
+        english.write_text("# Notices\nEnglish text\n" + marker + "the original licence\n")
+        french.write_text("# Mentions\nTexte français\n" + marker + "the original licence\n")
+        self.audit()
+        french.write_text("# Mentions\nTexte français\n" + marker + "the changed licence\n")
+        with self.assertRaisesRegex(AssertionError, "verbatim licence texts"):
+            self.audit()
+        french.write_text("# Mentions\nthe untranslated text\n" + marker + "the original licence\n")
+        with self.assertRaises(AssertionError):
+            self.audit()
+
 
 class LocaleDiscoveryTest(unittest.TestCase):
     def test_configuration_qualifiers_are_not_languages(self):
