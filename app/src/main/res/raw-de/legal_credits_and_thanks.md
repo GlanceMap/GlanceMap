@@ -88,3 +88,11 @@ Projektposition:
 - Wir bieten projektbezogene Quellenangaben und Quellenlinks in diesem Lizenzabschnitt.
 
 Vollständige Erklärung und Gemeinschaftsverweise in `AI_ACKNOWLEDGEMENT.md`.
+
+## WorldWind Kotlin
+
+WorldWind Community Edition contributors — 3D globe and terrain rendering.
+https://github.com/WorldWindEarth/WorldWindKotlin
+
+NASA Blue Marble Next Generation — bundled low-resolution globe background.
+https://earthobservatory.nasa.gov/features/BlueMarble
