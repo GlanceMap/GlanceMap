@@ -137,5 +137,6 @@ References: [GPX 1.1](https://www.topografix.com/GPX/1/1/),
 Recording heart-rate permissions are selected by device API: `BODY_SENSORS` through API 35,
 `android.permission.health.READ_HEART_RATE` on API 36+. Request, registration, and diagnostic
 grant checks share the same selector. Legacy manifest declarations are capped at API 35, with
-the corresponding granular foreground/background health permissions declared for newer devices.
+the granular heart-rate permission declared for newer devices. Background sensor permissions are
+not requested; recording uses a user-started foreground service.
 Physical-device checks must cover actual permission grants and screen-off sensor callbacks.
