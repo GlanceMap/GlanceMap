@@ -4,6 +4,7 @@ enum class AppLanguage(
     val tag: String,
 ) {
     SYSTEM(""),
+    CHINESE("zh"),
     ENGLISH("en"),
     SPANISH("es"),
     FRENCH("fr"),

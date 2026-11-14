@@ -5,12 +5,14 @@ import com.glancemap.glancemapcompanionapp.transfer.strategy.ChannelClientStrate
 import com.glancemap.glancemapcompanionapp.transfer.strategy.HttpTransferServer
 import com.glancemap.glancemapcompanionapp.transfer.strategy.MessageClientStrategy
 import com.glancemap.glancemapcompanionapp.transfer.strategy.TransferStrategy
+import com.glancemap.glancemapcompanionapp.transfer.strategy.WifiUploadStrategy
 import com.glancemap.glancemapcompanionapp.transfer.util.TransferUtils
 
 enum class TransferStrategyKind {
     MESSAGE,
     CHANNEL,
     HTTP,
+    WIFI_UPLOAD,
 }
 
 data class TransferSelectionContext(
@@ -91,6 +93,7 @@ object TransferStrategyFactory {
             TransferStrategyKind.MESSAGE -> MessageClientStrategy()
             TransferStrategyKind.CHANNEL -> ChannelClientStrategy()
             TransferStrategyKind.HTTP -> HttpTransferServer()
+            TransferStrategyKind.WIFI_UPLOAD -> WifiUploadStrategy()
         }
 
     fun create(
@@ -105,7 +108,10 @@ object TransferStrategyFactory {
 
     fun isSharedHttpBatchEligible(totalSizeBytes: Long): Boolean = totalSizeBytes >= SHARED_HTTP_BATCH_MIN_BYTES
 
-    fun usesWifi(kind: TransferStrategyKind): Boolean = kind == TransferStrategyKind.HTTP
+    fun usesWifi(kind: TransferStrategyKind): Boolean {
+        val isWifiUpload = kind == TransferStrategyKind.HTTP || kind == TransferStrategyKind.WIFI_UPLOAD
+        return isWifiUpload
+    }
 
     /**
      * Do we require Wi-Fi for this size?

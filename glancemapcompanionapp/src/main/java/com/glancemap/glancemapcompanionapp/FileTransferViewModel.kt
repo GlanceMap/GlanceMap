@@ -292,7 +292,12 @@ class FileTransferViewModel : ViewModel() {
         uris: List<Uri>,
     ) {
         if (isTransferInProgress()) {
-            Toast.makeText(context, "Transfer in progress. Please wait or cancel.", Toast.LENGTH_SHORT).show()
+            Toast
+                .makeText(
+                    context,
+                    context.getString(R.string.transfer_status_in_progress),
+                    Toast.LENGTH_SHORT,
+                ).show()
             return
         }
         if (uris.isEmpty()) return
@@ -498,6 +503,15 @@ class FileTransferViewModel : ViewModel() {
             _watchInstalledMapsStatusMessage.value = null
             return
         }
+        if (com.glancemap.glancemapcompanionapp.transfer.wifi.WifiWatchEndpoint
+                .parse(selectedWatch.id) != null
+        ) {
+            pendingWatchMapsRefresh = false
+            _watchInstalledMaps.value = emptyList()
+            _watchInstalledCoverageAreas.value = emptyList()
+            _watchInstalledMapsStatusMessage.value = null
+            return
+        }
         if (!isSelectedWatchReachable(selectedWatch, _uiState.value.availableWatches)) {
             pendingWatchMapsRefresh = false
             _watchInstalledMaps.value = emptyList()
@@ -513,7 +527,12 @@ class FileTransferViewModel : ViewModel() {
         if (!isBound || service == null) {
             pendingWatchMapsRefresh = true
             if (showToastIfUnavailable) {
-                Toast.makeText(context, "Connect to watch first.", Toast.LENGTH_SHORT).show()
+                Toast
+                    .makeText(
+                        context,
+                        context.getString(R.string.transfer_status_connect_watch),
+                        Toast.LENGTH_SHORT,
+                    ).show()
             }
             return
         }
@@ -798,7 +817,12 @@ class FileTransferViewModel : ViewModel() {
             return
         }
         if (_uiState.value.isTransferring || _uiState.value.isPaused) {
-            Toast.makeText(context, "Transfer in progress. Please wait or cancel.", Toast.LENGTH_SHORT).show()
+            Toast
+                .makeText(
+                    context,
+                    context.getString(R.string.transfer_status_in_progress),
+                    Toast.LENGTH_SHORT,
+                ).show()
             return
         }
 
@@ -941,7 +965,12 @@ class FileTransferViewModel : ViewModel() {
             return
         }
         if (_uiState.value.isTransferring || _uiState.value.isPaused) {
-            Toast.makeText(context, "Transfer in progress. Please wait or cancel.", Toast.LENGTH_SHORT).show()
+            Toast
+                .makeText(
+                    context,
+                    context.getString(R.string.transfer_status_in_progress),
+                    Toast.LENGTH_SHORT,
+                ).show()
             return
         }
 

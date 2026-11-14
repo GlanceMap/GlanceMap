@@ -39,6 +39,7 @@ internal fun AppLanguagePickerRow(
         options =
             listOf(
                 AppLanguage.SYSTEM to stringResource(R.string.settings_language_system),
+                AppLanguage.CHINESE to stringResource(R.string.language_chinese),
                 AppLanguage.ENGLISH to stringResource(R.string.language_english),
                 AppLanguage.SPANISH to stringResource(R.string.language_spanish),
                 AppLanguage.FRENCH to stringResource(R.string.language_french),

@@ -7,6 +7,7 @@ class AppLanguageTest {
     @Test
     fun onlySupportedLanguageTagsAreRestored() {
         assertEquals(AppLanguage.ENGLISH, AppLanguage.fromTag("en"))
+        assertEquals(AppLanguage.CHINESE, AppLanguage.fromTag("zh"))
         assertEquals(AppLanguage.FRENCH, AppLanguage.fromTag("fr"))
         assertEquals(AppLanguage.SPANISH, AppLanguage.fromTag("es"))
         assertEquals(AppLanguage.GERMAN, AppLanguage.fromTag("de"))
@@ -21,11 +22,12 @@ class AppLanguageTest {
     fun systemChoiceClearsTheLocaleOverride() {
         assertEquals("", AppLanguage.SYSTEM.tag)
         assertEquals("en", AppLanguage.ENGLISH.tag)
+        assertEquals("zh", AppLanguage.CHINESE.tag)
         assertEquals("fr", AppLanguage.FRENCH.tag)
         assertEquals("es", AppLanguage.SPANISH.tag)
         assertEquals("de", AppLanguage.GERMAN.tag)
         assertEquals("it", AppLanguage.ITALIAN.tag)
         assertEquals("pl", AppLanguage.POLISH.tag)
-        assertEquals(setOf("", "en", "es", "fr", "de", "it", "pl"), AppLanguage.entries.map { it.tag }.toSet())
+        assertEquals(setOf("", "en", "zh", "es", "fr", "de", "it", "pl"), AppLanguage.entries.map { it.tag }.toSet())
     }
 }

@@ -9,6 +9,7 @@ import android.os.SystemClock
 import android.util.Log
 import com.glancemap.glancemapcompanionapp.FileTransferHistoryItem
 import com.glancemap.glancemapcompanionapp.FileTransferUiState
+import com.glancemap.glancemapcompanionapp.R
 import com.glancemap.glancemapcompanionapp.WatchNode
 import com.glancemap.glancemapcompanionapp.diagnostics.PhoneTransferDiagnostics
 import com.glancemap.glancemapcompanionapp.transfer.FileExistenceChecker
@@ -22,10 +23,12 @@ import com.glancemap.glancemapcompanionapp.transfer.strategy.HttpTransferServer
 import com.glancemap.glancemapcompanionapp.transfer.strategy.TransferMetadata
 import com.glancemap.glancemapcompanionapp.transfer.strategy.TransferResult
 import com.glancemap.glancemapcompanionapp.transfer.strategy.TransferStrategy
+import com.glancemap.glancemapcompanionapp.transfer.strategy.WifiUploadStrategy
 import com.glancemap.glancemapcompanionapp.transfer.util.NotificationHelper
 import com.glancemap.glancemapcompanionapp.transfer.util.Sha256Options
 import com.glancemap.glancemapcompanionapp.transfer.util.Sha256TransferUtils
 import com.glancemap.glancemapcompanionapp.transfer.util.TransferUtils
+import com.glancemap.glancemapcompanionapp.transfer.wifi.WifiWatchEndpoint
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.delay
@@ -76,15 +79,21 @@ internal class BatchTransferRunner(
         skippedCount: Int,
     ) {
         if (supportedItems.isEmpty()) {
-            clearSelectedFiles(statusMessage = "No compatible files selected (.gpx, .map, .poi, .rd5, .hgt, .hgt.gz).")
+            clearSelectedFiles(
+                statusMessage = context.getString(R.string.transfer_status_no_compatible_files),
+            )
             return
         }
 
         val status =
             if (skippedCount > 0) {
-                "Selected ${supportedItems.size} file(s); skipped $skippedCount unsupported."
+                context.getString(
+                    R.string.transfer_status_selected_files_skipped,
+                    supportedItems.size,
+                    skippedCount,
+                )
             } else {
-                "Selected ${supportedItems.size} file(s)"
+                context.getString(R.string.transfer_status_selected_files, supportedItems.size)
             }
 
         uiState.update {
@@ -121,6 +130,8 @@ internal class BatchTransferRunner(
     ) {
         val batchStartMs = SystemClock.elapsedRealtime()
         val batchId = UUID.randomUUID().toString()
+        val wifiEndpoint = WifiWatchEndpoint.parse(targetNode.id)
+        Log.d(TAG, "Batch target id=${targetNode.id} wifi=${wifiEndpoint != null}")
         paused.set(false)
         cancelRequested.set(false)
         httpPauseRequested.set(false)
@@ -140,9 +151,9 @@ internal class BatchTransferRunner(
                 isPaused = false,
                 canResume = false,
                 pauseReason = "",
-                statusMessage = "Preparing…",
+                statusMessage = context.getString(R.string.transfer_status_preparing),
                 progress = 0f,
-                progressText = "Starting…",
+                progressText = context.getString(R.string.transfer_status_starting),
             )
         }
         notificationHelper.startForeground("Preparing…")
@@ -154,14 +165,26 @@ internal class BatchTransferRunner(
             "Batch",
             "Built ${items.size} item(s) in ${SystemClock.elapsedRealtime() - buildStartMs}ms",
         )
-        uiUpdater.update(0f, "Checking existing files on watch…")
+        uiUpdater.update(0f, context.getString(R.string.transfer_status_checking_existing))
 
         val preflightStartMs = SystemClock.elapsedRealtime()
-        val (conflicts, itemsToTransfer) =
-            preflightFilterExistingFiles(
-                nodeId = targetNode.id,
-                items = items,
-            )
+        val (conflicts, itemsToTransfer, nonGpxSkipped) =
+            if (wifiEndpoint != null) {
+                val (gpxItems, otherItems) =
+                    items.partition { it.displayName.endsWith(".gpx", ignoreCase = true) }
+                Triple<List<FileItem>, List<FileItem>, List<FileItem>>(emptyList(), gpxItems, otherItems)
+            } else {
+                val (existingConflicts, toTransfer) =
+                    preflightFilterExistingFiles(
+                        nodeId = targetNode.id,
+                        items = items,
+                    )
+                Triple<List<FileItem>, List<FileItem>, List<FileItem>>(
+                    existingConflicts,
+                    toTransfer,
+                    emptyList(),
+                )
+            }
         Log.d(
             TAG,
             "Preflight finished in ${SystemClock.elapsedRealtime() - preflightStartMs}ms " +
@@ -175,17 +198,43 @@ internal class BatchTransferRunner(
         if (conflicts.isNotEmpty()) {
             val skippedHistory =
                 conflicts.map {
-                    FileTransferHistoryItem(nextHistoryId(), it.displayName, "Skipped (already exists)", false)
+                    FileTransferHistoryItem(
+                        nextHistoryId(),
+                        it.displayName,
+                        context.getString(R.string.transfer_status_skipped_exists),
+                        false,
+                    )
                 }
             addHistoryItems(skippedHistory)
         }
 
+        if (nonGpxSkipped.isNotEmpty()) {
+            addHistoryItems(
+                nonGpxSkipped.map {
+                    FileTransferHistoryItem(
+                        nextHistoryId(),
+                        it.displayName,
+                        context.getString(R.string.transfer_wifi_skipped_non_gpx),
+                        false,
+                    )
+                },
+            )
+        }
+
         if (itemsToTransfer.isEmpty()) {
             val msg =
-                if (conflicts.size == 1) {
-                    "'${conflicts.first().displayName}' already exists on the watch. Nothing to transfer."
+                if (wifiEndpoint != null && nonGpxSkipped.isNotEmpty()) {
+                    context.getString(R.string.transfer_wifi_gpx_only)
+                } else if (conflicts.size == 1) {
+                    context.getString(
+                        R.string.transfer_status_already_exists_one,
+                        conflicts.first().displayName,
+                    )
                 } else {
-                    "${conflicts.size} files already exist on the watch. Nothing to transfer."
+                    context.getString(
+                        R.string.transfer_status_already_exists_many,
+                        conflicts.size,
+                    )
                 }
 
             uiState.update {
@@ -202,14 +251,22 @@ internal class BatchTransferRunner(
             notificationHelper.cancelForeground()
             PhoneTransferDiagnostics.log(
                 "Batch",
-                "event=batch_complete batchId=$batchId sent=0 skipped=${conflicts.size} " +
+                "event=batch_complete batchId=$batchId sent=0 skipped=${conflicts.size + nonGpxSkipped.size} " +
                     "durationMs=${SystemClock.elapsedRealtime() - batchStartMs}",
             )
             return
         }
 
-        if (conflicts.isNotEmpty()) {
-            uiUpdater.update(0f, "Skipped ${conflicts.size} file(s) already on watch. Transferring ${itemsToTransfer.size}…")
+        val skippedTotal = conflicts.size + nonGpxSkipped.size
+        if (skippedTotal > 0) {
+            uiUpdater.update(
+                0f,
+                context.getString(
+                    R.string.transfer_status_skipped_count,
+                    skippedTotal,
+                    itemsToTransfer.size,
+                ),
+            )
         }
 
         var selectionContext =
@@ -217,20 +274,36 @@ internal class BatchTransferRunner(
                 context = context,
                 totalSizesBytes = itemsToTransfer.map { it.size },
             )
+        if (wifiEndpoint != null) {
+            if (TransferUtils.getWifiIpAddress(context).isNullOrBlank()) {
+                throw IllegalStateException(context.getString(R.string.transfer_wifi_required))
+            }
+            selectionContext =
+                selectionContext.copy(
+                    wifiAvailable = true,
+                    preferSharedHttpForBatch = false,
+                )
+        }
         var watchWifiStatus: WatchWifiStatus? = null
         val initialTransferPlans =
             itemsToTransfer.map { item ->
                 PlannedTransfer(
                     item = item,
-                    strategyKind = strategyFactory.decide(item.size, selectionContext),
+                    strategyKind =
+                        if (wifiEndpoint != null) {
+                            TransferStrategyKind.WIFI_UPLOAD
+                        } else {
+                            strategyFactory.decide(item.size, selectionContext)
+                        },
                 )
             }
 
         if (
+            wifiEndpoint == null &&
             selectionContext.wifiAvailable &&
             initialTransferPlans.any { TransferStrategyFactory.usesWifi(it.strategyKind) }
         ) {
-            uiUpdater.update(0f, "Checking watch Wi-Fi…")
+            uiUpdater.update(0f, context.getString(R.string.transfer_status_checking_watch_wifi))
             watchWifiStatus = wifiStatusChecker.check(targetNode.id)
             when {
                 watchWifiStatus == null -> {
@@ -250,7 +323,10 @@ internal class BatchTransferRunner(
                             wifiAvailable = false,
                             preferSharedHttpForBatch = false,
                         )
-                    uiUpdater.update(0f, "Watch Wi-Fi is off. Using Bluetooth when possible…")
+                    uiUpdater.update(
+                        0f,
+                        context.getString(R.string.transfer_status_watch_wifi_off),
+                    )
                 }
 
                 else -> {
@@ -266,7 +342,12 @@ internal class BatchTransferRunner(
             itemsToTransfer.map { item ->
                 PlannedTransfer(
                     item = item,
-                    strategyKind = strategyFactory.decide(item.size, selectionContext),
+                    strategyKind =
+                        if (wifiEndpoint != null) {
+                            TransferStrategyKind.WIFI_UPLOAD
+                        } else {
+                            strategyFactory.decide(item.size, selectionContext)
+                        },
                 )
             }
         val strategyCounts = transferPlans.groupingBy { it.strategyKind }.eachCount()
@@ -318,7 +399,7 @@ internal class BatchTransferRunner(
             for ((index, plan) in transferPlans.withIndex()) {
                 val item = plan.item
                 val n = transferPlans.size
-                val prefix = "File ${index + 1}/$n: ${item.displayName}"
+                val prefix = context.getString(R.string.transfer_file_prefix, index + 1, n, item.displayName)
                 val fileStartMs = SystemClock.elapsedRealtime()
                 val effectiveStrategyKind =
                     if (
@@ -343,10 +424,13 @@ internal class BatchTransferRunner(
                                 sharedHttpStrategyRef = it
                             }
 
+                        TransferStrategyKind.WIFI_UPLOAD -> WifiUploadStrategy()
                         else -> strategyFactory.create(effectiveStrategyKind)
                     }
                 val strategyReason =
                     when {
+                        wifiEndpoint != null ->
+                            "wifi-watch→WIFI_UPLOAD"
                         effectiveStrategyKind != plan.strategyKind ->
                             "override=preferChannelForRemainingBatch plannedWas=${plan.strategyKind}"
                         item.size <= 0L ->
@@ -387,6 +471,7 @@ internal class BatchTransferRunner(
                     when {
                         effectiveStrategyKind == TransferStrategyKind.HTTP && isMapLikeFile -> 0.12f
                         effectiveStrategyKind == TransferStrategyKind.HTTP -> 0.05f
+                        effectiveStrategyKind == TransferStrategyKind.WIFI_UPLOAD -> 0.05f
                         effectiveStrategyKind == TransferStrategyKind.MESSAGE -> 0f // in-memory, instant
                         else -> 0.03f // Channel: small files, fast hash
                     }
@@ -398,7 +483,7 @@ internal class BatchTransferRunner(
                     } else {
                         uiUpdater.update(
                             (index.toFloat() / n.toFloat()).coerceIn(0f, 1f),
-                            "$prefix\nPreparing checksum…",
+                            "$prefix\n${context.getString(R.string.transfer_status_preparing_checksum)}",
                         )
                         Sha256TransferUtils.computeSha256Cached(
                             context = context,
@@ -442,7 +527,7 @@ internal class BatchTransferRunner(
                     uiUpdater.update(
                         p,
                         "$prefix\n$text",
-                        isActiveTransferProgress = text.startsWith("HTTP:"),
+                        isActiveTransferProgress = text.startsWith("HTTP:") || text.startsWith("Wi-Fi:"),
                     )
                 }
                 var result: TransferResult
@@ -457,6 +542,8 @@ internal class BatchTransferRunner(
                             TransferStrategyKind.HTTP.name
                         } else if (strategy is ChannelClientStrategy) {
                             TransferStrategyKind.CHANNEL.name
+                        } else if (strategy is WifiUploadStrategy) {
+                            TransferStrategyKind.WIFI_UPLOAD.name
                         } else {
                             TransferStrategyKind.MESSAGE.name
                         }
@@ -657,7 +744,9 @@ internal class BatchTransferRunner(
                         FileTransferHistoryItem(
                             nextHistoryId(),
                             item.displayName,
-                            result.message.ifBlank { "Transfer complete" },
+                            result.message.ifBlank {
+                                context.getString(R.string.transfer_status_transfer_complete_file)
+                            },
                             true,
                         ),
                     ),
@@ -666,15 +755,15 @@ internal class BatchTransferRunner(
             }
 
             val sent = itemsToTransfer.size
-            val skipped = conflicts.size
+            val skipped = conflicts.size + nonGpxSkipped.size
 
             uiState.update {
                 it.copy(
                     statusMessage =
                         if (skipped > 0) {
-                            "Transfer Complete ($sent sent, $skipped skipped)"
+                            context.getString(R.string.transfer_status_complete, sent, skipped)
                         } else {
-                            "Transfer Complete ($sent file(s))"
+                            context.getString(R.string.transfer_status_complete_simple, sent)
                         },
                     isTransferring = false,
                     isPaused = false,
@@ -688,7 +777,11 @@ internal class BatchTransferRunner(
             }
 
             notificationHelper.showCompletion(
-                if (skipped > 0) "$sent sent, $skipped skipped" else "$sent file(s)",
+                if (skipped > 0) {
+                    context.getString(R.string.transfer_notification_complete_skipped, sent, skipped)
+                } else {
+                    context.getString(R.string.transfer_notification_complete, sent)
+                },
                 targetNode.displayName,
             )
             Log.d(TAG, "Batch completed in ${SystemClock.elapsedRealtime() - batchStartMs}ms")
@@ -725,13 +818,13 @@ internal class BatchTransferRunner(
                 isPaused = false,
                 canResume = false,
                 pauseReason = "",
-                statusMessage = "Cancelling…",
-                progressText = "Stopping current transfer…",
+                statusMessage = context.getString(R.string.transfer_status_cancelling),
+                progressText = context.getString(R.string.transfer_status_stopping),
             )
         }
         notificationHelper.updateProgress(
             (uiState.value.progress * 100f).toInt(),
-            "Stopping current transfer…",
+            context.getString(R.string.transfer_status_stopping),
             false,
         )
         return true
@@ -750,7 +843,7 @@ internal class BatchTransferRunner(
         PhoneTransferDiagnostics.warn("Batch", "Cancelled label=${label ?: "Batch"}")
         uiState.update {
             it.copy(
-                statusMessage = "Cancelled",
+                statusMessage = context.getString(R.string.transfer_status_cancelled),
                 isTransferring = false,
                 isPaused = false,
                 canResume = false,
@@ -764,8 +857,8 @@ internal class BatchTransferRunner(
             listOf(
                 FileTransferHistoryItem(
                     nextHistoryId(),
-                    label ?: "Transfer",
-                    "Cancelled",
+                    label ?: context.getString(R.string.transfer_history_transfer),
+                    context.getString(R.string.transfer_status_cancelled),
                     false,
                 ),
             ),
@@ -788,14 +881,17 @@ internal class BatchTransferRunner(
         sharedHttpStrategyRef = null
         val errorMessage =
             e.localizedMessage?.trim().takeUnless { it.isNullOrEmpty() }
-                ?: "Unknown transfer error"
+                ?: context.getString(R.string.transfer_error_unknown)
 
         addHistoryItems(
             listOf(
                 FileTransferHistoryItem(
                     nextHistoryId(),
-                    fileName ?: "Batch",
-                    "Failed: ${e.message}",
+                    fileName ?: context.getString(R.string.transfer_history_batch),
+                    context.getString(
+                        R.string.transfer_history_failed,
+                        e.message.orEmpty(),
+                    ),
                     false,
                 ),
             ),
@@ -803,7 +899,7 @@ internal class BatchTransferRunner(
 
         uiState.update {
             it.copy(
-                statusMessage = "Error: $errorMessage",
+                statusMessage = context.getString(R.string.transfer_status_error, errorMessage),
                 isTransferring = false,
                 isPaused = false,
                 canResume = false,
@@ -831,22 +927,18 @@ internal class BatchTransferRunner(
             )
             httpStrategy.requestPause(transferId)
             requestPauseOnWatch(nodeId, transferId)
-            val progressText =
-                buildManualPauseProgressText(
-                    filePrefix =
-                        uiState.value.progressText
-                            .lineSequence()
-                            .firstOrNull { it.startsWith("File ", ignoreCase = true) }
-                            ?: fileName?.let { "File: $it" }
-                            ?: "",
-                    existingText = uiState.value.progressText,
-                )
+            val currentProgressText = uiState.value.progressText
+            val filePrefix =
+                currentProgressText.lineSequence().firstOrNull {
+                    it.startsWith("File ", ignoreCase = true) || it.startsWith("文件")
+                } ?: fileName?.let { "File: $it" } ?: ""
+            val progressText = buildManualPauseProgressText(filePrefix, currentProgressText)
             uiState.update {
                 it.copy(
                     isPaused = true,
                     canResume = true,
-                    pauseReason = "Paused by user",
-                    statusMessage = "Paused",
+                    pauseReason = context.getString(R.string.transfer_status_paused_by_user),
+                    statusMessage = context.getString(R.string.transfer_status_paused),
                     progressText = progressText,
                 )
             }
@@ -864,12 +956,16 @@ internal class BatchTransferRunner(
             it.copy(
                 isPaused = true,
                 canResume = true,
-                pauseReason = "Paused by user",
-                statusMessage = "Paused",
-                progressText = "Paused by user",
+                pauseReason = context.getString(R.string.transfer_status_paused_by_user),
+                statusMessage = context.getString(R.string.transfer_status_paused),
+                progressText = context.getString(R.string.transfer_status_paused_by_user),
             )
         }
-        notificationHelper.updateProgress((uiState.value.progress * 100f).toInt(), "Paused by user", true)
+        notificationHelper.updateProgress(
+            (uiState.value.progress * 100f).toInt(),
+            context.getString(R.string.transfer_status_paused_by_user),
+            true,
+        )
         return true
     }
 
@@ -885,11 +981,15 @@ internal class BatchTransferRunner(
                 isPaused = false,
                 canResume = false,
                 pauseReason = "",
-                statusMessage = "Resuming…",
-                progressText = "Resuming…",
+                statusMessage = context.getString(R.string.transfer_status_resuming),
+                progressText = context.getString(R.string.transfer_status_resuming),
             )
         }
-        notificationHelper.updateProgress((uiState.value.progress * 100f).toInt(), "Resuming…", false)
+        notificationHelper.updateProgress(
+            (uiState.value.progress * 100f).toInt(),
+            context.getString(R.string.transfer_status_resuming),
+            false,
+        )
         return true
     }
 

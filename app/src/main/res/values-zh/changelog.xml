@@ -1,0 +1,94 @@
+<resources>
+    <string name="changelog_title">变更日志</string>
+    <string-array name="changelog_1_3_0_notes">
+        <item>新增法语、德语、西班牙语、意大利语和波兰语，并支持语言选择。</item>
+        <item>新增全屏地图控件和自动回中快捷键。</item>
+        <item>新增实验性 3D 地形和徒步主题。</item>
+        <item>支持从手机发送自定义 Mapsforge 主题。</item>
+        <item>改进记录连续性、GPS 断点处理和传感器恢复。</item>
+        <item>改进离线地图下载和解压。</item>
+    </string-array>
+
+    <string-array name="changelog_1_2_3_notes">
+        <item>改进地图启动、渲染和导航性能。</item>
+        <item>改进唤醒后及磁干扰时的指南针表现。</item>
+        <item>指南针旋转和导航响应更流畅。</item>
+        <item>从菜单返回时保留地图位置。</item>
+        <item>改进 POI、GPX 和记录性能。</item>
+        <item>新增更清晰的启动、定位和无活动地图提示。</item>
+        <item>兼容较旧的 Android 9 和 10 Wear OS 手表。</item>
+    </string-array>
+
+    <string-array name="changelog_1_2_2_notes">
+        <item>指南针和转向导航更可靠，暂停后也正常。</item>
+        <item>记录更流畅，距离和速度更一致。</item>
+        <item>支持双指缩放、地图长按操作，并改进路线进度显示。</item>
+        <item>改进地形处理和海拔剖面，并显示你的位置。</item>
+        <item>手表与手机传输、地图/GPX 加载更可靠。</item>
+        <item>稳定性和性能改进。</item>
+    </string-array>
+
+    <string-array name="changelog_1_2_1_notes">
+        <item>改进导航和记录时的电池性能。</item>
+        <item>自动暂停现在默认开启。</item>
+        <item>更高效的 GPS 和指南针处理。</item>
+        <item>改进息屏或手表闲置时的表现。</item>
+        <item>轨迹记录、距离和海拔更可靠。</item>
+        <item>改进 GPS 恢复，以及手机断开时的 Watch GPS 回退。</item>
+        <item>改进离线地图下载和解压恢复。</item>
+        <item>改进地图缩放、山体阴影稳定性、转向导航和旋转控件。</item>
+    </string-array>
+
+    <string-array name="changelog_1_2_0_notes">
+        <item>新增记录活动。</item>
+        <item>新增转向导航。</item>
+        <item>支持外部传感器，包括心率带和 Stryd 跑步功率计。</item>
+        <item>新增徒步和骑行活动配置。</item>
+        <item>改进记录和导航时的 GPS 表现。</item>
+        <item>改进性能和地图响应。</item>
+        <item>改进电池效率，尤其是在长时间记录和导航时。</item>
+        <item>改进界面布局。</item>
+    </string-array>
+
+    <string-array name="changelog_1_1_3_notes">
+        <item>新增记录活动。</item>
+        <item>新增转向导航。</item>
+        <item>支持外部传感器，包括心率带和 Stryd 跑步功率计。</item>
+        <item>新增徒步和骑行活动配置。</item>
+        <item>改进记录和导航时的 GPS 表现。</item>
+        <item>改进性能和地图响应。</item>
+        <item>改进电池效率，尤其是在长时间记录和导航时。</item>
+        <item>改进界面布局。</item>
+    </string-array>
+
+    <string-array name="changelog_1_1_2_notes">
+        <item>新增 GPX 轨迹方向箭头选项。</item>
+        <item>在兼容手表上支持返回键。</item>
+        <item>新增可调整的位置标记位置。</item>
+        <item>重新设计 POI 图标、设置和导航。</item>
+        <item>新增更高质量的海拔数据。</item>
+        <item>支持从手表导出 GPX 轨迹到手机。</item>
+        <item>更新下载包，加入 Refuge.info POI，并改进下载包导航。</item>
+        <item>新增 POI、GPX 和地图快速指南，并改进电池、稳定性和性能。</item>
+    </string-array>
+
+    <string-array name="changelog_1_1_0_notes">
+        <item>修复下载取消按钮和其他小问题。</item>
+        <item>支持从手表直接下载离线包。</item>
+        <item>新增主界面。</item>
+        <item>修复标记和 POI 创建问题，并改进整体稳定性。</item>
+    </string-array>
+
+    <string-array name="changelog_1_0_5_notes">
+        <item>修复三星手表上的指南针问题。</item>
+        <item>修复大地图上的缩放级别。</item>
+        <item>修复主题缓存问题。</item>
+        <item>修复小屏幕上的布局。</item>
+        <item>新增 OS Map 主题。</item>
+        <item>新增夜间模式主题快捷方式。</item>
+    </string-array>
+
+    <string-array name="changelog_1_0_4_notes">
+        <item>修复部分区域的 DEM 下载。</item>
+    </string-array>
+</resources>

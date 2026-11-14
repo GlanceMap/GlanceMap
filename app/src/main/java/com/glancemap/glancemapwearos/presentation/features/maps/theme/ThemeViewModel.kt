@@ -693,7 +693,7 @@ class ThemeViewModel(
                     skippedTiles = skipped,
                     missingTiles = missing,
                     failedTiles = failed,
-                    statusMessage = "Downloading...",
+                    statusMessage = context.resources.getString(R.string.download_downloading_dem),
                 )
 
             val folder = source.folderForTile(tileId)

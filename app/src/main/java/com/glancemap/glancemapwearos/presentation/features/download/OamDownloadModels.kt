@@ -8,6 +8,26 @@ import java.io.File
 import java.net.URI
 import java.util.Locale
 
+internal fun localizedDownloadPhase(
+    phase: String?,
+    resources: Resources,
+): String? =
+    when (phase?.uppercase(Locale.ROOT)) {
+        "STARTING" -> resources.getString(R.string.download_phase_starting)
+        "PREPARING" -> resources.getString(R.string.download_phase_preparing)
+        "DOWNLOADING" -> resources.getString(R.string.download_phase_downloading)
+        "EXTRACTING" -> resources.getString(R.string.download_phase_extracting)
+        "RECONNECTING" -> resources.getString(R.string.download_phase_reconnecting)
+        "READY" -> resources.getString(R.string.download_phase_ready)
+        "PAUSED" -> resources.getString(R.string.download_phase_paused)
+        "PAUSING" -> resources.getString(R.string.download_phase_pausing)
+        "CANCELING" -> resources.getString(R.string.download_phase_canceling)
+        "CANCELED" -> resources.getString(R.string.download_phase_canceled)
+        "FAILED" -> resources.getString(R.string.download_phase_failed)
+        "SKIPPED" -> resources.getString(R.string.download_phase_skipped)
+        else -> phase
+    }
+
 data class OamDownloadArea(
     val id: String,
     val continent: String,

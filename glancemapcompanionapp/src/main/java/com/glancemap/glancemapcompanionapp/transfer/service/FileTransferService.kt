@@ -11,6 +11,7 @@ import android.util.Log
 import androidx.lifecycle.LifecycleService
 import androidx.lifecycle.lifecycleScope
 import com.glancemap.glancemapcompanionapp.FileTransferUiState
+import com.glancemap.glancemapcompanionapp.R
 import com.glancemap.glancemapcompanionapp.WatchNode
 import com.glancemap.glancemapcompanionapp.diagnostics.PhoneTransferDiagnostics
 import com.glancemap.glancemapcompanionapp.transfer.FileExistenceChecker
@@ -28,6 +29,8 @@ import com.glancemap.glancemapcompanionapp.transfer.service.internal.UiProgressU
 import com.glancemap.glancemapcompanionapp.transfer.strategy.HttpTransferServer
 import com.glancemap.glancemapcompanionapp.transfer.strategy.TransferResult
 import com.glancemap.glancemapcompanionapp.transfer.util.NotificationHelper
+import com.glancemap.glancemapcompanionapp.transfer.wifi.WifiWatchEndpoint
+import com.glancemap.glancemapcompanionapp.transfer.wifi.WifiWatchRepository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.Dispatchers
@@ -35,6 +38,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import org.json.JSONObject
@@ -57,6 +61,7 @@ class FileTransferService : LifecycleService() {
     private val wifiManager by lazy { applicationContext.getSystemService(WIFI_SERVICE) as WifiManager }
 
     private lateinit var dataLayerRepository: PhoneDataLayerRepository
+    private lateinit var wifiWatchRepository: WifiWatchRepository
 
     private lateinit var ackRegistry: AckRegistry
     private lateinit var historyStore: HistoryStore
@@ -80,6 +85,7 @@ class FileTransferService : LifecycleService() {
 
         notificationHelper = NotificationHelper(this).apply { createNotificationChannel() }
         dataLayerRepository = PhoneDataLayerRepository(this)
+        wifiWatchRepository = WifiWatchRepository(this)
         configureTransferRequesters()
 
         ackRegistry = AckRegistry()
@@ -99,15 +105,19 @@ class FileTransferService : LifecycleService() {
                 ackRegistry = ackRegistry,
                 uiUpdater = uiUpdater,
                 cancelTransferOnWatch = { nodeId, transferId ->
-                    dataLayerRepository.sendCancelTransfer(nodeId, transferId)
+                    if (WifiWatchEndpoint.parse(nodeId) == null) {
+                        dataLayerRepository.sendCancelTransfer(nodeId, transferId)
+                    }
                 },
                 requestPauseOnWatch = { nodeId, transferId ->
-                    existenceChecker.markNodeRecovering(
-                        nodeId = nodeId,
-                        durationMs = WATCH_RECOVERY_WINDOW_MS,
-                        reason = "user_pause",
-                    )
-                    sendCancelToWatchBestEffort(nodeId, transferId)
+                    if (WifiWatchEndpoint.parse(nodeId) == null) {
+                        existenceChecker.markNodeRecovering(
+                            nodeId = nodeId,
+                            durationMs = WATCH_RECOVERY_WINDOW_MS,
+                            reason = "user_pause",
+                        )
+                        sendCancelToWatchBestEffort(nodeId, transferId)
+                    }
                 },
                 setActiveTransfer = { id, nodeId ->
                     activeTransferId = id
@@ -150,6 +160,7 @@ class FileTransferService : LifecycleService() {
         cancelReconnectPauseEscalation()
         dataLayerObserverJob?.cancel()
         dataLayerRepository.stop()
+        wifiWatchRepository.stop()
         super.onDestroy()
     }
 
@@ -331,8 +342,9 @@ class FileTransferService : LifecycleService() {
         targetNodeId: String? = activeTargetNodeId,
         transferId: String? = activeTransferId,
     ) {
-        val id = transferId ?: return
-        val node = targetNodeId ?: return
+        val id = transferId
+        val node = targetNodeId
+        if (id == null || node == null || WifiWatchEndpoint.parse(node) != null) return
 
         lifecycleScope.launch(Dispatchers.IO) {
             runCatching {
@@ -346,16 +358,39 @@ class FileTransferService : LifecycleService() {
     }
 
     fun searchForWatches() {
+        wifiWatchRepository.refresh()
         lifecycleScope.launch(Dispatchers.IO) {
             dataLayerRepository.refreshWatches()
         }
     }
 
     fun onWatchSelected(watch: WatchNode) {
-        _uiState.update { it.copy(selectedWatch = watch) }
+        val endpoint = WifiWatchEndpoint.parse(watch.id)
+        val wifiUrl = endpoint?.let { "Wi-Fi: ${wifiUploadPageUrl(it)}" }
+        _uiState.update {
+            it.copy(
+                selectedWatch = watch,
+                statusMessage = wifiUrl ?: it.statusMessage,
+            )
+        }
     }
 
-    suspend fun requestInstalledMaps(nodeId: String): WatchInstalledMapsRequester.Result = installedMapsRequester.list(nodeId)
+    private fun wifiUploadPageUrl(endpoint: WifiWatchEndpoint): String {
+        val authority =
+            if (endpoint.host.contains(':')) {
+                "[${endpoint.host}]:${endpoint.port}"
+            } else {
+                "${endpoint.host}:${endpoint.port}"
+            }
+        return "http://$authority/?t=${Uri.encode(endpoint.token)}"
+    }
+
+    suspend fun requestInstalledMaps(nodeId: String): WatchInstalledMapsRequester.Result =
+        if (WifiWatchEndpoint.parse(nodeId) != null) {
+            WatchInstalledMapsRequester.Result.Success(emptyList(), emptyList())
+        } else {
+            installedMapsRequester.list(nodeId)
+        }
 
     private fun handleStatusUpdate(data: ByteArray) {
         runCatching {
@@ -383,7 +418,8 @@ class FileTransferService : LifecycleService() {
 
             when (phase) {
                 "PAUSED" -> {
-                    val pauseText = detail.ifBlank { "Paused (waiting for network)" }
+                    val pauseText =
+                        detail.ifBlank { getString(R.string.transfer_status_waiting_for_network) }
                     val waitingForReconnect = isReconnectPauseDetail(pauseText)
                     val progressText =
                         if (waitingForReconnect) {
@@ -400,7 +436,12 @@ class FileTransferService : LifecycleService() {
                                 isPaused = true,
                                 canResume = false,
                                 pauseReason = pauseText,
-                                statusMessage = if (waitingForReconnect) "Waiting for watch reconnect…" else pauseText,
+                                statusMessage =
+                                    if (waitingForReconnect) {
+                                        getString(R.string.transfer_status_waiting_for_reconnect)
+                                    } else {
+                                        pauseText
+                                    },
                                 progressText = progressText,
                             )
                         }
@@ -422,7 +463,8 @@ class FileTransferService : LifecycleService() {
 
                 "RESUMED" -> {
                     cancelReconnectPauseEscalation()
-                    val resumeText = detail.ifBlank { "Resuming…" }
+                    val resumeText =
+                        detail.ifBlank { getString(R.string.transfer_status_resuming) }
                     val progressText = mergeProgressPrefix(_uiState.value.progressText, resumeText)
                     PhoneTransferDiagnostics.log("Service", "Watch status RESUMED detail=$resumeText")
                     _uiState.update { st ->
@@ -482,12 +524,16 @@ class FileTransferService : LifecycleService() {
             return existingText
         }
 
-        val fileLine = lines.firstOrNull { it.startsWith("File ", ignoreCase = true) }
+        val fileLine =
+            lines.firstOrNull {
+                it.startsWith("File ", ignoreCase = true) || it.startsWith("文件")
+            }
         val metricLine = extractMetricLine(lines)
 
-        return listOfNotNull(fileLine, "Waiting for watch reconnect…", metricLine)
+        val reconnectText = getString(R.string.transfer_status_waiting_for_reconnect)
+        return listOfNotNull(fileLine, reconnectText, metricLine)
             .joinToString("\n")
-            .ifBlank { "Waiting for watch reconnect…" }
+            .ifBlank { reconnectText }
     }
 
     private fun mergeProgressPrefix(
@@ -501,7 +547,10 @@ class FileTransferService : LifecycleService() {
                 .map { it.trim() }
                 .filter { it.isNotEmpty() }
                 .toList()
-        val firstLine = lines.firstOrNull { it.startsWith("File ", ignoreCase = true) }
+        val firstLine =
+            lines.firstOrNull {
+                it.startsWith("File ", ignoreCase = true) || it.startsWith("文件")
+            }
         val metricLine = extractMetricLine(lines)
 
         return listOfNotNull(firstLine, detail, metricLine)
@@ -512,6 +561,7 @@ class FileTransferService : LifecycleService() {
     private fun extractMetricLine(lines: List<String>): String? =
         lines.lastOrNull {
             it.startsWith("HTTP:", ignoreCase = true) ||
+                it.startsWith("Wi-Fi:", ignoreCase = true) ||
                 it.startsWith("Channel:", ignoreCase = true) ||
                 it.startsWith("Message:", ignoreCase = true)
         }
@@ -525,40 +575,56 @@ class FileTransferService : LifecycleService() {
                         Log.e(TAG, "DataLayer start failed", it)
                         PhoneTransferDiagnostics.error("Service", "DataLayer start failed", it)
                     }
+                launch { observeMergedWatches() }
+                launch { observeDataLayerEvents() }
+            }
+    }
 
-                launch {
-                    dataLayerRepository.watches.collect { watches ->
-                        _uiState.update {
-                            it.copy(
-                                availableWatches = watches,
-                                statusMessage = if (watches.isNotEmpty()) "Select a watch" else "No watches found.",
-                            )
-                        }
-                    }
+    private suspend fun observeMergedWatches() {
+        combine(
+            dataLayerRepository.watches,
+            wifiWatchRepository.watches,
+        ) { dataLayerWatches, wifiWatches ->
+            (dataLayerWatches + wifiWatches).distinctBy { it.id }
+        }.collect { watches ->
+            _uiState.update { state ->
+                val selected = state.selectedWatch
+                val selectedStillAvailable = selected != null && watches.any { it.id == selected.id }
+                state.copy(
+                    availableWatches = watches,
+                    statusMessage =
+                        when {
+                            selectedStillAvailable -> state.statusMessage
+                            watches.isNotEmpty() -> getString(R.string.transfer_status_select_watch)
+                            else -> getString(R.string.transfer_status_no_watches)
+                        },
+                )
+            }
+        }
+    }
+
+    private suspend fun observeDataLayerEvents() {
+        dataLayerRepository.events.collect { event ->
+            when (event) {
+                is PhoneDataLayerEvent.TransferStatus -> handleStatusUpdate(event.payload)
+                is PhoneDataLayerEvent.TransferAck -> {
+                    cancelReconnectPauseEscalation()
+                    ackRegistry.handleAck(event.payload)
                 }
-
-                launch {
-                    dataLayerRepository.events.collect { event ->
-                        when (event) {
-                            is PhoneDataLayerEvent.TransferStatus -> handleStatusUpdate(event.payload)
-                            is PhoneDataLayerEvent.TransferAck -> {
-                                cancelReconnectPauseEscalation()
-                                ackRegistry.handleAck(event.payload)
-                            }
-                            is PhoneDataLayerEvent.PingResult -> existenceChecker.handlePingResult(event.payload)
-                            is PhoneDataLayerEvent.WifiStatusResult ->
-                                wifiStatusChecker.handleWifiStatusResult(event.payload)
-                            is PhoneDataLayerEvent.ExistsResult -> existenceChecker.handleExistsResult(event.payload)
-                            is PhoneDataLayerEvent.BatchExistsResult -> existenceChecker.handleBatchExistsResult(event.payload)
-                            is PhoneDataLayerEvent.DeleteFileResult -> deleteRequester.handleDeleteResult(event.payload)
-                            is PhoneDataLayerEvent.MapListResult -> installedMapsRequester.handleMapListResult(event.payload)
-                            is PhoneDataLayerEvent.Error -> {
-                                _uiState.update { st -> st.copy(statusMessage = event.message) }
-                            }
-                        }
+                is PhoneDataLayerEvent.PingResult -> existenceChecker.handlePingResult(event.payload)
+                is PhoneDataLayerEvent.WifiStatusResult ->
+                    wifiStatusChecker.handleWifiStatusResult(event.payload)
+                is PhoneDataLayerEvent.ExistsResult -> existenceChecker.handleExistsResult(event.payload)
+                is PhoneDataLayerEvent.BatchExistsResult -> existenceChecker.handleBatchExistsResult(event.payload)
+                is PhoneDataLayerEvent.DeleteFileResult -> deleteRequester.handleDeleteResult(event.payload)
+                is PhoneDataLayerEvent.MapListResult -> installedMapsRequester.handleMapListResult(event.payload)
+                is PhoneDataLayerEvent.Error -> {
+                    if (wifiWatchRepository.watches.value.isEmpty()) {
+                        _uiState.update { st -> st.copy(statusMessage = event.message) }
                     }
                 }
             }
+        }
     }
 
     private fun scheduleReconnectPauseEscalation(

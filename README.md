@@ -23,6 +23,7 @@ GlanceMap is a Wear OS navigation app with an Android companion app for file tra
 - POI import, organization, and lookup on the watch
 - Multiple map themes with overlays, hill shading, and slope overlay support
 - Android companion app for transfer, sync, and download workflows
+- LAN Wi-Fi GPX upload fallback when Wear OS Data Layer discovery is unavailable
 - Open source, no ads, and no account required
 
 ## Why GlanceMap?
