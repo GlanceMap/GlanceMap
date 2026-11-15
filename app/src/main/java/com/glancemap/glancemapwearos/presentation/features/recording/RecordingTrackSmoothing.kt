@@ -184,14 +184,57 @@ private fun recordingLastLegDistance(
         haversineMeters(previous.latLong, current.latLong)
     }
 
-internal fun recordingCanonicalPathDistance(points: List<RecordedTracePoint>): Double =
-    points.zipWithNext().sumOf { (before, after) ->
-        if (after.startsNewSegment) {
-            after.gapDistanceMeters?.takeIf { it.isFinite() && it >= 0.0 } ?: 0.0
-        } else {
-            haversineMeters(before.latLong, after.latLong)
-        }
+internal fun recordingCanonicalPathDistance(points: List<RecordedTracePoint>): Double {
+    val steps = points.zipWithNext()
+    return steps.sumOf { (before, after) -> recordingCanonicalStepMeters(before, after) }
+}
+
+/** Saved-track length of the step into [after]: its gap distance at a segment start, else the straight line. */
+internal fun recordingCanonicalStepMeters(
+    before: RecordedTracePoint,
+    after: RecordedTracePoint,
+): Double =
+    if (after.startsNewSegment) {
+        after.gapDistanceMeters?.takeIf { it.isFinite() && it >= 0.0 } ?: 0.0
+    } else {
+        haversineMeters(before.latLong, after.latLong)
     }
+
+/**
+ * Live length of the canonical (saved) track. Points before a revision's first changed index
+ * never change again, so their steps are summed once; only the bounded smoothing tail is
+ * re-measured. Live distance therefore matches the saved track, including corrections that
+ * remove GPS spikes after they were first counted.
+ */
+internal class RecordingCanonicalDistanceTracker {
+    private var stablePointCount = 0
+    private var stableMeters = 0.0
+
+    fun reset() {
+        stablePointCount = 0
+        stableMeters = 0.0
+    }
+
+    /** [unchangedPointCount]: leading points the latest canonical revision left untouched. */
+    fun distanceMeters(
+        points: List<RecordedTracePoint>,
+        unchangedPointCount: Int,
+    ): Double {
+        val unchanged = unchangedPointCount.coerceIn(0, points.size)
+        if (unchanged < stablePointCount) reset()
+        while (stablePointCount < unchanged) {
+            if (stablePointCount > 0) {
+                stableMeters += recordingCanonicalStepMeters(points[stablePointCount - 1], points[stablePointCount])
+            }
+            stablePointCount += 1
+        }
+        var tailMeters = 0.0
+        for (index in maxOf(stablePointCount, 1) until points.size) {
+            tailMeters += recordingCanonicalStepMeters(points[index - 1], points[index])
+        }
+        return stableMeters + tailMeters
+    }
+}
 
 private data class RecordingTrajectoryPolicy(
     val adaptiveTailLagMillis: Long,

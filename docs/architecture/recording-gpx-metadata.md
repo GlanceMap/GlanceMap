@@ -95,11 +95,31 @@ count the same capped straight line, stored on the first point of the new segmen
 `gmap:gapDistanceMeters`; saved-activity distance, the elevation profile, ETA and
 route-tool lengths read it back. A manual or automatic pause that resumes within the
 existing 30–60 m join distance is written as one continuous segment, so the saved track
-counts the straight line walked during the pause; live distance now adds the same line
-(stored as `gapDistanceMeters` on the resumed point). A pause shown with a grey connector
-and session-recovery boundaries count no distance. Files recorded before this field count
-none for their GPS gaps. In the 2026-11-09 OnePlus OPWWE251 walk, two joined pauses (38 m
-and 14 m) made the saved track about 20 m longer than the live distance.
+counts the straight line walked during the pause (stored as `gapDistanceMeters` on the
+resumed point). A pause shown with a grey connector and session-recovery boundaries count
+no distance. Files recorded before this field count none for their GPS gaps. In the
+2026-11-09 OnePlus OPWWE251 walk, two joined pauses (38 m and 14 m) made the saved track
+about 20 m longer than the live distance at that time.
+
+## Live GPS distance
+
+Live GPS distance (`TraceRecordingUiState.distanceMeters`, the dashboard value and the GPX
+`gmap:distanceMeters` summary) is the length of the canonical saved track, kept by
+`RecordingCanonicalDistanceTracker`: points that left the fixed-lag smoothing tail never
+change, so their steps are summed once and only the bounded tail is re-measured. Live and
+saved distance therefore match, including gap and joined-pause distance. When fixed-lag
+smoothing later removes a GPS spike or drift, live distance drops back by that amount, and
+it follows the user's track smoothing setting like the saved track. Draft recovery
+recomputes it from the recovered points. External-sensor distance sources are unchanged.
+
+The earlier separate estimate (`RecordingWatchGpsDistanceGeometry`: local three-point
+smoothing, one-point lag, continuity cap) still runs for the distance diagnostics
+(`recordingWatchGpsRawGeometryMeters`, continuity caps) but no longer feeds the displayed
+distance. In the 2026-11-14 OnePlus OPWWE251 walk it read 4018 m against 3825 m for the
+saved track (5.05%); speed × time over the same stretches showed the extra came mostly
+from short out-and-back spikes that the saved track removed. The saved track can also
+cut a real corner (one 10-point stretch was about 19 m short of speed × time), which this
+change does not address. A walk on the watch is still needed to confirm the dashboard.
 
 This replaces the earlier rule that split every qualifying gap after 60 s (hike) or 30 s
 (bike). While moving, that rule depended on time alone: walking covers 66–84 m in 60 s,

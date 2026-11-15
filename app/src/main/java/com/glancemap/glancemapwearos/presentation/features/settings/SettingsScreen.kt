@@ -126,6 +126,13 @@ fun SettingsScreen(
         }
         item {
             SettingsSectionChip(
+                label = stringResource(R.string.settings_turn_by_turn_settings),
+                secondaryLabel = stringResource(R.string.settings_guidance_alerts_and_dashboard),
+                onClick = { navController.navigate(WatchRoutes.TURN_BY_TURN_SETTINGS) },
+            )
+        }
+        item {
+            SettingsSectionChip(
                 label = stringResource(R.string.gps_settings),
                 onClick = { navController.navigate(WatchRoutes.GPS_SETTINGS) },
             )
