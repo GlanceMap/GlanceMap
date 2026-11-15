@@ -153,6 +153,9 @@ class TraceRecordingViewModel(
     private val bikeResumeEvidence = RecordingBikeResumeEvidence()
     private var externalDistanceRebaseAfterAutoPause = false
     private val watchGpsDistanceGeometry = RecordingWatchGpsDistanceGeometry()
+
+    /** Live GPS distance is the saved (canonical) track's length; see RecordingCanonicalDistanceTracker. */
+    private val canonicalDistanceTracker = RecordingCanonicalDistanceTracker()
     private val locationPointMutex = Mutex()
     private var skippedIntervalCount = 0
     private var skippedPausedCount = 0
@@ -1373,9 +1376,15 @@ class TraceRecordingViewModel(
                 distanceSegment?.let { segment ->
                     recordingDistanceDiagnostics.record(segment = segment, estimate = distanceEstimate)
                 }
+                // The local watch-GPS estimate stays for distance diagnostics only; live distance is
+                // the canonical track length, so it equals the saved track and drops spikes that
+                // fixed-lag smoothing removes later.
                 val addedDistance = distanceEstimate.distanceMeters
-                val pauseBridgeMeters = point.bridgedPauseDistanceMeters()
-                val updatedDistanceMeters = currentState.distanceMeters + addedDistance + pauseBridgeMeters
+                val updatedDistanceMeters =
+                    canonicalDistanceTracker.distanceMeters(
+                        points = canonicalAppend.points,
+                        unchangedPointCount = canonicalAppend.firstChangedPointIndex,
+                    )
                 if (distanceEstimate.capped) {
                     continuityDistanceCapCount += 1
                     val suppressedMeters = watchGpsGeometricDelta - addedDistance
@@ -1964,9 +1973,15 @@ class TraceRecordingViewModel(
             points = finalized.points,
             pointsRevision = state.pointsRevision + 1L,
             pointsChangedFromIndex = finalized.firstChangedPointIndex,
+            distanceMeters =
+                canonicalDistanceTracker.distanceMeters(
+                    points = finalized.points,
+                    unchangedPointCount = finalized.firstChangedPointIndex,
+                ),
         )
     }
 
+    /** Records the provisional watch-GPS diagnostics tail; live distance already follows the canonical track. */
     private fun flushWatchGpsDistanceGeometry(state: TraceRecordingUiState): TraceRecordingUiState {
         val segment = watchGpsDistanceGeometry.flush() ?: return state
         val estimate =
@@ -1981,7 +1996,7 @@ class TraceRecordingViewModel(
                 ),
             )
         recordingDistanceDiagnostics.record(segment = segment, estimate = estimate)
-        return state.copy(distanceMeters = (state.distanceMeters + estimate.distanceMeters).coerceAtLeast(0.0))
+        return state
     }
 
     fun finishAndSaveRecording(titleOverride: String? = null) {
@@ -2281,7 +2296,7 @@ class TraceRecordingViewModel(
                     stepsSource = recordingStepsSource,
                     points = draft.points,
                     latestLivePoint = draft.points.lastOrNull(),
-                    distanceMeters = draft.distanceMeters,
+                    distanceMeters = recoveredCanonicalDistanceMeters(draft.points),
                     startedAtMillis = draft.startedAtMillis,
                     pausedAtMillis = draft.pausedAtMillis,
                     accumulatedPausedMillis = draft.accumulatedPausedMillis,
@@ -2410,6 +2425,13 @@ class TraceRecordingViewModel(
         return candidate
     }
 
+    private fun recoveredCanonicalDistanceMeters(points: List<RecordedTracePoint>): Double {
+        canonicalDistanceTracker.reset()
+        val firstProvisionalIndex =
+            points.indexOfFirst { point -> !point.trajectoryFinalized }.takeIf { it >= 0 } ?: points.size
+        return canonicalDistanceTracker.distanceMeters(points, unchangedPointCount = firstProvisionalIndex)
+    }
+
     private fun resetSessionTelemetry() {
         recordingRecoveredFromDraft = false
         pendingDraftPersistJob?.cancel()
@@ -2430,6 +2452,7 @@ class TraceRecordingViewModel(
         acceptedAccuracyMaxMeters = null
         lastAcceptedPointTimeMillis = null
         watchGpsDistanceGeometry.reset()
+        canonicalDistanceTracker.reset()
         gpsActiveDurationMillis = 0L
         heartRateStatistics = null
         recordingGapCount = 0
@@ -3397,18 +3420,6 @@ internal fun RecordedTracePoint.withSegmentTransitionDistance(
         else -> this
     }
 }
-
-/** Live distance already adds GPS-gap distance through its continuity cap; a joined pause adds it here. */
-internal fun RecordedTracePoint.bridgedPauseDistanceMeters(): Double =
-    gapDistanceMeters
-        ?.takeIf {
-            it.isFinite() &&
-                it >= 0.0 &&
-                (
-                    segmentStartReason == RecordingSegmentStartReason.MANUAL_PAUSE ||
-                        segmentStartReason == RecordingSegmentStartReason.AUTO_PAUSE
-                )
-        } ?: 0.0
 
 /**
  * The fixed 125 m value comes from the watch's own GNSS chip, either through watch GPS or

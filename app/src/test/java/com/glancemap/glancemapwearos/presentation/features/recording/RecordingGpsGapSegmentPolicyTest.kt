@@ -215,7 +215,6 @@ class RecordingGpsGapSegmentPolicyTest {
                 ).withSegmentTransitionDistance(paused, HIKE)
 
         assertEquals(14.0, resumed.gapDistanceMeters ?: -1.0, 0.1)
-        assertEquals(14.0, resumed.bridgedPauseDistanceMeters(), 0.1)
         assertEquals(14.0, recordingCanonicalPathDistance(listOf(paused, resumed)), 0.1)
         assertEquals(1, recordedTraceSegments(listOf(paused, resumed)).size)
     }
@@ -231,13 +230,12 @@ class RecordingGpsGapSegmentPolicyTest {
                 ).withSegmentTransitionDistance(paused, HIKE)
 
         assertEquals(null, resumed.gapDistanceMeters)
-        assertEquals(0.0, resumed.bridgedPauseDistanceMeters(), 0.0)
         assertEquals(0.0, recordingCanonicalPathDistance(listOf(paused, resumed)), 0.0)
         assertEquals(2, recordedTraceSegments(listOf(paused, resumed)).size)
     }
 
     @Test
-    fun gpsGapDistanceIsNotAddedTwiceByThePauseBridge() {
+    fun gpsGapSplitStoresItsCappedDistance() {
         val before = point(0.0, 8f, timeMillis = 0L, speedMps = 1.2f)
         val split =
             point(400.0, 8f, timeMillis = 300_000L, speedMps = 1.2f)
@@ -247,7 +245,6 @@ class RecordingGpsGapSegmentPolicyTest {
                 ).withSegmentTransitionDistance(before, HIKE)
 
         assertEquals(400.0, split.gapDistanceMeters ?: -1.0, 0.5)
-        assertEquals(0.0, split.bridgedPauseDistanceMeters(), 0.0)
     }
 
     @Test
