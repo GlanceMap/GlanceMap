@@ -2003,6 +2003,8 @@
     <!-- Full-screen shortcut chips use compact mode labels; accessibility actions give the full description. -->
     <!-- Send to Watch is the unchanged screen title in the companion phone app. -->
     <string name="settings_fullscreen_mode">"Fullscreen mode"</string>
+    <string name="settings_fullscreen_auto_mode">Auto-mode</string>
+    <string name="settings_fullscreen_auto_delay">Delay: %1$ss</string>
     <string name="settings_choose_visible_controls">"Choose visible controls"</string>
     <string name="settings_fullscreen_controls_help">"Choose controls to keep visible. Normal map settings still apply. Exit is always available."</string>
     <string name="settings_fullscreen_show_menu">"Show menu button"</string>

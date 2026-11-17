@@ -1,11 +1,23 @@
 package com.glancemap.glancemapwearos.presentation.features.settings
 
 import androidx.annotation.StringRes
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Remove
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.wear.compose.material3.Icon
 import androidx.wear.compose.material3.MaterialTheme
+import androidx.wear.compose.material3.Slider
 import androidx.wear.compose.material3.Text
 import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.data.repository.MapFocusControl
@@ -17,7 +29,19 @@ fun MapFocusSettingsScreen(
     onOpenGeneralSettings: () -> Unit,
 ) {
     val visibleControls by viewModel.mapFocusVisibleControls.collectAsState()
-    MapFocusSettingsContent(visibleControls, viewModel::setMapFocusControlVisible, onOpenGeneralSettings)
+    val autoEnabled by viewModel.mapFocusAutoEnabled.collectAsState()
+    val delaySeconds by viewModel.mapFocusAutoDelaySeconds.collectAsState()
+    MapFocusSettingsContent(
+        visibleControls,
+        viewModel::setMapFocusControlVisible,
+        onOpenGeneralSettings,
+        MapFocusAutoSettings(
+            autoEnabled,
+            delaySeconds,
+            viewModel::setMapFocusAutoEnabled,
+            viewModel::setMapFocusAutoDelaySeconds,
+        ),
+    )
 }
 
 @Composable
@@ -26,10 +50,48 @@ internal fun MapFocusSettingsContent(
     visibleControls: Set<MapFocusControl>,
     onControlVisibleChange: (MapFocusControl, Boolean) -> Unit,
     onOpenGeneralSettings: () -> Unit,
+    auto: MapFocusAutoSettings = MapFocusAutoSettings(),
 ) {
     WearSettingsListScreen {
         item { GeneralSettingsShortcutChip(onClick = onOpenGeneralSettings) }
         item { Text(stringResource(R.string.settings_fullscreen_mode), style = MaterialTheme.typography.titleMedium) }
+        item {
+            SettingsToggleChip(
+                checked = auto.enabled,
+                onCheckedChanged = auto.onEnabledChange,
+                label = stringResource(R.string.settings_fullscreen_auto_mode),
+            )
+        }
+        if (auto.enabled) {
+            item {
+                var value by remember(auto.delaySeconds) { mutableFloatStateOf(auto.delaySeconds.toFloat()) }
+                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+                    Text(stringResource(R.string.settings_fullscreen_auto_delay, value.toInt()))
+                    Slider(
+                        value = value,
+                        onValueChange = {
+                            value = it.toInt().toFloat()
+                            auto.onDelayChange(value.toInt())
+                        },
+                        valueRange = 1f..20f,
+                        steps = 18,
+                        increaseIcon = {
+                            Icon(
+                                Icons.Filled.Add,
+                                contentDescription = stringResource(R.string.settings_increase_timeout),
+                            )
+                        },
+                        decreaseIcon = {
+                            Icon(
+                                Icons.Filled.Remove,
+                                contentDescription = stringResource(R.string.settings_decrease_timeout),
+                            )
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            }
+        }
         item {
             Text(
                 stringResource(R.string.settings_fullscreen_controls_help),

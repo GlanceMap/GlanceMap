@@ -41,6 +41,8 @@ Key files:
 
 Map focus mode is retained by the Navigate destination's `NavigateViewModel`, so returning from the menu restores the focused map. Full-screen recording and guidance dashboards temporarily take visual precedence without clearing map focus; the mode ends only when the user explicitly exits it.
 
+Optional full-screen auto-mode is off by default. While the interactive map is in normal mode, it enters map focus after the configured idle delay (1–20 seconds, default 5). Touch and rotary interaction restart the delay; the countdown is suspended while a touch is held, the map is not interactive, or a dashboard or map workflow is open. Exiting map focus starts a fresh countdown. The setting does not keep the screen awake.
+
 ## Responsibilities
 
 `NavigateScreen.kt` should remain an orchestrator:

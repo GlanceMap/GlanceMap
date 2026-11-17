@@ -469,11 +469,11 @@ fun NavigateScreen(
                 isShortcutTrayExpanded = shortcutTrayExpanded,
             )
 
-        fun enterMapFocus() {
-            screenActions.triggerHaptic()
+        fun enterMapFocus(source: String = "shortcut") {
+            if (source == "shortcut") screenActions.triggerHaptic()
             mapFocusState.enter { shortcutTrayExpanded = false }
             navigateViewModel.mapFocusMode.value = true
-            DebugTelemetry.log("NavigationTelemetry", "event=map_focus_enter source=shortcut")
+            DebugTelemetry.log("NavigationTelemetry", "event=map_focus_enter source=$source")
         }
 
         fun exitMapFocus(source: String) {
@@ -1079,7 +1079,29 @@ fun NavigateScreen(
             hostedTerrainRuntime = terrainRuntime,
             mapFocusState = mapFocusState,
             mapFocusVisibleControls = mapFocusVisibleControls,
-            onEnterMapFocus = ::enterMapFocus,
+            onEnterMapFocus = { enterMapFocus() },
+            onAutoEnterMapFocus = { enterMapFocus("auto") },
+            mapFocusAutoEnabled = settingsViewModel.mapFocusAutoEnabled.collectAsState().value,
+            mapFocusAutoDelaySeconds = settingsViewModel.mapFocusAutoDelaySeconds.collectAsState().value,
+            mapFocusAutoAllowed =
+                isScreenResumed &&
+                    screenState.isInteractive &&
+                    !showCalibrationDialog &&
+                    !showKeepAppOpenInfoDialog &&
+                    !showNotificationPermissionDialog &&
+                    !shortcutTrayExpanded &&
+                    !showRouteToolsPanel &&
+                    routeToolSession == null &&
+                    completedRouteToolDraft == null &&
+                    !routeToolExecutionInProgress &&
+                    routeToolResult == null &&
+                    mapLongPressTarget == null &&
+                    !poiCreationSelectionActive &&
+                    !selectingGpxPointB &&
+                    !showPoiCreationChoiceDialog &&
+                    !showPoiCoordinateEntryDialog &&
+                    !showCreatedPoiRenameDialog &&
+                    !createdPoiCreateInProgress,
             onExitMapFocus = ::exitMapFocus,
             hasLocationPermission = locationPermissionState.hasLocationPermission || offlineMode,
             focusRequester = focusRequester,

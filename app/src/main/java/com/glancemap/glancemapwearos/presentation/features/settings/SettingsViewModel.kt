@@ -1310,6 +1310,26 @@ class SettingsViewModel(
         settingsRepository.mapFocusVisibleControls
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptySet())
 
+    val mapFocusAutoEnabled: StateFlow<Boolean> =
+        settingsRepository.mapFocusAutoEnabled.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
+    fun setMapFocusAutoEnabled(enabled: Boolean) =
+        viewModelScope.launch {
+            settingsRepository.setMapFocusAutoEnabled(enabled)
+        }
+
+    val mapFocusAutoDelaySeconds: StateFlow<Int> =
+        settingsRepository.mapFocusAutoDelaySeconds.stateIn(
+            viewModelScope,
+            SharingStarted.WhileSubscribed(5000),
+            SettingsRepository.MAP_FOCUS_AUTO_DELAY_DEFAULT_SECONDS,
+        )
+
+    fun setMapFocusAutoDelaySeconds(seconds: Int) =
+        viewModelScope.launch {
+            settingsRepository.setMapFocusAutoDelaySeconds(seconds)
+        }
+
     fun setMapFocusControlVisible(
         control: MapFocusControl,
         visible: Boolean,

@@ -47,6 +47,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.rotary.onPreRotaryScrollEvent
 import androidx.compose.ui.layout.onSizeChanged
@@ -122,6 +123,10 @@ internal fun NavigateContent(
     mapFocusState: NavigateMapFocusState,
     mapFocusVisibleControls: Set<MapFocusControl>,
     onEnterMapFocus: () -> Unit,
+    onAutoEnterMapFocus: () -> Unit,
+    mapFocusAutoEnabled: Boolean,
+    mapFocusAutoDelaySeconds: Int,
+    mapFocusAutoAllowed: Boolean,
     onExitMapFocus: (String) -> Unit,
     hasLocationPermission: Boolean,
     focusRequester: FocusRequester,
@@ -747,6 +752,22 @@ internal fun NavigateContent(
         turnByTurnFullScreenExpanded ||
             recordingDashboardFullScreenExpanded ||
             combinedGuidanceRecordingFullScreenExpanded
+    var autoFocusInteraction by remember { mutableLongStateOf(0L) }
+    var autoFocusTouchDown by remember { mutableStateOf(false) }
+    LaunchedEffect(mapFocusAutoEnabled) {
+        if (!mapFocusAutoEnabled) autoFocusTouchDown = false
+    }
+    MapFocusAutoTimer(
+        enabled = mapFocusAutoEnabled,
+        delaySeconds = mapFocusAutoDelaySeconds,
+        available =
+            mapFocusAutoAllowed &&
+                !mapFocusState.mapFocusMode &&
+                !fullScreenPopupExpanded &&
+                !autoFocusTouchDown,
+        interaction = autoFocusInteraction,
+        onEnter = onAutoEnterMapFocus,
+    )
     val showNoActiveMapNotice = rememberNoActiveMapNotice(hasActiveMap, mapAppearanceApplyInProgress)
     val mapChrome =
         mapFocusChromePolicy(
@@ -818,9 +839,20 @@ internal fun NavigateContent(
         modifier =
             Modifier
                 .fillMaxSize()
-                .onSizeChanged { visibleMapSizePx = it }
+                .pointerInput(mapFocusAutoEnabled) {
+                    if (mapFocusAutoEnabled) {
+                        awaitPointerEventScope {
+                            while (true) {
+                                val event = awaitPointerEvent(PointerEventPass.Initial)
+                                autoFocusTouchDown = event.changes.any { it.pressed }
+                                autoFocusInteraction++
+                            }
+                        }
+                    }
+                }.onSizeChanged { visibleMapSizePx = it }
                 // Crown/rotary zoom support for Navigate screen.
                 .onPreRotaryScrollEvent { event ->
+                    if (mapFocusAutoEnabled) autoFocusInteraction++
                     if (overlayOwnsRotary) return@onPreRotaryScrollEvent false
                     if (!crownZoomEnabled) return@onPreRotaryScrollEvent false
                     val delta = event.verticalScrollPixels
