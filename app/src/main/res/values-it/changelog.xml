@@ -7,6 +7,8 @@
         <item>Aggiunto il supporto per temi Mapsforge personalizzati inviati dal telefono.</item>
         <item>Migliorate la continuità della registrazione, la gestione delle interruzioni GPS e il ripristino dei sensori.</item>
         <item>Migliorati il download e l’estrazione delle mappe offline.</item>
+        <item>La pausa automatica è ora disattivata per impostazione predefinita nelle nuove impostazioni; le scelte esistenti vengono mantenute.</item>
+        <item>Resta attivo è ora attivato per impostazione predefinita se non è salvata alcuna preferenza; le scelte esistenti vengono mantenute.</item>
     </string-array>
 
     <string-array name="changelog_1_2_3_notes">

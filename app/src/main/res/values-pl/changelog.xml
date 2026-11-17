@@ -7,6 +7,8 @@
         <item>Dodano obsługę własnych motywów Mapsforge wysyłanych z telefonu.</item>
         <item>Usprawniono ciągłość nagrywania, obsługę przerw GPS i przywracanie czujników.</item>
         <item>Usprawniono pobieranie i rozpakowywanie map offline.</item>
+        <item>Autopauza jest teraz domyślnie wyłączona dla nowych ustawień; dotychczasowe wybory zostają zachowane.</item>
+        <item>Opcja Zostań jest teraz domyślnie włączona, jeśli nie zapisano preferencji; dotychczasowe wybory zostają zachowane.</item>
     </string-array>
 
     <string-array name="changelog_1_2_3_notes">
