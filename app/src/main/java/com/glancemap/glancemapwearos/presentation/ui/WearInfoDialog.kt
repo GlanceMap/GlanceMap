@@ -2,9 +2,11 @@
 
 package com.glancemap.glancemapwearos.presentation.ui
 
+import android.view.ViewTreeObserver
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
@@ -18,8 +20,14 @@ import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -31,6 +39,7 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.rotary.onPreRotaryScrollEvent
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
@@ -38,6 +47,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.Text
+import kotlinx.coroutines.launch
 import kotlin.math.abs
 
 private const val INFO_DIALOG_DRAG_DISMISS_PX = 55f
@@ -58,10 +68,8 @@ fun WearInfoDialog(
     val adaptive = rememberWearAdaptiveSpec()
     val listState = rememberLazyListState()
     val focusRequester = remember { FocusRequester() }
+    val scope = rememberCoroutineScope()
     val dismissScroll = rememberInfoDismissScrollConnection(if (dismissible && swipeDownToDismiss) onDismiss else null)
-    LaunchedEffect(visible, title) {
-        focusRequester.requestFocus()
-    }
 
     Dialog(
         onDismissRequest = {
@@ -71,6 +79,20 @@ fun WearInfoDialog(
         },
         properties = DialogProperties(usePlatformDefaultWidth = false),
     ) {
+        val dialogView = LocalView.current
+        var windowFocused by remember(dialogView) { mutableStateOf(dialogView.hasWindowFocus()) }
+        DisposableEffect(dialogView) {
+            val observer = dialogView.viewTreeObserver
+            val listener = ViewTreeObserver.OnWindowFocusChangeListener { windowFocused = it }
+            observer.addOnWindowFocusChangeListener(listener)
+            onDispose { if (observer.isAlive) observer.removeOnWindowFocusChangeListener(listener) }
+        }
+        LaunchedEffect(windowFocused, title) {
+            if (windowFocused) {
+                withFrameNanos { }
+                focusRequester.requestFocus()
+            }
+        }
         Box(
             modifier =
                 Modifier
@@ -83,8 +105,9 @@ fun WearInfoDialog(
                         .fillMaxSize()
                         .nestedScroll(dismissScroll)
                         .onPreRotaryScrollEvent { event ->
-                            val consumed = listState.dispatchRawDelta(event.verticalScrollPixels)
-                            abs(consumed) > 0.5f
+                            val delta = event.verticalScrollPixels
+                            if (abs(delta) > 0.5f) scope.launch { listState.scrollBy(delta) }
+                            abs(delta) > 0.5f
                         }.focusRequester(focusRequester)
                         .focusable(),
                 state = listState,

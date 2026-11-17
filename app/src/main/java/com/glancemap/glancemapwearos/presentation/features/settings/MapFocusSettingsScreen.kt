@@ -98,7 +98,8 @@ internal fun MapFocusSettingsContent(
                 style = MaterialTheme.typography.bodySmall,
             )
         }
-        MapFocusControl.entries.forEach { control ->
+        val firstControls = listOf(MapFocusControl.TIME, MapFocusControl.NAV_MODE_BUTTON)
+        (firstControls + MapFocusControl.entries.filterNot { it in firstControls }).forEach { control ->
             item {
                 SettingsToggleChip(
                     checked = control in visibleControls,
