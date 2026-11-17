@@ -79,4 +79,13 @@ class RecordingAutoPauseEvidenceTest {
         wheel.reset()
         assertNull(wheel.observe(2f, 47_000, 47_000, true, 5_000))
     }
+
+    @Test
+    fun wheelDisconnectClearsPartialRestartEvidence() {
+        val wheel = RecordingBikeResumeEvidence()
+        assertNull(wheel.observe(2f, 10_000, 10_000, true, 5_000))
+        wheel.reset()
+        assertNull(wheel.observe(2f, 16_000, 16_000, true, 5_000))
+        assertEquals(5_000L, wheel.observe(2f, 21_000, 21_000, true, 5_000))
+    }
 }
