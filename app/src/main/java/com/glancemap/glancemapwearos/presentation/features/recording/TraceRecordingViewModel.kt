@@ -147,6 +147,7 @@ class TraceRecordingViewModel(
     private var showSavedGpxOnMap = SettingsRepository.DEFAULT_RECORDING_SHOW_SAVED_GPX_ON_MAP
     private var lastAcceptedElapsedMs: Long = Long.MIN_VALUE
     private val autoResumeRecovery = RecordingAutoResumeRecoveryBuffer<BufferedRecordingLocation>()
+    private val autoResumeRestartBurst = RecordingAutoResumeRestartBurstBudget()
     private val autoResumeRecoveryGeneration = AtomicLong()
     private val recordingInputMutex = Mutex()
     private val stepResumeEvidence = RecordingStepResumeEvidence()
@@ -1883,6 +1884,7 @@ class TraceRecordingViewModel(
     }
 
     private fun pauseRecordingNow(state: TraceRecordingUiState) {
+        autoResumeRestartBurst.onPauseStarted()
         recordingPointCaptureExpectation.pause(SystemClock.elapsedRealtime())
         val stateWithDistance = flushWatchGpsDistanceGeometry(state)
         watchGpsDistanceGeometry.reset()
@@ -2433,6 +2435,7 @@ class TraceRecordingViewModel(
     }
 
     private fun resetSessionTelemetry() {
+        autoResumeRestartBurst.reset()
         recordingRecoveredFromDraft = false
         pendingDraftPersistJob?.cancel()
         pendingDraftPersistJob = null
@@ -2532,6 +2535,7 @@ class TraceRecordingViewModel(
         if (stationaryDurationMs < autoPauseStopDurationMs()) return false
 
         autoPauseTriggerCount += 1
+        autoResumeRestartBurst.onPauseStarted()
         recordingPointCaptureExpectation.pause(nowElapsedMs)
         val stateWithDistance = flushWatchGpsDistanceGeometry(state)
         watchGpsDistanceGeometry.reset()
@@ -2729,8 +2733,23 @@ class TraceRecordingViewModel(
             )
             return true
         }
-        val moving =
-            previousPoint != null && hasReliableAutoPauseFix(livePoint) && isAutoPauseMoving(livePoint, previousPoint)
+        val reliableFix = hasReliableAutoPauseFix(livePoint)
+        if (
+            previousPoint != null &&
+            autoResumeRestartBurst.requestIfNeeded(
+                reliableFix = reliableFix,
+                speedMps = livePoint.speedMps,
+                resumeSpeedMps = autoPauseResumeSpeedMps(),
+                nowElapsedMillis = nowElapsedMs,
+            )
+        ) {
+            runtimeDependencies.requestImmediateLocation(AUTO_RESUME_RESTART_BURST_SOURCE)
+            DebugTelemetry.log(
+                "TraceRecording",
+                "event=auto_resume_restart_burst ${autoPauseMotionTelemetry(livePoint, previousPoint)}",
+            )
+        }
+        val moving = previousPoint != null && reliableFix && isAutoPauseMoving(livePoint, previousPoint)
         val movingDurationMs = autoPauseMovingWindow.observe(nowElapsedMs, moving, expectedIntervalMs) ?: return false
         if (movingDurationMs < autoPauseResumeDurationMs()) return false
         autoResumeRecording(

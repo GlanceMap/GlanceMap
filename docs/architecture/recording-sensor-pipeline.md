@@ -133,6 +133,16 @@ Historical pressure matching remains a separate concern: replayed GPS fixes do n
 have a timestamp-matched pressure history, and the hybrid elevation filter may use
 its current pressure state. This change does not modify elevation behavior.
 
+While REC is paused for auto-resume, a fix that reports moving speed (Doppler speed at or above
+the resume speed) but is too inaccurate to confirm the restart (above 25 m walking, 30 m cycling)
+requests one short high-accuracy burst (`recording_auto_resume_poor_fix`: at most 8 s at 1 Hz,
+ending early at 20 m) so a usable fix arrives in seconds instead of at the next sparse paused
+update. Position jumps alone never trigger it. At most one burst is requested per pause and at
+least 2 minutes separate bursts within a recording, on top of the existing single-active-burst,
+2.5 s burst cooldown and 1.5 s request debounce; stop-and-go riding in poor GPS is therefore
+bounded to about 30 bursts (4 minutes of 1 Hz GPS) per hour. The burst does not relax any
+auto-resume threshold. Its battery cost and restart latency still need a bike test.
+
 Walking auto-pause keeps the existing 45-second confirmation, GPS accuracy and
 stationary-radius thresholds. A speed between the stop and resume thresholds
 can support an otherwise stationary fix only when valid speed uncertainty
