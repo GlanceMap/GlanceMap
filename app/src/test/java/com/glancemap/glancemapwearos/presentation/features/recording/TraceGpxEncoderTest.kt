@@ -146,6 +146,21 @@ class TraceGpxEncoderTest {
     }
 
     @Test
+    fun diagnosticsRawPositionIsWrittenBesideTheSmoothedPointOnlyWhenCaptured() {
+        val smoothed = recordedPoint(latitude = 45.0001, longitude = 6.0001, timeMillis = 1_000L)
+        val captured = smoothed.copy(rawLatLong = LatLong(45.00012345, 6.00009876))
+
+        val withRaw = encodeRecordedTraceAsGpx(title = "Raw", points = listOf(captured)).toString(Charsets.UTF_8)
+        val withoutRaw = encodeRecordedTraceAsGpx(title = "No raw", points = listOf(smoothed)).toString(Charsets.UTF_8)
+
+        assertTrue(withRaw.contains("""<trkpt lat="45.00010000" lon="6.00010000">"""))
+        assertTrue(withRaw.contains("<gmap:rawLatitude>45.00012345</gmap:rawLatitude>"))
+        assertTrue(withRaw.contains("<gmap:rawLongitude>6.00009876</gmap:rawLongitude>"))
+        assertFalse(withoutRaw.contains("gmap:rawLatitude"))
+        assertFalse(withoutRaw.contains("gmap:rawLongitude"))
+    }
+
+    @Test
     fun fiveMeterManualPauseIsVisuallyContinuous() {
         val points = pauseBoundary(displacementMeters = 5.0, reason = RecordingSegmentStartReason.MANUAL_PAUSE)
 

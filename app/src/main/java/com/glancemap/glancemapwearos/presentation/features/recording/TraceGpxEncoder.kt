@@ -364,6 +364,7 @@ private fun StringWriter.writePointExtensions(point: RecordedTracePoint) {
             pressureHpa,
             segmentStartReason,
             point.locationQuality,
+            point.rawLatLong,
         )
     if (extensionValues.all { it == null }) {
         return
@@ -405,6 +406,10 @@ private fun StringWriter.writePointExtensions(point: RecordedTracePoint) {
         }
         point.gapDistanceMeters?.takeIf { it.isFinite() && it >= 0.0 }?.let {
             textTag("gmap:gapDistanceMeters", formatDouble(it))
+        }
+        point.rawLatLong?.let { raw ->
+            textTag("gmap:rawLatitude", formatCoordinate(raw.latitude))
+            textTag("gmap:rawLongitude", formatCoordinate(raw.longitude))
         }
         point.locationQuality?.let { writeLocationQualityExtensions(it) }
         heartRateBpm?.takeIf { it in 1..255 }?.let {

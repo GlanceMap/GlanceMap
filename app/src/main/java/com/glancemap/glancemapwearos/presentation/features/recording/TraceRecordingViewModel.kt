@@ -1286,6 +1286,7 @@ class TraceRecordingViewModel(
                 val point =
                     RecordedTracePoint(
                         latLong = LatLong(latitude, longitude),
+                        rawLatLong = LatLong(latitude, longitude).takeIf { DebugTelemetry.isEnabled() },
                         elevationMeters = fusedElevation.elevationMeters,
                         timeMillis = timeMillis,
                         accuracyMeters = accuracyMeters,

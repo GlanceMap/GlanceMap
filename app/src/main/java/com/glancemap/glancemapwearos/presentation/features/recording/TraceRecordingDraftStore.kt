@@ -168,6 +168,10 @@ private object TraceRecordingDraftJson {
             startsNewSegment = optBoolean("startsNewSegment", false),
             segmentStartReason = optionalString("segmentStartReason"),
             gapDistanceMeters = optionalDouble("gapDistanceMeters"),
+            rawLatLong =
+                optionalDouble("rawLatitude")?.let { latitude ->
+                    optionalDouble("rawLongitude")?.let { longitude -> LatLong(latitude, longitude) }
+                },
             trajectoryFinalized = optBoolean("trajectoryFinalized", false),
             locationQuality = optJSONObject("locationQuality")?.toRecordedLocationQuality(),
         )
@@ -227,8 +231,14 @@ private fun RecordedTracePoint.toJson(): JSONObject =
         .put("startsNewSegment", startsNewSegment)
         .put("segmentStartReason", segmentStartReason ?: JSONObject.NULL)
         .put("gapDistanceMeters", gapDistanceMeters ?: JSONObject.NULL)
+        .putRawLatLong(rawLatLong)
         .put("trajectoryFinalized", trajectoryFinalized)
         .put("locationQuality", locationQuality?.toJson() ?: JSONObject.NULL)
+
+/** Diagnostics-only raw position; absent values stay explicit nulls like other optional fields. */
+private fun JSONObject.putRawLatLong(rawLatLong: LatLong?): JSONObject =
+    put("rawLatitude", rawLatLong?.latitude ?: JSONObject.NULL)
+        .put("rawLongitude", rawLatLong?.longitude ?: JSONObject.NULL)
 
 private fun JSONObject.optionalDouble(key: String): Double? =
     if (isNull(key)) {

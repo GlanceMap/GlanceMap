@@ -32,6 +32,7 @@ preserved by track copies and draft persistence, and exported as:
 | `locationAgeMillis` | Delivery age calculated from monotonic timestamps, milliseconds |
 | `gnssSatellitesUsed` | Satellites the GNSS chip used for a direct watch-GPS fix |
 | `gnssUsedCn0AvgDbHz` | Mean C/N0 of those satellites, dB-Hz |
+| `rawLatitude`, `rawLongitude` | Accepted fix position before fixed-lag smoothing (full diagnostics capture only) |
 
 These uncertainties describe the input location, not the subsequently processed
 elevation or speed. The GNSS values come from the latest `GnssStatus` report taken within 3 s of
@@ -41,7 +42,10 @@ Some watches (OnePlus OPWWE251) report fixed placeholder uncertainties for direc
 watch GPS (125 m horizontal, 250 m vertical, 25 m/s speed), and recording currently
 filters those fixes with an assumed 18 m. The satellite values are recorded to
 calibrate a measured replacement, for example from a walk with a phone recording in
-parallel; no recording decision reads them yet. Unknown/future monotonic timestamps have no exported age.
+parallel; no recording decision reads them yet. The raw position fields are likewise written
+only while full diagnostics capture is on: the `trkpt` coordinates stay the smoothed canonical
+track, and the raw pair lets smoothing adjustments and cut corners be measured offline. Fixes
+that never became points (held, suppressed or rejected) are not included. Unknown/future monotonic timestamps have no exported age.
 Existing raw/effective horizontal accuracy, elevation source, speed, pressure,
 sensor data, segment reasons and processing versions retain their meanings.
 No satellite count, fix type or DOP is fabricated from accuracy in metres.

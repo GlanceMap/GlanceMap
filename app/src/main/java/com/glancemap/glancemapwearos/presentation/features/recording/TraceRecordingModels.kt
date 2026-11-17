@@ -25,6 +25,11 @@ data class RecordedTracePoint(
      */
     val gapDistanceMeters: Double? = null,
     val locationQuality: RecordedLocationQuality? = null,
+    /**
+     * Diagnostics-only: the accepted fix position before fixed-lag smoothing, kept only while full
+     * diagnostics capture is on so smoothing and corner cutting can be measured offline.
+     */
+    val rawLatLong: LatLong? = null,
     /** Internal fixed-lag provenance; it is not written to GPX. */
     val trajectoryFinalized: Boolean = false,
 )
