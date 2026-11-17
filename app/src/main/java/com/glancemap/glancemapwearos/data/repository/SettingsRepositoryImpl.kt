@@ -1623,7 +1623,8 @@ class SettingsRepositoryImpl private constructor(
         }
     }
 
-    override val keepAppOpen: Flow<Boolean> = context.dataStore.data.map { it[PrefKeys.KEEP_APP_OPEN] ?: false }
+    override val keepAppOpen: Flow<Boolean> =
+        context.dataStore.data.map { it[PrefKeys.KEEP_APP_OPEN] ?: SettingsRepository.DEFAULT_KEEP_APP_OPEN }
 
     override suspend fun setKeepAppOpen(enabled: Boolean) {
         context.dataStore.edit { it[PrefKeys.KEEP_APP_OPEN] = enabled }

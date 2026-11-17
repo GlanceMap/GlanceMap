@@ -952,7 +952,7 @@ class SettingsViewModel(
 
     val keepAppOpen: StateFlow<Boolean> =
         settingsRepository.keepAppOpen
-            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), SettingsRepository.DEFAULT_KEEP_APP_OPEN)
 
     fun setKeepAppOpen(enabled: Boolean) =
         viewModelScope.launch {

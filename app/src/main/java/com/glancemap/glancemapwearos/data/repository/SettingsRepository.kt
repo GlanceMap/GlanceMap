@@ -42,6 +42,7 @@ interface SettingsRepository {
         const val RECORDING_AUTO_PAUSE_BIKE_ONLY = "BIKE_ONLY"
         const val RECORDING_AUTO_PAUSE_ALWAYS = "ALWAYS"
         const val DEFAULT_RECORDING_AUTO_PAUSE_MODE = RECORDING_AUTO_PAUSE_OFF
+        const val DEFAULT_KEEP_APP_OPEN = true
         const val RECORDING_TRACK_SMOOTHING_OFF = "OFF"
         const val RECORDING_TRACK_SMOOTHING_ADAPTIVE = "ADAPTIVE"
         const val RECORDING_TRACK_SMOOTHING_STRONG = "STRONG"

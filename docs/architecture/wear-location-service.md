@@ -56,6 +56,10 @@ cannot demote a location service that an active session still needs. Ending or m
 pausing a session restores the usual policy unless another session still requires GPS;
 the saved Stay preference is never changed.
 
+Stay defaults to on when no preference is stored; explicit saved choices remain in effect.
+The default does not run the manual enable flow's permission prompts; notification visibility
+therefore depends on notification permission already being available. Stay does not force the screen on.
+
 The existing location notification provides that foreground protection. No screen-on flag,
 partial wake lock, location interval or GPS acceptance threshold is changed by this policy.
 In the OnePlus OPWWE251 evening test on 2026-10-25, Stay was disabled before 72.519-second
