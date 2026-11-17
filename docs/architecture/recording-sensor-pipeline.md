@@ -112,7 +112,8 @@ Platform contracts: [on-change reporting](https://source.android.com/docs/core/i
 [health foreground services](https://developer.android.com/develop/background-work/services/fgs/service-types#health).
 
 
-Automatic-pause confirmation uses consecutive GPS measurement timestamps. A gap
+Auto-pause defaults to off when no per-profile or applicable legacy preference is stored.
+Saved settings remain in effect. When enabled, automatic-pause confirmation uses consecutive GPS measurement timestamps. A gap
 longer than two expected sampling intervals (limited to 15–20 seconds) starts
 confirmation again; delivery batches retain their original times. During automatic
 pause a separate non-wakeup step-counter listener can confirm a walking restart
