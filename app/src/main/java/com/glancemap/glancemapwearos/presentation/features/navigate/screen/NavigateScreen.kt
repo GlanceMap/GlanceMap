@@ -136,12 +136,14 @@ fun NavigateScreen(
     val keepAppOpen by settingsViewModel.keepAppOpen.collectAsState()
     val keepAppOpenTipShown by settingsViewModel.keepAppOpenTipShown.collectAsState()
     var pendingKeepAppOpen by rememberSaveable { mutableStateOf(false) }
+    var stayJustExplained by rememberSaveable { mutableStateOf(false) }
     var showKeepAppOpenInfoDialog by rememberSaveable { mutableStateOf(false) }
     var showNotificationPermissionDialog by rememberSaveable { mutableStateOf(false) }
 
     // ---- PERMISSIONS ----
     val notificationPermissionState =
         rememberNotificationPermissionState(context, refreshKey = firstRunSetupActive) { granted ->
+            stayJustExplained = false
             if (granted && pendingKeepAppOpen) {
                 settingsViewModel.setKeepAppOpen(true)
                 pendingKeepAppOpen = false
@@ -150,6 +152,16 @@ fun NavigateScreen(
             }
         }
 
+    fun requestStayNotificationPermission() {
+        when (stayNotificationAction(stayJustExplained)) {
+            StayNotificationAction.REQUEST_PERMISSION -> {
+                stayJustExplained = false
+                notificationPermissionState.launchPermissionRequest()
+            }
+            StayNotificationAction.SHOW_EXPLANATION -> showNotificationPermissionDialog = true
+        }
+    }
+
     val locationPermissionState =
         rememberLocationPermissionState(context, refreshKey = firstRunSetupActive) { granted ->
             if (granted && pendingKeepAppOpen) {
@@ -157,18 +169,20 @@ fun NavigateScreen(
                     notificationPermissionState.isPermissionRequired &&
                     !notificationPermissionState.hasNotificationPermission
                 ) {
-                    showNotificationPermissionDialog = true
+                    requestStayNotificationPermission()
                 } else {
                     settingsViewModel.setKeepAppOpen(true)
                     pendingKeepAppOpen = false
+                    stayJustExplained = false
                 }
             } else if (!granted) {
                 pendingKeepAppOpen = false
+                stayJustExplained = false
             }
         }
     val notificationPermissionPromptState =
         notificationPermissionState.copy(
-            launchPermissionRequest = { showNotificationPermissionDialog = true },
+            launchPermissionRequest = ::requestStayNotificationPermission,
         )
 
     val hillshadeTerrainUnavailableEvent by mapViewModel.hillshadeTerrainUnavailableEvent.collectAsState()
@@ -922,7 +936,9 @@ fun NavigateScreen(
             onContinueKeepAppOpen = {
                 showKeepAppOpenInfoDialog = false
                 if (pendingKeepAppOpen) {
+                    stayJustExplained = true
                     screenActions.continueKeepAppOpenEnableFlow()
+                    if (!pendingKeepAppOpen) stayJustExplained = false
                 } else {
                     settingsViewModel.setKeepAppOpen(false)
                 }
@@ -930,6 +946,7 @@ fun NavigateScreen(
             onDismissKeepAppOpen = {
                 showKeepAppOpenInfoDialog = false
                 pendingKeepAppOpen = false
+                stayJustExplained = false
             },
             showNotificationPermissionDialog = showNotificationPermissionDialog,
             onContinueNotificationPermission = {

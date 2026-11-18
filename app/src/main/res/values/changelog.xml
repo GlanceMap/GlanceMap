@@ -7,8 +7,6 @@
         <item>Added support for custom Mapsforge themes sent from the phone.</item>
         <item>Improved recording continuity, GPS gap handling and sensor recovery.</item>
         <item>Improved offline map downloads and extraction.</item>
-        <item>Auto-pause is now off by default for new settings; existing choices are preserved.</item>
-        <item>Stay is now on by default when no preference is saved; existing choices are preserved.</item>
     </string-array>
 
     <string-array name="changelog_1_2_3_notes">

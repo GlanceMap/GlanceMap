@@ -15,6 +15,15 @@ import kotlinx.coroutines.launch
 
 internal enum class StayToggleAction { SHOW_INFO, TURN_OFF, TURN_ON }
 
+internal enum class StayNotificationAction { REQUEST_PERMISSION, SHOW_EXPLANATION }
+
+internal fun stayNotificationAction(justExplained: Boolean): StayNotificationAction =
+    if (justExplained) {
+        StayNotificationAction.REQUEST_PERMISSION
+    } else {
+        StayNotificationAction.SHOW_EXPLANATION
+    }
+
 internal fun stayToggleAction(
     enabled: Boolean,
     tipShown: Boolean,

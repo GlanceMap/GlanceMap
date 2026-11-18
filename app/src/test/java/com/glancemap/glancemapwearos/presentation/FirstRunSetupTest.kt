@@ -25,4 +25,20 @@ class FirstRunSetupTest {
         assertFalse(firstRunMayEnableStay(locationGranted = false, notificationsGranted = true))
         assertFalse(firstRunMayEnableStay(locationGranted = true, notificationsGranted = false))
     }
+
+    @Test
+    fun continuingWithoutLocationStillOffersNotificationsBeforeTheMap() {
+        assertEquals(
+            FirstRunStep.STAY,
+            nextFirstRunStepAfterLocation(granted = false, continueWithoutLocation = true),
+        )
+        assertEquals(
+            FirstRunStep.MAP,
+            firstRunStepWhenStayPermissionsMissing(locationGranted = false, notificationsGranted = true),
+        )
+        assertEquals(
+            FirstRunStep.NOTIFICATIONS_DENIED,
+            firstRunStepWhenStayPermissionsMissing(locationGranted = false, notificationsGranted = false),
+        )
+    }
 }

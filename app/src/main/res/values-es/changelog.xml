@@ -7,8 +7,6 @@
         <item>Añadida compatibilidad con temas Mapsforge personalizados enviados desde el teléfono.</item>
         <item>Mejoradas la continuidad de la grabación, la gestión de interrupciones GPS y la recuperación de sensores.</item>
         <item>Mejoradas la descarga y extracción de mapas sin conexión.</item>
-        <item>La pausa automática está desactivada por defecto en los ajustes nuevos; se conservan las preferencias existentes.</item>
-        <item>Mantener activo está activado por defecto si no hay ninguna preferencia guardada; se conservan las preferencias existentes.</item>
     </string-array>
 
     <string-array name="changelog_1_2_3_notes">

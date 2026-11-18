@@ -7,8 +7,6 @@
         <item>Prise en charge des thèmes Mapsforge personnalisés envoyés depuis le téléphone.</item>
         <item>Amélioration de la continuité des enregistrements, de la gestion des interruptions GPS et de la récupération des capteurs.</item>
         <item>Amélioration du téléchargement et de l’extraction des cartes hors ligne.</item>
-        <item>La pause automatique est désormais désactivée par défaut pour les nouveaux réglages ; les choix existants sont conservés.</item>
-        <item>Rester est désormais activé par défaut si aucune préférence n’est enregistrée ; les choix existants sont conservés.</item>
     </string-array>
 
     <string-array name="changelog_1_2_3_notes">

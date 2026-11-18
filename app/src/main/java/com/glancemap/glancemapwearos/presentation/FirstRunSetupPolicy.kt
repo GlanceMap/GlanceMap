@@ -21,7 +21,18 @@ internal fun shouldStartFirstRunSetup(
 
 internal fun nextFirstRunStepAfterLocation(
     granted: Boolean,
-): FirstRunStep = if (granted) FirstRunStep.STAY else FirstRunStep.LOCATION_DENIED
+    continueWithoutLocation: Boolean = false,
+): FirstRunStep = if (granted || continueWithoutLocation) FirstRunStep.STAY else FirstRunStep.LOCATION_DENIED
+
+internal fun firstRunStepWhenStayPermissionsMissing(
+    locationGranted: Boolean,
+    notificationsGranted: Boolean,
+): FirstRunStep =
+    when {
+        !notificationsGranted -> FirstRunStep.NOTIFICATIONS_DENIED
+        !locationGranted -> FirstRunStep.MAP
+        else -> FirstRunStep.STAY_UNAVAILABLE
+    }
 
 internal fun nextFirstRunStepAfterNotifications(
     granted: Boolean,

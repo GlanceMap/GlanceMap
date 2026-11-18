@@ -7,8 +7,6 @@
         <item>Unterstützung für vom Smartphone gesendete benutzerdefinierte Mapsforge-Themen hinzugefügt.</item>
         <item>Aufzeichnungskontinuität, Umgang mit GPS-Lücken und Wiederherstellung der Sensoren verbessert.</item>
         <item>Downloads und Entpackung von Offline-Karten verbessert.</item>
-        <item>Die automatische Pause ist bei neuen Einstellungen standardmäßig ausgeschaltet; bestehende Einstellungen bleiben erhalten.</item>
-        <item>Aktiv bleiben ist standardmäßig eingeschaltet, wenn keine Einstellung gespeichert ist; bestehende Einstellungen bleiben erhalten.</item>
     </string-array>
 
     <string-array name="changelog_1_2_3_notes">

@@ -146,11 +146,7 @@ internal fun FirstRunSetup(
             } else {
                 settings.setKeepAppOpen(false).join()
                 state.moveTo(
-                    when {
-                        !locationGranted -> FirstRunStep.LOCATION_DENIED
-                        !notificationsGranted -> FirstRunStep.NOTIFICATIONS_DENIED
-                        else -> FirstRunStep.STAY_UNAVAILABLE
-                    },
+                    firstRunStepWhenStayPermissionsMissing(locationGranted, notificationsGranted),
                 )
             }
             preparing = false
@@ -289,7 +285,7 @@ internal fun FirstRunSetup(
                             }
                         FirstRunStep.LOCATION_DENIED -> {
                             settings.setOfflineMode(true)
-                            state.moveTo(FirstRunStep.MAP)
+                            state.moveTo(nextFirstRunStepAfterLocation(granted = false, continueWithoutLocation = true))
                         }
                         FirstRunStep.NOTIFICATIONS_DENIED,
                         FirstRunStep.STAY_UNAVAILABLE,
