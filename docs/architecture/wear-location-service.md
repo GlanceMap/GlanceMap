@@ -57,8 +57,12 @@ pausing a session restores the usual policy unless another session still require
 the saved Stay preference is never changed.
 
 Stay defaults to on when no preference is stored; explicit saved choices remain in effect.
-The default does not run the manual enable flow's permission prompts; notification visibility
-therefore depends on notification permission already being available. Stay does not force the screen on.
+On a fresh installation, first-run setup temporarily switches Stay off while requesting location
+and notification permissions. It enables Stay after the permissions are available and the location
+service start request succeeds. Denial, dismissal or a failed service start leaves Stay off; the
+user can enable it later. The setup suppresses the update changelog on first install, presents one
+map-download invitation, and holds the ordinary missing-map prompt until setup finishes. Existing
+installations keep their saved preference and update prompt. Stay does not force the screen on.
 
 The existing location notification provides that foreground protection. No screen-on flag,
 partial wake lock, location interval or GPS acceptance threshold is changed by this policy.

@@ -67,7 +67,6 @@ import com.glancemap.glancemapwearos.presentation.features.routetools.withVisibl
 import com.glancemap.glancemapwearos.presentation.features.settings.SettingsViewModel
 import com.glancemap.glancemapwearos.presentation.ui.rememberWearAdaptiveSpec
 import com.glancemap.glancemapwearos.presentation.ui.rememberWearScreenSize
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.mapsforge.core.model.LatLong
 import org.mapsforge.map.android.graphics.AndroidBitmap
@@ -84,6 +83,8 @@ fun NavigateScreen(
     isAmbient: Boolean,
     isDeviceInteractive: Boolean,
     ambientTickMs: Long,
+    firstRunSetupActive: Boolean = false,
+    isNavigateDestination: Boolean = true,
     onNavigateTimeSuppressedChange: (Boolean) -> Unit = {},
     showNavigateTime: Boolean = true,
     navigateTimeFormat: String = SettingsRepository.TIME_FORMAT_24_HOUR,
@@ -140,7 +141,7 @@ fun NavigateScreen(
 
     // ---- PERMISSIONS ----
     val notificationPermissionState =
-        rememberNotificationPermissionState(context) { granted ->
+        rememberNotificationPermissionState(context, refreshKey = firstRunSetupActive) { granted ->
             if (granted && pendingKeepAppOpen) {
                 settingsViewModel.setKeepAppOpen(true)
                 pendingKeepAppOpen = false
@@ -150,7 +151,7 @@ fun NavigateScreen(
         }
 
     val locationPermissionState =
-        rememberLocationPermissionState(context) { granted ->
+        rememberLocationPermissionState(context, refreshKey = firstRunSetupActive) { granted ->
             if (granted && pendingKeepAppOpen) {
                 if (
                     notificationPermissionState.isPermissionRequired &&
@@ -485,13 +486,15 @@ fun NavigateScreen(
             DebugTelemetry.log("NavigationTelemetry", "event=map_focus_exit source=$source")
         }
 
-        // ---- Auto-recenter timer ----
-        LaunchedEffect(effectiveNavMode, autoRecenterEnabled, autoRecenterDelay, offlineMode) {
-            if (!offlineMode && effectiveNavMode == NavMode.PANNING && autoRecenterEnabled) {
-                delay(autoRecenterDelay.toLong() * 1000L)
-                navigateViewModel.onRecenterRequested()
-            }
-        }
+        var autoRecenterTouchDown by remember { mutableStateOf(false) }
+        var autoRecenterInteraction by remember { mutableLongStateOf(0L) }
+        MapFocusAutoTimer(
+            enabled = autoRecenterEnabled,
+            delaySeconds = autoRecenterDelay,
+            available = effectiveNavMode == NavMode.PANNING && !offlineMode && !autoRecenterTouchDown,
+            interaction = autoRecenterInteraction,
+            onEnter = navigateViewModel::onRecenterRequested,
+        )
 
         if (isAmbient) {
             AmbientScreen(
@@ -918,7 +921,11 @@ fun NavigateScreen(
             helpDialogMaxHeight = adaptive.helpDialogMaxHeight,
             onContinueKeepAppOpen = {
                 showKeepAppOpenInfoDialog = false
-                screenActions.continueKeepAppOpenEnableFlow()
+                if (pendingKeepAppOpen) {
+                    screenActions.continueKeepAppOpenEnableFlow()
+                } else {
+                    settingsViewModel.setKeepAppOpen(false)
+                }
             },
             onDismissKeepAppOpen = {
                 showKeepAppOpenInfoDialog = false
@@ -1104,6 +1111,7 @@ fun NavigateScreen(
                     !createdPoiCreateInProgress,
             onExitMapFocus = ::exitMapFocus,
             hasLocationPermission = locationPermissionState.hasLocationPermission || offlineMode,
+            suppressPermissionPrompt = firstRunSetupActive || !isNavigateDestination,
             focusRequester = focusRequester,
             mapHolder = mapHolder,
             terrain3dEnabled = terrain3dEnabled,
@@ -1161,6 +1169,10 @@ fun NavigateScreen(
                 }
             },
             onUserPanStarted = { navigateViewModel.onUserPanStarted() },
+            onAutoRecenterTouchChanged = { pressed ->
+                autoRecenterTouchDown = pressed
+                autoRecenterInteraction++
+            },
             onRecenter = { navigateViewModel.onRecenterRequested() },
             onRecenterRequested = {
                 if (!offlineMode) {
@@ -1185,6 +1197,7 @@ fun NavigateScreen(
                 }
             },
             onPermissionLaunch = { locationPermissionState.launchPermissions() },
+            onPermissionLater = { settingsViewModel.setOfflineMode(true) },
             mapRotationDeg = renderedMapRotationDeg,
             navigationMarkerAnchorMode = effectiveNavigationMarkerAnchorMode,
             compassHeadingDeg = renderedCompassHeadingDeg,
@@ -1340,7 +1353,8 @@ fun NavigateScreen(
         val missingMapPromptLocation =
             uiState.lastKnownLocation.takeIf { gpsSignalSnapshot.lastFixFresh && gpsFixFreshForAccuracyCircle }
         val canShowMissingMapPrompt =
-            isScreenResumed &&
+            !firstRunSetupActive &&
+                isScreenResumed &&
                 screenState.isInteractive &&
                 !offlineMode &&
                 !traceRecordingState.active &&

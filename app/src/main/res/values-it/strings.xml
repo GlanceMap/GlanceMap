@@ -1,5 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:tools="http://schemas.android.com/tools">
+    <string name="first_run_welcome">Benvenuto</string>
+    <string name="first_run_welcome_message">Preparati per la tua prossima avventura. GlanceMap ha bisogno di alcune autorizzazioni per funzionare correttamente.</string>
+    <string name="first_run_stay">Resta attivo</string>
+    <string name="first_run_stay_message">Resta attivo aiuta a mantenere GlanceMap in primo piano quando lo schermo dell’orologio è spento.</string>
+    <string name="first_run_location_off">Posizione disattivata</string>
+    <string name="first_run_location_off_message">Senza posizione, GlanceMap non può mostrare dove ti trovi o registrare una traccia. Puoi attivarla più tardi nelle impostazioni.</string>
+    <string name="first_run_stay_off">Resta attivo disattivato</string>
+    <string name="first_run_stay_off_message">Resta attivo è disattivato perché le notifiche sono disattivate. Puoi attivarlo più tardi.</string>
+    <string name="first_run_stay_unavailable">Resta attivo disattivato</string>
+    <string name="first_run_stay_unavailable_message">Resta attivo non si è avviato. Puoi riprovare più tardi.</string>
+    <string name="first_run_download_map">Scarica una mappa</string>
+    <string name="first_run_download_map_message">Inizia scaricando la mappa che preferisci e goditi la vita all’aria aperta.</string>
+    <string name="first_run_choose_map">Scegli una mappa</string>
+    <string name="first_run_permission_settings">Autorizzazioni</string>
     <string name="watch_whats_new_title">Novità della versione %1$s</string>
     <string-array name="watch_whats_new_notes">
         <item>Aggiunti francese, tedesco, spagnolo, italiano e polacco, con selezione della lingua.</item>
@@ -1179,7 +1193,8 @@
     <string name="navigate_live_distance">"Distanza in tempo reale"</string>
     <string name="navigate_live_elevation">"Quota in tempo reale"</string>
     <string name="navigate_live_elevation_center">"Quota al centro della mappa"</string>
-    <string name="navigate_location_permission_required_for_this_screen">"Per questo schermo è richiesta l'autorizzazione di localizzazione."</string>
+    <string name="navigate_location_permission_required_for_this_screen">Serve l’accesso alla posizione per mostrare dove ti trovi.</string>
+    <string name="navigate_later_gps_off">Più tardi · GPS disattivato</string>
     <string name="navigate_longitude">"Longitudine"</string>
     <string name="navigate_map_point">"Punto mappa"</string>
     <string name="navigate_menu">"Menù"</string>
@@ -1516,6 +1531,8 @@
     <string name="settings_back_to_settings_menu">"Torna al menu delle impostazioni"</string>
     <string name="settings_back_to_turn_by_turn">"Torna alle indicazioni svolta per svolta"</string>
     <string name="settings_backpack">"Zaino"</string>
+    <string name="settings_luggage">Bagaglio</string>
+    <string name="settings_luggage_summary">bagaglio %1$s</string>
     <string name="settings_balanced">"Equilibrato"</string>
     <string name="settings_balanced_recommended">"Equilibrato · consigliato"</string>
     <string name="settings_battery_benchmark">"Test batteria"</string>

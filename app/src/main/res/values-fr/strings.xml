@@ -1,5 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:tools="http://schemas.android.com/tools">
+    <string name="first_run_welcome">Bienvenue</string>
+    <string name="first_run_welcome_message">Préparez votre prochaine aventure ! GlanceMap a besoin de quelques autorisations pour bien fonctionner.</string>
+    <string name="first_run_stay">Rester</string>
+    <string name="first_run_stay_message">Rester aide à maintenir GlanceMap au premier plan lorsque l’écran de votre montre est éteint.</string>
+    <string name="first_run_location_off">Localisation désactivée</string>
+    <string name="first_run_location_off_message">Sans localisation, GlanceMap ne peut pas afficher votre position ni enregistrer une trace. Vous pourrez l’activer plus tard dans les réglages.</string>
+    <string name="first_run_stay_off">Rester désactivé</string>
+    <string name="first_run_stay_off_message">Rester est désactivé car les notifications sont désactivées. Vous pourrez l’activer plus tard.</string>
+    <string name="first_run_stay_unavailable">Rester désactivé</string>
+    <string name="first_run_stay_unavailable_message">Rester n’a pas pu démarrer. Vous pourrez réessayer plus tard.</string>
+    <string name="first_run_download_map">Télécharger une carte</string>
+    <string name="first_run_download_map_message">Commencez par télécharger la carte de votre choix et profitez du plein air.</string>
+    <string name="first_run_choose_map">Choisir une carte</string>
+    <string name="first_run_permission_settings">Autorisations</string>
     <string name="watch_whats_new_title">Nouveautés de %1$s</string>
     <string-array name="watch_whats_new_notes">
         <item>Ajout du français, de l’allemand, de l’espagnol, de l’italien et du polonais, avec sélection de la langue.</item>
@@ -1181,7 +1195,8 @@
     <string name="navigate_live_distance">"Distance en direct"</string>
     <string name="navigate_live_elevation">"Altitude en direct"</string>
     <string name="navigate_live_elevation_center">"Altitude au centre de la carte"</string>
-    <string name="navigate_location_permission_required_for_this_screen">"Autorisation de localisation requise pour cet écran."</string>
+    <string name="navigate_location_permission_required_for_this_screen">L’accès à la localisation est nécessaire pour afficher votre position.</string>
+    <string name="navigate_later_gps_off">Plus tard · GPS désactivé</string>
     <string name="navigate_longitude">"Longitude"</string>
     <string name="navigate_map_point">"Point sur la carte"</string>
     <string name="navigate_menu">"Menu"</string>
@@ -1518,6 +1533,8 @@
     <string name="settings_back_to_settings_menu">"Retour aux paramètres"</string>
     <string name="settings_back_to_turn_by_turn">"Retour au guidage pas à pas"</string>
     <string name="settings_backpack">"Sac à dos"</string>
+    <string name="settings_luggage">Bagages</string>
+    <string name="settings_luggage_summary">bagages %1$s</string>
     <string name="settings_balanced">"Équilibré"</string>
     <string name="settings_balanced_recommended">"Équilibré · recommandé"</string>
     <string name="settings_battery_benchmark">"Test batterie"</string>

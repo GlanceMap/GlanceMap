@@ -24,8 +24,8 @@ import com.glancemap.glancemapwearos.BuildConfig
 import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.presentation.ui.WearInfoDialog
 
-private const val RATING_PROMPT_PREFS = "watch_app_rating_prompt"
-private const val RATING_PROMPT_LAST_VERSION = "last_version_shown"
+internal const val RATING_PROMPT_PREFS = "watch_app_rating_prompt"
+internal const val RATING_PROMPT_LAST_VERSION = "last_version_shown"
 internal const val WATCH_APP_PACKAGE_NAME = "com.glancemap.glancemapwearos"
 internal const val WATCH_APP_PLAY_STORE_PACKAGE_NAME = "com.android.vending"
 internal const val WATCH_APP_PLAY_STORE_URL =

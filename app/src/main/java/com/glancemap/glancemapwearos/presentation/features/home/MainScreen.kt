@@ -2,6 +2,11 @@
 
 package com.glancemap.glancemapwearos.presentation.features.home
 
+import android.content.Intent
+import android.net.Uri
+import android.provider.Settings
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.layout.Arrangement
@@ -41,6 +46,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
@@ -60,8 +66,13 @@ import androidx.wear.compose.material3.Text
 import androidx.wear.compose.navigation.rememberSwipeDismissableNavController
 import androidx.wear.tooling.preview.devices.WearDevices
 import com.glancemap.glancemapwearos.R
+import com.glancemap.glancemapwearos.presentation.features.navigate.hasForegroundLocationPermission
+import com.glancemap.glancemapwearos.presentation.features.navigate.rememberLocationPermissionState
 import com.glancemap.glancemapwearos.presentation.features.settings.SettingsViewModel
 import com.glancemap.glancemapwearos.presentation.navigation.WatchRoutes
+import com.glancemap.glancemapwearos.presentation.ui.WearActionButtonRole
+import com.glancemap.glancemapwearos.presentation.ui.WearActionDialog
+import com.glancemap.glancemapwearos.presentation.ui.WearActionDialogButton
 import com.glancemap.glancemapwearos.presentation.ui.WearScreenEdgeScrollIndicator
 import com.glancemap.glancemapwearos.presentation.ui.WearScreenSize
 import com.glancemap.glancemapwearos.presentation.ui.cappedFontScale
@@ -77,10 +88,33 @@ fun MainScreen(
     onNavigateClick: () -> Unit = { navController.navigate(WatchRoutes.NAVIGATE) },
 ) {
     val resources = LocalResources.current
+    val context = LocalContext.current
     val offlineModeFlow = settingsViewModel?.offlineMode ?: flowOf(false)
     val offlineMode by offlineModeFlow.collectAsState(initial = false)
     val fontScale = LocalDensity.current.fontScale
     var gpsStatusMessage by remember { mutableStateOf<String?>(null) }
+    var showLocationPrompt by remember { mutableStateOf(false) }
+    var showPermissionSettings by remember { mutableStateOf(false) }
+
+    fun enableGps() {
+        settingsViewModel?.setOfflineMode(false)
+        gpsStatusMessage = resources.getString(R.string.navigation_gps_activated)
+    }
+
+    val locationPermission =
+        rememberLocationPermissionState(context) { granted ->
+            if (granted) {
+                showLocationPrompt = false
+                enableGps()
+            } else {
+                showPermissionSettings = true
+                showLocationPrompt = true
+            }
+        }
+    val permissionSettings =
+        rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+            if (hasForegroundLocationPermission(context)) enableGps() else showLocationPrompt = true
+        }
 
     LaunchedEffect(gpsStatusMessage) {
         if (gpsStatusMessage == null) return@LaunchedEffect
@@ -273,16 +307,17 @@ fun MainScreen(
                         .offset(y = centerRowYOffset)
                         .padding(start = navigateIconEdgePadding),
                 onGpsClick = {
-                    val nextOfflineMode = !offlineMode
-                    settingsViewModel?.setOfflineMode(nextOfflineMode)
-                    gpsStatusMessage =
-                        if (nextOfflineMode) {
-                            resources.getString(
-                                R.string.navigation_gps_deactivated,
-                            )
-                        } else {
-                            resources.getString(R.string.navigation_gps_activated)
+                    when (homeGpsToggleAction(offlineMode, hasForegroundLocationPermission(context))) {
+                        HomeGpsToggleAction.TURN_OFF -> {
+                            settingsViewModel?.setOfflineMode(true)
+                            gpsStatusMessage = resources.getString(R.string.navigation_gps_deactivated)
                         }
+                        HomeGpsToggleAction.TURN_ON -> enableGps()
+                        HomeGpsToggleAction.REQUEST_LOCATION -> {
+                            showPermissionSettings = false
+                            showLocationPrompt = true
+                        }
+                    }
                 },
                 onDownloadClick = { navController.navigate(WatchRoutes.DOWNLOAD) },
             )
@@ -339,6 +374,57 @@ fun MainScreen(
                 )
             }
         }
+    }
+    WearActionDialog(
+        visible = showLocationPrompt,
+        title = stringResource(R.string.settings_permission_needed),
+        onDismissRequest = { showLocationPrompt = false },
+        buttons =
+            buildList {
+                add(
+                    WearActionDialogButton(
+                        text =
+                            stringResource(
+                                if (showPermissionSettings) {
+                                    R.string.first_run_permission_settings
+                                } else {
+                                    R.string.common_continue
+                                },
+                            ),
+                        onClick = {
+                            showLocationPrompt = false
+                            if (showPermissionSettings) {
+                                permissionSettings.launch(
+                                    Intent(
+                                        Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                        Uri.fromParts("package", context.packageName, null),
+                                    ),
+                                )
+                            } else {
+                                locationPermission.launchPermissions()
+                            }
+                        },
+                    ),
+                )
+                add(
+                    WearActionDialogButton(
+                        stringResource(R.string.navigate_later),
+                        onClick = { showLocationPrompt = false },
+                        role = WearActionButtonRole.Secondary,
+                    ),
+                )
+            },
+    ) {
+        Text(
+            stringResource(
+                if (showPermissionSettings) {
+                    R.string.first_run_location_off_message
+                } else {
+                    R.string.navigate_location_permission_required_for_this_screen
+                },
+            ),
+            textAlign = TextAlign.Center,
+        )
     }
 }
 

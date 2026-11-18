@@ -161,6 +161,7 @@ class MainActivity : ComponentActivity() {
         lifecycle.addObserver(ambientState.observer)
 
         setContent {
+            val firstRunSetup = rememberFirstRunSetupState()
             val appContainer = (application as GlanceMapWearApp).container
             val showTimeInNavigate by appContainer.settingsViewModel.showTimeInNavigate
                 .collectAsState(initial = true)
@@ -475,6 +476,8 @@ class MainActivity : ComponentActivity() {
                                 isAmbient = isAmbient,
                                 isDeviceInteractive = isDeviceInteractive,
                                 ambientTickMs = ambientTickMs,
+                                firstRunSetupActive = firstRunSetup.active,
+                                isNavigateDestination = isNavigateScreen,
                                 onNavigateTimeSuppressedChange = { suppressNavigateTime = it },
                                 showNavigateTime = showTimeInNavigate && !suppressNavigateTime,
                                 navigateTimeFormat = navigateTimeFormat,
@@ -997,9 +1000,6 @@ class MainActivity : ComponentActivity() {
                                             restoreState = true
                                         }
                                     },
-                                    onOpenTurnByTurnSettings = {
-                                        navController.navigate(WatchRoutes.TURN_BY_TURN_SETTINGS)
-                                    },
                                     onOpenGpxToolsSettings = {
                                         navController.navigate(WatchRoutes.GPX_TOOLS_SETTINGS)
                                     },
@@ -1181,8 +1181,19 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                 }
-                compassHardwareUnavailableNotice()
-                WatchAppRatingPrompt()
+                if (!firstRunSetup.active) compassHardwareUnavailableNotice()
+                if (!firstRunSetup.active) WatchAppRatingPrompt()
+                FirstRunSetup(
+                    state = firstRunSetup,
+                    settings = appContainer.settingsViewModel,
+                    location = appContainer.locationViewModel,
+                    onFinish = { openMaps ->
+                        appContainer.mapViewModel.dismissMissingMapPrompt()
+                        if (openMaps) {
+                            navController.navigate(WatchRoutes.DOWNLOAD_AREA_PICKER) { launchSingleTop = true }
+                        }
+                    },
+                )
                 WearActionDialog(
                     visible = recordingStartWarning != null,
                     title = stringResource(R.string.recording_external_sensors_unavailable),

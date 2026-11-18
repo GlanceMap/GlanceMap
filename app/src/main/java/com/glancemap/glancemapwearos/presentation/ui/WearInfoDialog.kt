@@ -61,6 +61,8 @@ fun WearInfoDialog(
     dismissible: Boolean = true,
     backgroundColor: Color = Color.Black.copy(alpha = 0.82f),
     swipeDownToDismiss: Boolean = false,
+    showDragHandle: Boolean = true,
+    titleContent: (@Composable () -> Unit)? = null,
     content: LazyListScope.() -> Unit,
 ) {
     if (!visible) return
@@ -122,22 +124,28 @@ fun WearInfoDialog(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
                 userScrollEnabled = true,
             ) {
-                item {
-                    InfoDialogDragHandle(
-                        dismissible = dismissible,
-                        onDismiss = onDismiss,
-                    )
+                if (showDragHandle) {
+                    item {
+                        InfoDialogDragHandle(
+                            dismissible = dismissible,
+                            onDismiss = onDismiss,
+                        )
+                    }
                 }
                 item {
-                    Text(
-                        text = title,
-                        style = MaterialTheme.typography.titleLarge,
-                        textAlign = TextAlign.Center,
-                        modifier =
-                            Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 6.dp),
-                    )
+                    if (titleContent != null) {
+                        titleContent()
+                    } else {
+                        Text(
+                            text = title,
+                            style = MaterialTheme.typography.titleLarge,
+                            textAlign = TextAlign.Center,
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 6.dp),
+                        )
+                    }
                 }
                 content()
             }

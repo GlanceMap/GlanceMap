@@ -464,7 +464,7 @@ private fun formatUserProfileSummary(
     if (backpackWeightKg.roundToInt() > 0) {
         parts +=
             resources.getString(
-                R.string.settings_pack,
+                if (isBike) R.string.settings_luggage_summary else R.string.settings_pack,
                 formatSettingsUserWeight(backpackWeightKg, isMetric, resources = resources),
             )
     }

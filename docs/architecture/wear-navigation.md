@@ -39,9 +39,13 @@ Key files:
 4. `MapOverlays.kt` renders GPX + inspection UI on top of `MapView`.
 5. `NavigateContent.kt` handles user gestures (pan/zoom/recenter/menu/toggles) and sends intent callbacks to viewmodels.
 
+When foreground location permission is missing, continuing first-run setup or choosing Later on the navigation screen enables the existing GPS-off mode. The user can turn GPS back on from the home menu. If location permission is missing, the home menu explains the permission and requests it before enabling GPS.
+
 Map focus mode is retained by the Navigate destination's `NavigateViewModel`, so returning from the menu restores the focused map. Full-screen recording and guidance dashboards temporarily take visual precedence without clearing map focus; the mode ends only when the user explicitly exits it.
 
 Optional full-screen auto-mode is off by default. While the interactive map is in normal mode, it enters map focus after the configured idle delay (1–20 seconds, default 5). Touch and rotary interaction restart the delay; the countdown is suspended while a touch is held, the map is not interactive, or a dashboard or map workflow is open. Exiting map focus starts a fresh countdown. The setting does not keep the screen awake.
+
+When auto-recenter is enabled, panning starts an idle countdown. Touching the navigation screen suspends the countdown while any pointer is held; after release it starts again at the configured delay. Offline mode continues to disable automatic recentering.
 
 ## Responsibilities
 

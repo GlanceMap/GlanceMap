@@ -16,6 +16,50 @@ class MapFocusAutoTimerTest {
     @get:Rule val composeRule = createComposeRule()
 
     @Test
+    fun autoRecenterWaitsForReleaseAndRestartsAfterAnotherTouch() {
+        var touchDown by mutableStateOf(false)
+        var interaction by mutableLongStateOf(0L)
+        var panning by mutableStateOf(true)
+        var recenterCount = 0
+        composeRule.mainClock.autoAdvance = false
+        composeRule.setContent {
+            MapFocusAutoTimer(
+                enabled = true,
+                delaySeconds = 5,
+                available = panning && !touchDown,
+                interaction = interaction,
+            ) {
+                recenterCount++
+                panning = false
+            }
+        }
+        composeRule.mainClock.advanceTimeBy(4_000)
+        composeRule.runOnIdle {
+            touchDown = true
+            interaction++
+        }
+        composeRule.mainClock.advanceTimeBy(10_000)
+        composeRule.runOnIdle {
+            assertEquals(0, recenterCount)
+            touchDown = false
+            interaction++
+        }
+        composeRule.mainClock.advanceTimeBy(4_000)
+        composeRule.runOnIdle {
+            touchDown = true
+            interaction++
+        }
+        composeRule.mainClock.advanceTimeBy(1_000)
+        composeRule.runOnIdle {
+            assertEquals(0, recenterCount)
+            touchDown = false
+            interaction++
+        }
+        composeRule.mainClock.advanceTimeBy(5_100)
+        composeRule.runOnIdle { assertEquals(1, recenterCount) }
+    }
+
+    @Test
     fun interactionsAndExitRestartTheCountdownAndUnavailableScreenSuspendsIt() {
         var enabled by mutableStateOf(false)
         var available by mutableStateOf(true)

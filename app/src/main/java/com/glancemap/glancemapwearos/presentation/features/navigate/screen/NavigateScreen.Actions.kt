@@ -13,6 +13,18 @@ import com.glancemap.glancemapwearos.presentation.features.settings.SettingsView
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
+internal enum class StayToggleAction { SHOW_INFO, TURN_OFF, TURN_ON }
+
+internal fun stayToggleAction(
+    enabled: Boolean,
+    tipShown: Boolean,
+): StayToggleAction =
+    when {
+        !tipShown -> StayToggleAction.SHOW_INFO
+        enabled -> StayToggleAction.TURN_OFF
+        else -> StayToggleAction.TURN_ON
+    }
+
 internal data class NavigateScreenActions(
     val triggerHaptic: () -> Unit,
     val continueKeepAppOpenEnableFlow: () -> Unit,
@@ -71,21 +83,19 @@ internal fun rememberNavigateScreenActions(
     fun toggleKeepAppOpen() {
         triggerHaptic()
 
-        if (keepAppOpen) {
-            settingsViewModel.setKeepAppOpen(false)
-            setPendingKeepAppOpen(false)
-            setShowKeepAppOpenInfoDialog(false)
-            return
+        when (stayToggleAction(keepAppOpen, keepAppOpenTipShown)) {
+            StayToggleAction.SHOW_INFO -> {
+                setShowKeepAppOpenInfoDialog(true)
+                setPendingKeepAppOpen(!keepAppOpen)
+                settingsViewModel.setKeepAppOpenTipShown(true)
+            }
+            StayToggleAction.TURN_OFF -> {
+                settingsViewModel.setKeepAppOpen(false)
+                setPendingKeepAppOpen(false)
+                setShowKeepAppOpenInfoDialog(false)
+            }
+            StayToggleAction.TURN_ON -> continueKeepAppOpenEnableFlow()
         }
-
-        if (!keepAppOpenTipShown) {
-            setShowKeepAppOpenInfoDialog(true)
-            setPendingKeepAppOpen(true)
-            settingsViewModel.setKeepAppOpenTipShown(true)
-            return
-        }
-
-        continueKeepAppOpenEnableFlow()
     }
 
     fun toggleShortcutTray() {

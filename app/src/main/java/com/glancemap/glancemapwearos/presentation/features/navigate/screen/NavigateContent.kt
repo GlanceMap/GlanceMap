@@ -129,6 +129,7 @@ internal fun NavigateContent(
     mapFocusAutoAllowed: Boolean,
     onExitMapFocus: (String) -> Unit,
     hasLocationPermission: Boolean,
+    suppressPermissionPrompt: Boolean,
     focusRequester: FocusRequester,
     mapHolder: MapHolder?,
     terrain3dEnabled: Boolean,
@@ -165,6 +166,7 @@ internal fun NavigateContent(
     lastKnownLocation: LatLong?,
     onToggleOrientation: () -> Unit,
     onUserPanStarted: () -> Unit,
+    onAutoRecenterTouchChanged: (Boolean) -> Unit,
     onRecenter: () -> Unit,
     onRecenterRequested: () -> Unit,
     autoRecenterEnabled: Boolean,
@@ -173,6 +175,7 @@ internal fun NavigateContent(
     triggerHaptic: () -> Unit,
     onMenuClick: () -> Unit,
     onPermissionLaunch: () -> Unit,
+    onPermissionLater: () -> Unit,
     mapRotationDeg: Float,
     navigationMarkerAnchorMode: String,
     compassHeadingDeg: Float,
@@ -325,6 +328,7 @@ internal fun NavigateContent(
     val northIndicatorIconSize = sizing.northIndicatorIconSize
     val latestNavMode = rememberUpdatedState(navMode)
     val latestOnUserPanStarted = rememberUpdatedState(onUserPanStarted)
+    val latestOnAutoRecenterTouchChanged = rememberUpdatedState(onAutoRecenterTouchChanged)
     val latestOnMapLongPress = rememberUpdatedState(onMapLongPress)
     val latestInspectionEnabled =
         rememberUpdatedState(
@@ -754,8 +758,10 @@ internal fun NavigateContent(
             combinedGuidanceRecordingFullScreenExpanded
     var autoFocusInteraction by remember { mutableLongStateOf(0L) }
     var autoFocusTouchDown by remember { mutableStateOf(false) }
-    LaunchedEffect(mapFocusAutoEnabled) {
-        if (!mapFocusAutoEnabled) autoFocusTouchDown = false
+    DisposableEffect(Unit) {
+        onDispose {
+            if (autoFocusTouchDown) latestOnAutoRecenterTouchChanged.value(false)
+        }
     }
     MapFocusAutoTimer(
         enabled = mapFocusAutoEnabled,
@@ -839,14 +845,16 @@ internal fun NavigateContent(
         modifier =
             Modifier
                 .fillMaxSize()
-                .pointerInput(mapFocusAutoEnabled) {
-                    if (mapFocusAutoEnabled) {
-                        awaitPointerEventScope {
-                            while (true) {
-                                val event = awaitPointerEvent(PointerEventPass.Initial)
-                                autoFocusTouchDown = event.changes.any { it.pressed }
-                                autoFocusInteraction++
+                .pointerInput(Unit) {
+                    awaitPointerEventScope {
+                        while (true) {
+                            val event = awaitPointerEvent(PointerEventPass.Initial)
+                            val touchDown = event.changes.any { it.pressed }
+                            if (touchDown != autoFocusTouchDown) {
+                                autoFocusTouchDown = touchDown
+                                latestOnAutoRecenterTouchChanged.value(touchDown)
                             }
+                            autoFocusInteraction++
                         }
                     }
                 }.onSizeChanged { visibleMapSizePx = it }
@@ -1635,10 +1643,11 @@ internal fun NavigateContent(
                     visibleMapSizePx = visibleMapSizePx,
                 )
             }
-        } else {
+        } else if (!hasLocationPermission && !suppressPermissionPrompt) {
             NavigatePermissionRequiredContent(
                 sizing = sizing,
                 onPermissionLaunch = onPermissionLaunch,
+                onLater = onPermissionLater,
             )
         }
         MapFocusHint(visible = mapFocusState.hintVisible && !fullScreenPopupExpanded)
