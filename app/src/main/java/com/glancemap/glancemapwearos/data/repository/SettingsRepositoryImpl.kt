@@ -256,6 +256,8 @@ class SettingsRepositoryImpl private constructor(
         val BACK_BUTTON_EXITS_NAVIGATION = booleanPreferencesKey("back_button_exits_navigation")
         val BACK_BUTTON_CLOSES_APP = booleanPreferencesKey("back_button_closes_app")
         val MAP_FOCUS_VISIBLE_CONTROLS = stringSetPreferencesKey("map_focus_visible_controls")
+        val MAP_FOCUS_AUTO_ENABLED = booleanPreferencesKey("map_focus_auto_enabled")
+        val MAP_FOCUS_AUTO_DELAY_SECONDS = intPreferencesKey("map_focus_auto_delay_seconds")
         val POI_ICON_SIZE_PX = intPreferencesKey("poi_icon_size_px")
         val POI_MARKER_STYLE = stringPreferencesKey("poi_marker_style")
         val POI_TAP_TO_CENTER_ENABLED = booleanPreferencesKey("poi_tap_to_center_enabled")
@@ -1623,7 +1625,8 @@ class SettingsRepositoryImpl private constructor(
         }
     }
 
-    override val keepAppOpen: Flow<Boolean> = context.dataStore.data.map { it[PrefKeys.KEEP_APP_OPEN] ?: false }
+    override val keepAppOpen: Flow<Boolean> =
+        context.dataStore.data.map { it[PrefKeys.KEEP_APP_OPEN] ?: SettingsRepository.DEFAULT_KEEP_APP_OPEN }
 
     override suspend fun setKeepAppOpen(enabled: Boolean) {
         context.dataStore.edit { it[PrefKeys.KEEP_APP_OPEN] = enabled }
@@ -1944,6 +1947,32 @@ class SettingsRepositoryImpl private constructor(
 
     override val mapFocusVisibleControls: Flow<Set<MapFocusControl>> =
         context.dataStore.data.map { decodeMapFocusControls(it[PrefKeys.MAP_FOCUS_VISIBLE_CONTROLS]) }
+
+    override val mapFocusAutoEnabled: Flow<Boolean> =
+        context.dataStore.data.map { it[PrefKeys.MAP_FOCUS_AUTO_ENABLED] ?: false }
+
+    override suspend fun setMapFocusAutoEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[PrefKeys.MAP_FOCUS_AUTO_ENABLED] = enabled }
+    }
+
+    override val mapFocusAutoDelaySeconds: Flow<Int> =
+        context.dataStore.data.map {
+            (it[PrefKeys.MAP_FOCUS_AUTO_DELAY_SECONDS] ?: SettingsRepository.MAP_FOCUS_AUTO_DELAY_DEFAULT_SECONDS)
+                .coerceIn(
+                    SettingsRepository.MAP_FOCUS_AUTO_DELAY_MIN_SECONDS,
+                    SettingsRepository.MAP_FOCUS_AUTO_DELAY_MAX_SECONDS,
+                )
+        }
+
+    override suspend fun setMapFocusAutoDelaySeconds(seconds: Int) {
+        context.dataStore.edit {
+            it[PrefKeys.MAP_FOCUS_AUTO_DELAY_SECONDS] =
+                seconds.coerceIn(
+                    SettingsRepository.MAP_FOCUS_AUTO_DELAY_MIN_SECONDS,
+                    SettingsRepository.MAP_FOCUS_AUTO_DELAY_MAX_SECONDS,
+                )
+        }
+    }
 
     override suspend fun setMapFocusControlVisible(
         control: MapFocusControl,

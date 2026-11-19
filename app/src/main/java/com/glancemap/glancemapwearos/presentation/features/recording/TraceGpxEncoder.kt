@@ -94,17 +94,46 @@ internal fun shouldVisuallyBridgeRecordedPause(
     }
     val beforeAccuracy = previous.accuracyMeters?.takeIf { it.isFinite() && it >= 0f }?.toDouble()
     val afterAccuracy = resumed.accuracyMeters?.takeIf { it.isFinite() && it >= 0f }?.toDouble()
+    val combinedAccuracy = if (beforeAccuracy != null && afterAccuracy != null) beforeAccuracy + afterAccuracy else null
     val thresholdMeters =
-        if (beforeAccuracy != null && afterAccuracy != null) {
-            maxOf(RECORDING_PAUSE_BRIDGE_MIN_METERS, beforeAccuracy + afterAccuracy)
-                .coerceAtMost(RECORDING_PAUSE_BRIDGE_MAX_METERS)
+        combinedAccuracy
+            ?.let { maxOf(RECORDING_PAUSE_BRIDGE_MIN_METERS, it).coerceAtMost(RECORDING_PAUSE_BRIDGE_MAX_METERS) }
+            ?: RECORDING_PAUSE_BRIDGE_MIN_METERS
+    val restartThresholdMeters =
+        if (resumed.segmentStartReason == RecordingSegmentStartReason.AUTO_PAUSE) {
+            autoPauseRestartAllowanceMeters(resumed.speedMps, combinedAccuracy)
         } else {
-            RECORDING_PAUSE_BRIDGE_MIN_METERS
+            0.0
         }
-    return haversineMeters(previous.latLong, resumed.latLong) <= thresholdMeters
+    return haversineMeters(previous.latLong, resumed.latLong) <= maxOf(thresholdMeters, restartThresholdMeters)
+}
+
+/**
+ * An automatic pause is only noticed to have ended after the user has moved off again: sparse
+ * paused fixes and the resume confirmation take roughly half a minute. The restart fix's reported
+ * speed over that window bounds how far away it can plausibly be, so a bike leaving a red light
+ * (2026-11-17: 102 m at 5.3 m/s) stays one track while a walking restart keeps roughly today's
+ * 30–60 m limit. Manual pauses do not use this allowance.
+ */
+private fun autoPauseRestartAllowanceMeters(
+    restartSpeedMps: Float?,
+    combinedAccuracyMeters: Double?,
+): Double {
+    val speed =
+        restartSpeedMps
+            ?.takeIf { it.isFinite() && it > 0f }
+            ?.toDouble()
+            ?.coerceAtMost(RECORDING_AUTO_PAUSE_RESTART_MAX_SPEED_MPS)
+            ?: return 0.0
+    val accuracy =
+        (combinedAccuracyMeters ?: RECORDING_PAUSE_BRIDGE_MIN_METERS).coerceAtMost(RECORDING_PAUSE_BRIDGE_MAX_METERS)
+    return speed * RECORDING_AUTO_PAUSE_RESTART_WINDOW_SECONDS * RECORDING_AUTO_PAUSE_RESTART_SPEED_MARGIN + accuracy
 }
 
 private const val RECORDING_PAUSE_BRIDGE_MIN_METERS = 30.0
+private const val RECORDING_AUTO_PAUSE_RESTART_WINDOW_SECONDS = 30.0
+private const val RECORDING_AUTO_PAUSE_RESTART_SPEED_MARGIN = 1.35
+private const val RECORDING_AUTO_PAUSE_RESTART_MAX_SPEED_MPS = 12.0
 private const val RECORDING_PAUSE_BRIDGE_MAX_METERS = 60.0
 
 data class RecordedTraceSummary(
@@ -335,6 +364,7 @@ private fun StringWriter.writePointExtensions(point: RecordedTracePoint) {
             pressureHpa,
             segmentStartReason,
             point.locationQuality,
+            point.rawLatLong,
         )
     if (extensionValues.all { it == null }) {
         return
@@ -376,6 +406,10 @@ private fun StringWriter.writePointExtensions(point: RecordedTracePoint) {
         }
         point.gapDistanceMeters?.takeIf { it.isFinite() && it >= 0.0 }?.let {
             textTag("gmap:gapDistanceMeters", formatDouble(it))
+        }
+        point.rawLatLong?.let { raw ->
+            textTag("gmap:rawLatitude", formatCoordinate(raw.latitude))
+            textTag("gmap:rawLongitude", formatCoordinate(raw.longitude))
         }
         point.locationQuality?.let { writeLocationQualityExtensions(it) }
         heartRateBpm?.takeIf { it in 1..255 }?.let {

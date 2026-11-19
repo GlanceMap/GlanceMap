@@ -34,6 +34,31 @@ class MapFocusSettingsUiTest {
     @get:Rule val composeRule = createComposeRule()
 
     @Test
+    fun autoModeShowsDelayOnlyWhenEnabled() {
+        var enabled by mutableStateOf(false)
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val toggle = context.getString(R.string.settings_fullscreen_auto_mode)
+        val delay = context.getString(R.string.settings_fullscreen_auto_delay, 5)
+        composeRule.setContent {
+            withWearDeviceConfig(SmallRoundWatchMaxText) {
+                GlanceMapTheme {
+                    MapFocusSettingsContent(
+                        visibleControls = emptySet(),
+                        onControlVisibleChange = { _, _ -> },
+                        onOpenGeneralSettings = {},
+                        auto = MapFocusAutoSettings(enabled = enabled, onEnabledChange = { enabled = it }),
+                    )
+                }
+            }
+        }
+        composeRule.onNodeWithText(delay).assertDoesNotExist()
+        composeRule.onNode(hasScrollAction()).performScrollToNode(hasText(toggle))
+        composeRule.onNodeWithText(toggle).performClick()
+        composeRule.onNode(hasScrollAction()).performScrollToNode(hasText(delay))
+        composeRule.onNodeWithText(delay).assertIsDisplayed()
+    }
+
+    @Test
     fun frenchFullscreenSettingsKeepLocalizedLabelsAndIndependentToggles() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val configuration = Configuration(context.resources.configuration).apply { setLocale(Locale.FRENCH) }

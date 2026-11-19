@@ -286,6 +286,8 @@ class LocationViewModel(
         }
     }
 
+    internal fun startKeepOpenForSetup(): Boolean = startService(true, isTrackingEnabled)
+
     fun setScreenState(state: LocationScreenState) {
         syncRuntimeState(
             screenState = state,

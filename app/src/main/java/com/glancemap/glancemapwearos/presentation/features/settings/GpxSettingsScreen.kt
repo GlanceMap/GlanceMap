@@ -56,10 +56,10 @@ private const val VERTICAL_RATE_STEP_METERS_PER_HOUR = 50f
 private const val VERTICAL_RATE_STEP_FEET_PER_HOUR = 100f
 
 @Composable
+@Suppress("FunctionNaming", "LongMethod")
 fun GpxSettingsScreen(
     viewModel: SettingsViewModel,
     onOpenGeneralSettings: () -> Unit,
-    onOpenTurnByTurnSettings: () -> Unit,
     onOpenGpxToolsSettings: () -> Unit,
     onOpenGpxAppearanceSettings: () -> Unit,
 ) {
@@ -81,14 +81,6 @@ fun GpxSettingsScreen(
     WearSettingsListScreen(listTokens = listTokens, horizontalAlignment = Alignment.CenterHorizontally) {
         item {
             GeneralSettingsShortcutChip(onClick = onOpenGeneralSettings)
-        }
-
-        item {
-            SettingsSectionChip(
-                label = stringResource(R.string.settings_turn_by_turn_settings),
-                secondaryLabel = stringResource(R.string.settings_guidance_alerts_and_dashboard),
-                onClick = onOpenTurnByTurnSettings,
-            )
         }
 
         item {

@@ -107,6 +107,60 @@ class TraceGpxEncoderTest {
     }
 
     @Test
+    fun autoPauseRestartAtCyclingSpeedStaysOneTrackButAManualPauseDoesNot() {
+        val stop = recordedPoint(latitude = 45.0, longitude = 6.0, timeMillis = 0L, accuracyMeters = 24.7f)
+        val northOf102m = 45.0 + 102.0 / 111_320.0
+        val restart =
+            recordedPoint(latitude = northOf102m, longitude = 6.0, timeMillis = 52_000L, accuracyMeters = 15f)
+                .copy(speedMps = 5.3f)
+        val autoResumed =
+            restart.copy(startsNewSegment = true, segmentStartReason = RecordingSegmentStartReason.AUTO_PAUSE)
+        val manualResumed =
+            restart.copy(startsNewSegment = true, segmentStartReason = RecordingSegmentStartReason.MANUAL_PAUSE)
+
+        assertEquals(1, recordedTraceSegments(listOf(stop, autoResumed)).size)
+        assertEquals(2, recordedTraceSegments(listOf(stop, manualResumed)).size)
+        // Without a reported speed an automatic pause keeps the 30–60 m limit.
+        assertEquals(2, recordedTraceSegments(listOf(stop, autoResumed.copy(speedMps = null))).size)
+    }
+
+    @Test
+    fun walkingAutoPauseRestartKeepsRoughlyTheExistingLimit() {
+        val stop = recordedPoint(latitude = 45.0, longitude = 6.0, timeMillis = 0L, accuracyMeters = 8f)
+
+        fun resumedAt(meters: Double) =
+            recordedPoint(
+                latitude = 45.0 + meters / 111_320.0,
+                longitude = 6.0,
+                timeMillis = 60_000L,
+                accuracyMeters = 8f,
+            ).copy(
+                speedMps = 1.3f,
+                startsNewSegment = true,
+                segmentStartReason = RecordingSegmentStartReason.AUTO_PAUSE,
+            )
+
+        // 1.3 m/s x 30 s x 1.35 + 16 m accuracy = about 68.7 m.
+        assertEquals(1, recordedTraceSegments(listOf(stop, resumedAt(65.0))).size)
+        assertEquals(2, recordedTraceSegments(listOf(stop, resumedAt(75.0))).size)
+    }
+
+    @Test
+    fun diagnosticsRawPositionIsWrittenBesideTheSmoothedPointOnlyWhenCaptured() {
+        val smoothed = recordedPoint(latitude = 45.0001, longitude = 6.0001, timeMillis = 1_000L)
+        val captured = smoothed.copy(rawLatLong = LatLong(45.00012345, 6.00009876))
+
+        val withRaw = encodeRecordedTraceAsGpx(title = "Raw", points = listOf(captured)).toString(Charsets.UTF_8)
+        val withoutRaw = encodeRecordedTraceAsGpx(title = "No raw", points = listOf(smoothed)).toString(Charsets.UTF_8)
+
+        assertTrue(withRaw.contains("""<trkpt lat="45.00010000" lon="6.00010000">"""))
+        assertTrue(withRaw.contains("<gmap:rawLatitude>45.00012345</gmap:rawLatitude>"))
+        assertTrue(withRaw.contains("<gmap:rawLongitude>6.00009876</gmap:rawLongitude>"))
+        assertFalse(withoutRaw.contains("gmap:rawLatitude"))
+        assertFalse(withoutRaw.contains("gmap:rawLongitude"))
+    }
+
+    @Test
     fun fiveMeterManualPauseIsVisuallyContinuous() {
         val points = pauseBoundary(displacementMeters = 5.0, reason = RecordingSegmentStartReason.MANUAL_PAUSE)
 

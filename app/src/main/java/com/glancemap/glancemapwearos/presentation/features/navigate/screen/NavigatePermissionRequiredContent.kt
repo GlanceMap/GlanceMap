@@ -24,9 +24,11 @@ import com.glancemap.glancemapwearos.R
 import com.glancemap.glancemapwearos.presentation.ui.WearVerticalScrollIndicator
 
 @Composable
+@Suppress("FunctionNaming")
 internal fun NavigatePermissionRequiredContent(
     sizing: NavigateContentSizing,
     onPermissionLaunch: () -> Unit,
+    onLater: () -> Unit,
 ) {
     val permissionScrollState = rememberScrollState()
     Box(modifier = Modifier.fillMaxSize()) {
@@ -61,6 +63,12 @@ internal fun NavigatePermissionRequiredContent(
                         stringResource(R.string.navigate_grant_permission),
                         textAlign = TextAlign.Center,
                     )
+                }
+                Button(
+                    onClick = onLater,
+                    modifier = Modifier.fillMaxWidth().heightIn(min = sizing.permissionButtonMinHeight),
+                ) {
+                    Text(stringResource(R.string.navigate_later_gps_off), textAlign = TextAlign.Center)
                 }
                 Spacer(modifier = Modifier.height(1.dp))
             }

@@ -1,5 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="first_run_welcome">Willkommen</string>
+    <string name="first_run_welcome_message">Mach dich bereit für dein nächstes Abenteuer. GlanceMap benötigt einige Berechtigungen, um richtig zu funktionieren.</string>
+    <string name="first_run_stay">Aktiv bleiben</string>
+    <string name="first_run_stay_message">Aktiv bleiben hält GlanceMap im Vordergrund, während das Display deiner Uhr ausgeschaltet ist.</string>
+    <string name="first_run_location_off">Standort ist aus</string>
+    <string name="first_run_location_off_message">Ohne Standort kann GlanceMap deine Position nicht anzeigen oder eine Strecke aufzeichnen. Du kannst ihn später in den Einstellungen aktivieren.</string>
+    <string name="first_run_stay_off">Aktiv bleiben ist aus</string>
+    <string name="first_run_stay_off_message">Aktiv bleiben ist aus, weil Benachrichtigungen ausgeschaltet sind. Du kannst es später aktivieren.</string>
+    <string name="first_run_stay_unavailable">Aktiv bleiben ist aus</string>
+    <string name="first_run_stay_unavailable_message">Aktiv bleiben konnte nicht gestartet werden. Du kannst es später erneut versuchen.</string>
+    <string name="first_run_download_map">Karte herunterladen</string>
+    <string name="first_run_download_map_message">Lade zuerst eine Karte deiner Wahl herunter und genieße die Natur.</string>
+    <string name="first_run_choose_map">Karte auswählen</string>
+    <string name="first_run_permission_settings">Berechtigungen</string>
     <string name="watch_whats_new_title">Neu in %1$s</string>
     <string-array name="watch_whats_new_notes">
         <item>Französisch, Deutsch, Spanisch, Italienisch und Polnisch mit Sprachauswahl hinzugefügt.</item>
@@ -1130,7 +1144,8 @@
     <string name="navigate_live_distance">"Aktuelle Entfernung"</string>
     <string name="navigate_live_elevation">"Aktuelle Höhe"</string>
     <string name="navigate_live_elevation_center">"Höhe in der Kartenmitte"</string>
-    <string name="navigate_location_permission_required_for_this_screen">"Standortberechtigung für diesen Bildschirm erforderlich."</string>
+    <string name="navigate_location_permission_required_for_this_screen">Der Standortzugriff wird benötigt, um deine Position anzuzeigen.</string>
+    <string name="navigate_later_gps_off">Später · GPS aus</string>
     <string name="navigate_longitude">"Längengrad"</string>
     <string name="navigate_map_point">"Kartenpunkt"</string>
     <string name="navigate_menu">"Menü"</string>
@@ -1462,6 +1477,8 @@
     <string name="settings_back_to_settings_menu">"Zurück zum Einstellungsmenü"</string>
     <string name="settings_back_to_turn_by_turn">"Zurück zu Abbiegehinweisen"</string>
     <string name="settings_backpack">"Rucksack"</string>
+    <string name="settings_luggage">Gepäck</string>
+    <string name="settings_luggage_summary">Gepäck %1$s</string>
     <string name="settings_balanced">"Ausgewogen"</string>
     <string name="settings_balanced_recommended">"Ausgewogen · empfohlen"</string>
     <string name="settings_battery_benchmark">"Akkutest"</string>

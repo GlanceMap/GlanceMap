@@ -127,7 +127,6 @@ fun SettingsScreen(
         item {
             SettingsSectionChip(
                 label = stringResource(R.string.settings_turn_by_turn_settings),
-                secondaryLabel = stringResource(R.string.settings_guidance_alerts_and_dashboard),
                 onClick = { navController.navigate(WatchRoutes.TURN_BY_TURN_SETTINGS) },
             )
         }
@@ -465,7 +464,7 @@ private fun formatUserProfileSummary(
     if (backpackWeightKg.roundToInt() > 0) {
         parts +=
             resources.getString(
-                R.string.settings_pack,
+                if (isBike) R.string.settings_luggage_summary else R.string.settings_pack,
                 formatSettingsUserWeight(backpackWeightKg, isMetric, resources = resources),
             )
     }

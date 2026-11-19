@@ -952,7 +952,7 @@ class SettingsViewModel(
 
     val keepAppOpen: StateFlow<Boolean> =
         settingsRepository.keepAppOpen
-            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), SettingsRepository.DEFAULT_KEEP_APP_OPEN)
 
     fun setKeepAppOpen(enabled: Boolean) =
         viewModelScope.launch {
@@ -1309,6 +1309,26 @@ class SettingsViewModel(
     val mapFocusVisibleControls: StateFlow<Set<MapFocusControl>> =
         settingsRepository.mapFocusVisibleControls
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptySet())
+
+    val mapFocusAutoEnabled: StateFlow<Boolean> =
+        settingsRepository.mapFocusAutoEnabled.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
+    fun setMapFocusAutoEnabled(enabled: Boolean) =
+        viewModelScope.launch {
+            settingsRepository.setMapFocusAutoEnabled(enabled)
+        }
+
+    val mapFocusAutoDelaySeconds: StateFlow<Int> =
+        settingsRepository.mapFocusAutoDelaySeconds.stateIn(
+            viewModelScope,
+            SharingStarted.WhileSubscribed(5000),
+            SettingsRepository.MAP_FOCUS_AUTO_DELAY_DEFAULT_SECONDS,
+        )
+
+    fun setMapFocusAutoDelaySeconds(seconds: Int) =
+        viewModelScope.launch {
+            settingsRepository.setMapFocusAutoDelaySeconds(seconds)
+        }
 
     fun setMapFocusControlVisible(
         control: MapFocusControl,

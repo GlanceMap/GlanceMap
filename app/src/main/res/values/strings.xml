@@ -1,4 +1,18 @@
 <resources>
+    <string name="first_run_welcome">Welcome</string>
+    <string name="first_run_welcome_message">Get ready for your next adventure. GlanceMap needs a few permissions to work properly.</string>
+    <string name="first_run_stay">Stay</string>
+    <string name="first_run_stay_message">Stay helps keep GlanceMap in the foreground while your watch screen is off.</string>
+    <string name="first_run_location_off">Location is off</string>
+    <string name="first_run_location_off_message">Without location, GlanceMap cannot show your position or record a track. You can enable it later in settings.</string>
+    <string name="first_run_stay_off">Stay is off</string>
+    <string name="first_run_stay_off_message">Stay is off because notifications are off. You can enable it later.</string>
+    <string name="first_run_stay_unavailable">Stay is off</string>
+    <string name="first_run_stay_unavailable_message">Stay could not start. You can try turning it on again later.</string>
+    <string name="first_run_download_map">Download a map</string>
+    <string name="first_run_download_map_message">Start by downloading a map of your choice and enjoy the outdoors.</string>
+    <string name="first_run_choose_map">Choose a map</string>
+    <string name="first_run_permission_settings">Permission settings</string>
     <string name="watch_whats_new_title">What’s new in %1$s</string>
     <string-array name="watch_whats_new_notes">
         <item>Added French, German, Spanish, Italian and Polish, with language selection.</item>
@@ -1151,7 +1165,8 @@
     <string name="navigate_live_distance">"Live distance"</string>
     <string name="navigate_live_elevation">"Live elevation"</string>
     <string name="navigate_live_elevation_center">"Elevation at map center"</string>
-    <string name="navigate_location_permission_required_for_this_screen">"Location permission required for this screen."</string>
+    <string name="navigate_location_permission_required_for_this_screen">Location access is needed to show your position.</string>
+    <string name="navigate_later_gps_off">Later · GPS off</string>
     <string name="navigate_longitude">"Longitude"</string>
     <string name="navigate_map_point">"Map point"</string>
     <string name="navigate_menu">"Menu"</string>
@@ -1486,6 +1501,8 @@
     <string name="settings_back_to_settings_menu">"Back to settings menu"</string>
     <string name="settings_back_to_turn_by_turn">"Back to turn-by-turn"</string>
     <string name="settings_backpack">"Backpack"</string>
+    <string name="settings_luggage">Luggage</string>
+    <string name="settings_luggage_summary">luggage %1$s</string>
     <string name="settings_balanced">"Balanced"</string>
     <string name="settings_balanced_recommended">"Balanced · recommended"</string>
     <string name="settings_battery_benchmark">"Battery benchmark"</string>
@@ -2003,6 +2020,8 @@
     <!-- Full-screen shortcut chips use compact mode labels; accessibility actions give the full description. -->
     <!-- Send to Watch is the unchanged screen title in the companion phone app. -->
     <string name="settings_fullscreen_mode">"Fullscreen mode"</string>
+    <string name="settings_fullscreen_auto_mode">Auto-mode</string>
+    <string name="settings_fullscreen_auto_delay">Delay: %1$ss</string>
     <string name="settings_choose_visible_controls">"Choose visible controls"</string>
     <string name="settings_fullscreen_controls_help">"Choose controls to keep visible. Normal map settings still apply. Exit is always available."</string>
     <string name="settings_fullscreen_show_menu">"Show menu button"</string>

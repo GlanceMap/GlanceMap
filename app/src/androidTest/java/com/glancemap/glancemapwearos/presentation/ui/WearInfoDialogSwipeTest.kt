@@ -1,7 +1,9 @@
 package com.glancemap.glancemapwearos.presentation.ui
 
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.performRotaryScrollInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeDown
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -16,6 +18,22 @@ import org.junit.runner.RunWith
 class WearInfoDialogSwipeTest {
     @get:Rule
     val composeRule = createComposeRule()
+
+    @Test
+    fun rotaryScrollMovesReleaseNotesWhenDialogOpens() {
+        composeRule.setContent {
+            GlanceMapTheme {
+                WearInfoDialog(visible = true, title = "What's new", onDismiss = {}) {
+                    items(30) { index -> Text("Release note $index") }
+                }
+            }
+        }
+        composeRule.onNodeWithText("Release note 0").assertExists()
+        composeRule.onNodeWithText("What's new").performRotaryScrollInput {
+            repeat(12) { rotateToScrollVertically(100f) }
+        }
+        composeRule.onNodeWithText("Release note 0").assertDoesNotExist()
+    }
 
     @Test
     fun swipeDownAtTopDismissesWhenEnabled() {

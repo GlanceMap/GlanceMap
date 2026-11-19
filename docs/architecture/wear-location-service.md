@@ -56,6 +56,15 @@ cannot demote a location service that an active session still needs. Ending or m
 pausing a session restores the usual policy unless another session still requires GPS;
 the saved Stay preference is never changed.
 
+Stay defaults to on when no preference is stored; explicit saved choices remain in effect.
+On a fresh installation, first-run setup temporarily switches Stay off while requesting location
+and notification permissions, including when location is declined. It enables Stay when notifications
+are available and the service start request succeeds, even if location is denied and GPS remains off.
+Notification denial, dismissal or a failed service start leaves Stay off; the user can enable it
+later. The setup suppresses the update changelog on first install, presents one map-download
+invitation, and holds the ordinary missing-map prompt until setup finishes. Existing
+installations keep their saved preference and update prompt. Stay does not force the screen on.
+
 The existing location notification provides that foreground protection. No screen-on flag,
 partial wake lock, location interval or GPS acceptance threshold is changed by this policy.
 In the OnePlus OPWWE251 evening test on 2026-10-25, Stay was disabled before 72.519-second

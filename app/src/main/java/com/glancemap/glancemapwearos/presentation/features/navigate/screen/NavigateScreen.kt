@@ -67,7 +67,6 @@ import com.glancemap.glancemapwearos.presentation.features.routetools.withVisibl
 import com.glancemap.glancemapwearos.presentation.features.settings.SettingsViewModel
 import com.glancemap.glancemapwearos.presentation.ui.rememberWearAdaptiveSpec
 import com.glancemap.glancemapwearos.presentation.ui.rememberWearScreenSize
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.mapsforge.core.model.LatLong
 import org.mapsforge.map.android.graphics.AndroidBitmap
@@ -84,6 +83,8 @@ fun NavigateScreen(
     isAmbient: Boolean,
     isDeviceInteractive: Boolean,
     ambientTickMs: Long,
+    firstRunSetupActive: Boolean = false,
+    isNavigateDestination: Boolean = true,
     onNavigateTimeSuppressedChange: (Boolean) -> Unit = {},
     showNavigateTime: Boolean = true,
     navigateTimeFormat: String = SettingsRepository.TIME_FORMAT_24_HOUR,
@@ -135,12 +136,14 @@ fun NavigateScreen(
     val keepAppOpen by settingsViewModel.keepAppOpen.collectAsState()
     val keepAppOpenTipShown by settingsViewModel.keepAppOpenTipShown.collectAsState()
     var pendingKeepAppOpen by rememberSaveable { mutableStateOf(false) }
+    var stayJustExplained by rememberSaveable { mutableStateOf(false) }
     var showKeepAppOpenInfoDialog by rememberSaveable { mutableStateOf(false) }
     var showNotificationPermissionDialog by rememberSaveable { mutableStateOf(false) }
 
     // ---- PERMISSIONS ----
     val notificationPermissionState =
-        rememberNotificationPermissionState(context) { granted ->
+        rememberNotificationPermissionState(context, refreshKey = firstRunSetupActive) { granted ->
+            stayJustExplained = false
             if (granted && pendingKeepAppOpen) {
                 settingsViewModel.setKeepAppOpen(true)
                 pendingKeepAppOpen = false
@@ -149,25 +152,37 @@ fun NavigateScreen(
             }
         }
 
+    fun requestStayNotificationPermission() {
+        when (stayNotificationAction(stayJustExplained)) {
+            StayNotificationAction.REQUEST_PERMISSION -> {
+                stayJustExplained = false
+                notificationPermissionState.launchPermissionRequest()
+            }
+            StayNotificationAction.SHOW_EXPLANATION -> showNotificationPermissionDialog = true
+        }
+    }
+
     val locationPermissionState =
-        rememberLocationPermissionState(context) { granted ->
+        rememberLocationPermissionState(context, refreshKey = firstRunSetupActive) { granted ->
             if (granted && pendingKeepAppOpen) {
                 if (
                     notificationPermissionState.isPermissionRequired &&
                     !notificationPermissionState.hasNotificationPermission
                 ) {
-                    showNotificationPermissionDialog = true
+                    requestStayNotificationPermission()
                 } else {
                     settingsViewModel.setKeepAppOpen(true)
                     pendingKeepAppOpen = false
+                    stayJustExplained = false
                 }
             } else if (!granted) {
                 pendingKeepAppOpen = false
+                stayJustExplained = false
             }
         }
     val notificationPermissionPromptState =
         notificationPermissionState.copy(
-            launchPermissionRequest = { showNotificationPermissionDialog = true },
+            launchPermissionRequest = ::requestStayNotificationPermission,
         )
 
     val hillshadeTerrainUnavailableEvent by mapViewModel.hillshadeTerrainUnavailableEvent.collectAsState()
@@ -469,11 +484,11 @@ fun NavigateScreen(
                 isShortcutTrayExpanded = shortcutTrayExpanded,
             )
 
-        fun enterMapFocus() {
-            screenActions.triggerHaptic()
+        fun enterMapFocus(source: String = "shortcut") {
+            if (source == "shortcut") screenActions.triggerHaptic()
             mapFocusState.enter { shortcutTrayExpanded = false }
             navigateViewModel.mapFocusMode.value = true
-            DebugTelemetry.log("NavigationTelemetry", "event=map_focus_enter source=shortcut")
+            DebugTelemetry.log("NavigationTelemetry", "event=map_focus_enter source=$source")
         }
 
         fun exitMapFocus(source: String) {
@@ -485,13 +500,15 @@ fun NavigateScreen(
             DebugTelemetry.log("NavigationTelemetry", "event=map_focus_exit source=$source")
         }
 
-        // ---- Auto-recenter timer ----
-        LaunchedEffect(effectiveNavMode, autoRecenterEnabled, autoRecenterDelay, offlineMode) {
-            if (!offlineMode && effectiveNavMode == NavMode.PANNING && autoRecenterEnabled) {
-                delay(autoRecenterDelay.toLong() * 1000L)
-                navigateViewModel.onRecenterRequested()
-            }
-        }
+        var autoRecenterTouchDown by remember { mutableStateOf(false) }
+        var autoRecenterInteraction by remember { mutableLongStateOf(0L) }
+        MapFocusAutoTimer(
+            enabled = autoRecenterEnabled,
+            delaySeconds = autoRecenterDelay,
+            available = effectiveNavMode == NavMode.PANNING && !offlineMode && !autoRecenterTouchDown,
+            interaction = autoRecenterInteraction,
+            onEnter = navigateViewModel::onRecenterRequested,
+        )
 
         if (isAmbient) {
             AmbientScreen(
@@ -918,11 +935,18 @@ fun NavigateScreen(
             helpDialogMaxHeight = adaptive.helpDialogMaxHeight,
             onContinueKeepAppOpen = {
                 showKeepAppOpenInfoDialog = false
-                screenActions.continueKeepAppOpenEnableFlow()
+                if (pendingKeepAppOpen) {
+                    stayJustExplained = true
+                    screenActions.continueKeepAppOpenEnableFlow()
+                    if (!pendingKeepAppOpen) stayJustExplained = false
+                } else {
+                    settingsViewModel.setKeepAppOpen(false)
+                }
             },
             onDismissKeepAppOpen = {
                 showKeepAppOpenInfoDialog = false
                 pendingKeepAppOpen = false
+                stayJustExplained = false
             },
             showNotificationPermissionDialog = showNotificationPermissionDialog,
             onContinueNotificationPermission = {
@@ -1079,9 +1103,32 @@ fun NavigateScreen(
             hostedTerrainRuntime = terrainRuntime,
             mapFocusState = mapFocusState,
             mapFocusVisibleControls = mapFocusVisibleControls,
-            onEnterMapFocus = ::enterMapFocus,
+            onEnterMapFocus = { enterMapFocus() },
+            onAutoEnterMapFocus = { enterMapFocus("auto") },
+            mapFocusAutoEnabled = settingsViewModel.mapFocusAutoEnabled.collectAsState().value,
+            mapFocusAutoDelaySeconds = settingsViewModel.mapFocusAutoDelaySeconds.collectAsState().value,
+            mapFocusAutoAllowed =
+                isScreenResumed &&
+                    screenState.isInteractive &&
+                    !showCalibrationDialog &&
+                    !showKeepAppOpenInfoDialog &&
+                    !showNotificationPermissionDialog &&
+                    !shortcutTrayExpanded &&
+                    !showRouteToolsPanel &&
+                    routeToolSession == null &&
+                    completedRouteToolDraft == null &&
+                    !routeToolExecutionInProgress &&
+                    routeToolResult == null &&
+                    mapLongPressTarget == null &&
+                    !poiCreationSelectionActive &&
+                    !selectingGpxPointB &&
+                    !showPoiCreationChoiceDialog &&
+                    !showPoiCoordinateEntryDialog &&
+                    !showCreatedPoiRenameDialog &&
+                    !createdPoiCreateInProgress,
             onExitMapFocus = ::exitMapFocus,
             hasLocationPermission = locationPermissionState.hasLocationPermission || offlineMode,
+            suppressPermissionPrompt = firstRunSetupActive || !isNavigateDestination,
             focusRequester = focusRequester,
             mapHolder = mapHolder,
             terrain3dEnabled = terrain3dEnabled,
@@ -1139,6 +1186,10 @@ fun NavigateScreen(
                 }
             },
             onUserPanStarted = { navigateViewModel.onUserPanStarted() },
+            onAutoRecenterTouchChanged = { pressed ->
+                autoRecenterTouchDown = pressed
+                autoRecenterInteraction++
+            },
             onRecenter = { navigateViewModel.onRecenterRequested() },
             onRecenterRequested = {
                 if (!offlineMode) {
@@ -1163,6 +1214,7 @@ fun NavigateScreen(
                 }
             },
             onPermissionLaunch = { locationPermissionState.launchPermissions() },
+            onPermissionLater = { settingsViewModel.setOfflineMode(true) },
             mapRotationDeg = renderedMapRotationDeg,
             navigationMarkerAnchorMode = effectiveNavigationMarkerAnchorMode,
             compassHeadingDeg = renderedCompassHeadingDeg,
@@ -1318,7 +1370,8 @@ fun NavigateScreen(
         val missingMapPromptLocation =
             uiState.lastKnownLocation.takeIf { gpsSignalSnapshot.lastFixFresh && gpsFixFreshForAccuracyCircle }
         val canShowMissingMapPrompt =
-            isScreenResumed &&
+            !firstRunSetupActive &&
+                isScreenResumed &&
                 screenState.isInteractive &&
                 !offlineMode &&
                 !traceRecordingState.active &&

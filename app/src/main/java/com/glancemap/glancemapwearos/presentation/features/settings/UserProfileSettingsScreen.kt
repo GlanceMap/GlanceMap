@@ -68,6 +68,12 @@ fun UserProfileSettingsScreen(
     val listTokens = rememberSettingsListTokens()
     val isMetric by viewModel.isMetric.collectAsState()
     val activityProfile by viewModel.activityProfile.collectAsState()
+    val luggageLabel =
+        if (activityProfile == SettingsRepository.ACTIVITY_PROFILE_BIKE) {
+            R.string.settings_luggage
+        } else {
+            R.string.settings_backpack
+        }
     val userWeightKg by viewModel.userWeightKg.collectAsState()
     val backpackWeightKg by viewModel.backpackWeightKg.collectAsState()
     val bikeWeightKg by viewModel.bikeWeightKg.collectAsState()
@@ -88,6 +94,36 @@ fun UserProfileSettingsScreen(
                 onClick = onOpenGeneralSettings,
                 applyTopPadding = false,
             )
+        }
+        item {
+            ActivityProfileToggle(
+                selectedProfile = activityProfile,
+                onSelect = viewModel::setActivityProfile,
+                enabled = profileChangeEnabled,
+            )
+        }
+        item {
+            SettingsPickerChip(
+                label = stringResource(R.string.settings_body_weight),
+                secondaryLabel = formatUserWeight(userWeightKg, isMetric, resources = resources),
+                onClick = { showWeightPicker = true },
+            )
+        }
+        item {
+            SettingsPickerChip(
+                label = stringResource(luggageLabel),
+                secondaryLabel = formatUserWeight(backpackWeightKg, isMetric, resources = resources),
+                onClick = { showBackpackPicker = true },
+            )
+        }
+        if (activityProfile == SettingsRepository.ACTIVITY_PROFILE_BIKE) {
+            item {
+                SettingsPickerChip(
+                    label = stringResource(R.string.settings_bike_weight),
+                    secondaryLabel = formatUserWeight(bikeWeightKg, isMetric, resources = resources),
+                    onClick = { showBikeWeightPicker = true },
+                )
+            }
         }
         item {
             SettingsOptionPickerRow(
@@ -112,36 +148,6 @@ fun UserProfileSettingsScreen(
         item {
             AppLanguagePicker()
         }
-        item {
-            ActivityProfileToggle(
-                selectedProfile = activityProfile,
-                onSelect = viewModel::setActivityProfile,
-                enabled = profileChangeEnabled,
-            )
-        }
-        item {
-            SettingsPickerChip(
-                label = stringResource(R.string.settings_body_weight),
-                secondaryLabel = formatUserWeight(userWeightKg, isMetric, resources = resources),
-                onClick = { showWeightPicker = true },
-            )
-        }
-        item {
-            SettingsPickerChip(
-                label = stringResource(R.string.settings_backpack),
-                secondaryLabel = formatUserWeight(backpackWeightKg, isMetric, resources = resources),
-                onClick = { showBackpackPicker = true },
-            )
-        }
-        if (activityProfile == SettingsRepository.ACTIVITY_PROFILE_BIKE) {
-            item {
-                SettingsPickerChip(
-                    label = stringResource(R.string.settings_bike_weight),
-                    secondaryLabel = formatUserWeight(bikeWeightKg, isMetric, resources = resources),
-                    onClick = { showBikeWeightPicker = true },
-                )
-            }
-        }
     }
 
     RotaryWeightPickerDialog(
@@ -156,7 +162,7 @@ fun UserProfileSettingsScreen(
     )
     RotaryWeightPickerDialog(
         visible = showBackpackPicker,
-        title = stringResource(R.string.settings_backpack),
+        title = stringResource(luggageLabel),
         valueKg = backpackWeightKg,
         minKg = SettingsRepository.MIN_BACKPACK_WEIGHT_KG,
         maxKg = SettingsRepository.MAX_BACKPACK_WEIGHT_KG,

@@ -41,7 +41,11 @@ interface SettingsRepository {
         const val RECORDING_AUTO_PAUSE_OFF = "OFF"
         const val RECORDING_AUTO_PAUSE_BIKE_ONLY = "BIKE_ONLY"
         const val RECORDING_AUTO_PAUSE_ALWAYS = "ALWAYS"
-        const val DEFAULT_RECORDING_AUTO_PAUSE_MODE = RECORDING_AUTO_PAUSE_ALWAYS
+        const val DEFAULT_RECORDING_AUTO_PAUSE_MODE = RECORDING_AUTO_PAUSE_OFF
+        const val DEFAULT_KEEP_APP_OPEN = true
+        const val MAP_FOCUS_AUTO_DELAY_DEFAULT_SECONDS = 5
+        const val MAP_FOCUS_AUTO_DELAY_MIN_SECONDS = 1
+        const val MAP_FOCUS_AUTO_DELAY_MAX_SECONDS = 20
         const val RECORDING_TRACK_SMOOTHING_OFF = "OFF"
         const val RECORDING_TRACK_SMOOTHING_ADAPTIVE = "ADAPTIVE"
         const val RECORDING_TRACK_SMOOTHING_STRONG = "STRONG"
@@ -792,6 +796,14 @@ interface SettingsRepository {
     suspend fun setBackButtonExitsNavigation(enabled: Boolean)
 
     val mapFocusVisibleControls: Flow<Set<MapFocusControl>>
+
+    val mapFocusAutoEnabled: Flow<Boolean>
+
+    suspend fun setMapFocusAutoEnabled(enabled: Boolean)
+
+    val mapFocusAutoDelaySeconds: Flow<Int>
+
+    suspend fun setMapFocusAutoDelaySeconds(seconds: Int)
 
     suspend fun setMapFocusControlVisible(
         control: MapFocusControl,

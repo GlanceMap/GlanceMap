@@ -207,6 +207,45 @@ class RecordingAutoResumeRecoveryTest {
         assertTrue(buffer.recover(SettingsRepository.ACTIVITY_PROFILE_BIKE).isEmpty())
     }
 
+    @Test
+    fun bikeRestartAfterPoorFixJoinsThePauseAndCountsTheRideOff() {
+        val before = fix(-1, 1_000, 0.0).point.copy(accuracyMeters = 24.66f)
+        val buffer = RecordingAutoResumeRecoveryBuffer<Int>()
+        val poor = fix(0, 45_000, 70.0).let { it.copy(point = it.point.copy(accuracyMeters = 49.5f)) }
+        val first =
+            fix(1, 53_018, 101.6).let {
+                it.copy(
+                    point = it.point.copy(accuracyMeters = 15.01f, effectiveAccuracyMeters = 15.01f, speedMps = 5.27f),
+                )
+            }
+        val second =
+            fix(2, 58_151, 135.1).let {
+                it.copy(
+                    point = it.point.copy(accuracyMeters = 16.08f, effectiveAccuracyMeters = 16.08f, speedMps = 4.70f),
+                )
+            }
+
+        // The bike auto-pause gate rejects the 49.5 m fix before offering it for recovery.
+        buffer.offer(poor, eligible = false)
+        buffer.offer(first, eligible = true)
+        buffer.offer(second, eligible = true)
+        val recovered = buffer.recover(SettingsRepository.ACTIVITY_PROFILE_BIKE)
+        assertEquals(listOf(1, 2), recovered.map { it.value })
+        val resumed =
+            recovered
+                .first()
+                .point
+                .copy(
+                    startsNewSegment = true,
+                    segmentStartReason = RecordingSegmentStartReason.AUTO_PAUSE,
+                ).withSegmentTransitionDistance(before, SettingsRepository.ACTIVITY_PROFILE_BIKE)
+        val points = listOf(before, resumed, recovered.last().point)
+        // 2026-11-17 red light: the restart fix is 101.6 m away at 5.27 m/s, within the
+        // auto-pause restart allowance, so the track stays continuous and the ride-off counts.
+        assertEquals(1, recordedTraceSegments(points).size)
+        assertEquals(101.6 + 33.5, recordingCanonicalPathDistance(points), 0.3)
+    }
+
     private fun walkingFix(
         value: Int,
         millis: Long,

@@ -8,6 +8,7 @@ import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -23,9 +24,10 @@ import com.glancemap.glancemapwearos.core.service.diagnostics.DebugTelemetry
 @Composable
 fun rememberLocationPermissionState(
     context: Context,
+    refreshKey: Any? = Unit,
     onPermissionsResult: (Boolean) -> Unit,
 ): LocationPermissionState {
-    var hasLocationPermission by remember {
+    var hasLocationPermission by remember(context, refreshKey) {
         mutableStateOf(hasForegroundLocationPermission(context))
     }
 
@@ -61,7 +63,7 @@ data class LocationPermissionState(
     val launchPermissions: () -> Unit,
 )
 
-private fun hasForegroundLocationPermission(context: Context): Boolean {
+internal fun hasForegroundLocationPermission(context: Context): Boolean {
     val fineGranted =
         ContextCompat.checkSelfPermission(
             context,
@@ -81,6 +83,7 @@ private fun hasForegroundLocationPermission(context: Context): Boolean {
 @Composable
 fun rememberNotificationPermissionState(
     context: Context,
+    refreshKey: Any? = Unit,
     onPermissionResult: (Boolean) -> Unit = {},
 ): NotificationPermissionState {
     // Notification permission is only required on API 33+
@@ -97,6 +100,13 @@ fun rememberNotificationPermissionState(
                 true
             },
         )
+    }
+
+    LaunchedEffect(context, refreshKey) {
+        hasNotificationPermission =
+            !isPermissionRequired ||
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) ==
+            PackageManager.PERMISSION_GRANTED
     }
 
     val permissionLauncher =
