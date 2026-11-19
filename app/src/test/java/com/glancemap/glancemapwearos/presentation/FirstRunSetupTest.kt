@@ -16,14 +16,13 @@ class FirstRunSetupTest {
     }
 
     @Test
-    fun declinedPermissionsKeepStayOffAndShowTheRightExplanation() {
+    fun permissionDecisionsSelectTheRightSetupSteps() {
         assertEquals(FirstRunStep.STAY, nextFirstRunStepAfterLocation(granted = true))
         assertEquals(FirstRunStep.LOCATION_DENIED, nextFirstRunStepAfterLocation(granted = false))
         assertEquals(FirstRunStep.MAP, nextFirstRunStepAfterNotifications(granted = true))
         assertEquals(FirstRunStep.NOTIFICATIONS_DENIED, nextFirstRunStepAfterNotifications(granted = false))
-        assertTrue(firstRunMayEnableStay(locationGranted = true, notificationsGranted = true))
-        assertFalse(firstRunMayEnableStay(locationGranted = false, notificationsGranted = true))
-        assertFalse(firstRunMayEnableStay(locationGranted = true, notificationsGranted = false))
+        assertTrue(firstRunMayEnableStay(notificationsGranted = true))
+        assertFalse(firstRunMayEnableStay(notificationsGranted = false))
     }
 
     @Test
@@ -33,12 +32,12 @@ class FirstRunSetupTest {
             nextFirstRunStepAfterLocation(granted = false, continueWithoutLocation = true),
         )
         assertEquals(
-            FirstRunStep.MAP,
-            firstRunStepWhenStayPermissionsMissing(locationGranted = false, notificationsGranted = true),
+            FirstRunStep.STAY_UNAVAILABLE,
+            firstRunStepWhenStayCannotStart(notificationsGranted = true),
         )
         assertEquals(
             FirstRunStep.NOTIFICATIONS_DENIED,
-            firstRunStepWhenStayPermissionsMissing(locationGranted = false, notificationsGranted = false),
+            firstRunStepWhenStayCannotStart(notificationsGranted = false),
         )
     }
 }

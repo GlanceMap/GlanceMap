@@ -133,9 +133,8 @@ internal fun FirstRunSetup(
         scope.launch {
             lifecycle.currentStateFlow.first { it.isAtLeast(Lifecycle.State.RESUMED) }
             if (!state.active) return@launch
-            val locationGranted = hasLocation()
             val notificationsGranted = hasNotifications()
-            val granted = firstRunMayEnableStay(locationGranted, notificationsGranted)
+            val granted = firstRunMayEnableStay(notificationsGranted)
             if (granted && location.startKeepOpenForSetup()) {
                 settings.setKeepAppOpen(true).join()
                 if (!state.active) {
@@ -146,7 +145,7 @@ internal fun FirstRunSetup(
             } else {
                 settings.setKeepAppOpen(false).join()
                 state.moveTo(
-                    firstRunStepWhenStayPermissionsMissing(locationGranted, notificationsGranted),
+                    firstRunStepWhenStayCannotStart(notificationsGranted),
                 )
             }
             preparing = false
