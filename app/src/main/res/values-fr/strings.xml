@@ -426,7 +426,7 @@
     <string name="download_clear_selected_areas">"Effacer les zones sélectionnées"</string>
     <string name="download_combined_summary">"%1$s\n\n%2$s"</string>
     <string name="download_components_available">"Composants disponibles"</string>
-    <string name="download_connect_the_watch_to_wi_fi_and_keep_it_on_the_charger">"Connectez la montre au Wi-Fi et laissez-la sur le chargeur."</string>
+    <string name="download_connect_the_watch_to_wi_fi_and_keep_it_on_the_charger">Connectez la montre au Wi-Fi et laissez-la sur le chargeur.</string>
     <string name="download_connect_the_watch_to_wi_fi_for_large_downloads_or_continue_and_the_app">"%1$s. Connectez la montre au Wi-Fi pour les gros téléchargements, ou continuez : l’appli se reconnectera automatiquement si le Wi-Fi devient disponible."</string>
     <string name="download_connecting_to_phone_http">"Connexion au téléphone (HTTP)…"</string>
     <string name="download_connection_interrupted_waiting_to_resume">"Connexion interrompue. En attente de reprise…"</string>
@@ -457,7 +457,7 @@
     <string name="download_downloading_offline_bundle">"Téléchargement du lot hors ligne"</string>
     <string name="download_installing_offline_bundle">"Installation du lot hors ligne"</string>
     <string name="download_elevation">"Altitude %1$s"</string>
-    <string name="download_elevation_adds_altitude_slope_and_terrain_shading">"Le relief ajoute l’altitude, la pente et l’ombrage du terrain."</string>
+    <string name="download_elevation_adds_altitude_slope_and_terrain_shading">Le relief ajoute l’altitude, la pente et l’ombrage du terrain.</string>
     <string name="download_elevation_quality">"Qualité du relief"</string>
     <string name="download_enable_maps_poi_routing_dem_or_refuges_info_in_bundle_settings">"Activez Cartes, POI, Itinéraires, DEM ou Refuges.info dans les paramètres du lot."</string>
     <string name="download_enter_delete_mode">"Activer le mode suppression"</string>
@@ -2036,7 +2036,6 @@
     <string name="settings_zoom_buttons">"Boutons de zoom"</string>
     <string name="settings_language">Langue</string>
     <string name="settings_language_system">Système</string>
-
     <!-- Full-screen shortcut chips use compact mode labels; accessibility actions give the full description. -->
     <!-- Send to Watch is the unchanged screen title in the companion phone app. -->
     <string name="navigation_toggle_auto_recenter">"Basculer le recentrage auto"</string>
