@@ -393,7 +393,7 @@
     <string name="download_clear_selected_areas">"Bereichsauswahl leeren"</string>
     <string name="download_combined_summary">"%1$s\n\n%2$s"</string>
     <string name="download_components_available">"Verfügbare Komponenten"</string>
-    <string name="download_connect_the_watch_to_wi_fi_and_keep_it_on_the_charger">"Uhr mit WLAN verbinden und am Ladegerät lassen."</string>
+    <string name="download_connect_the_watch_to_wi_fi_and_keep_it_on_the_charger">Uhr mit WLAN verbinden und am Ladegerät lassen.</string>
     <string name="download_connect_the_watch_to_wi_fi_for_large_downloads_or_continue_and_the_app">"%1$s. Für große Downloads Uhr mit WLAN verbinden oder fortfahren. Die App verbindet sich automatisch erneut, sobald WLAN verfügbar ist."</string>
     <string name="download_connecting_to_phone_http">"Verbinde mit Telefon (HTTP)…"</string>
     <string name="download_connection_interrupted_waiting_to_resume">"Verbindung unterbrochen. Warte auf Fortsetzung…"</string>
@@ -423,7 +423,7 @@
     <string name="download_downloading_offline_bundle">"Offline-Paket wird geladen"</string>
     <string name="download_installing_offline_bundle">"Offline-Paket wird installiert"</string>
     <string name="download_elevation">"%1$s Höhen"</string>
-    <string name="download_elevation_adds_altitude_slope_and_terrain_shading">"Höhendaten ergänzen Höhe, Neigung und Geländeschattierung."</string>
+    <string name="download_elevation_adds_altitude_slope_and_terrain_shading">Höhendaten ergänzen Höhe, Neigung und Geländeschattierung.</string>
     <string name="download_elevation_quality">"Geländequalität"</string>
     <string name="download_enable_maps_poi_routing_dem_or_refuges_info_in_bundle_settings">"Karten, POI, Routenberechnung, DEM oder Refuges.info in den Paketeinstellungen aktivieren."</string>
     <string name="download_enter_delete_mode">"Löschmodus aktivieren"</string>
@@ -1976,7 +1976,6 @@
     <string name="settings_zoom_buttons">"Zoomtasten"</string>
     <string name="settings_language">"Sprache"</string>
     <string name="settings_language_system">"System"</string>
-
     <!-- Full-screen shortcut chips use compact mode labels; accessibility actions give the full description. -->
     <!-- Send to Watch is the unchanged screen title in the companion phone app. -->
     <string name="navigation_toggle_auto_recenter">"Auto-Zentrierung umschalten"</string>
