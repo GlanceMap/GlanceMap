@@ -1012,7 +1012,7 @@ private fun DownloadProgress(uiState: DownloadUiState) {
     Text(
         text =
             listOfNotNull(
-                uiState.phase,
+                localizedDownloadPhase(uiState.phase, resources),
                 uiState.detail,
                 progressText.takeIf { uiState.bytesDone > 0L || totalBytes != null },
             ).joinToString("\n"),

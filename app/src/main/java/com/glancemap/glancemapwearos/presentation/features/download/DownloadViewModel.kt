@@ -94,7 +94,7 @@ class DownloadViewModel(
     private val _uiState = MutableStateFlow(DownloadUiState())
     val uiState: StateFlow<DownloadUiState> = _uiState.asStateFlow()
     private val refreshProgressPublisher =
-        OamRefreshProgressPublisher(_uiState) { progress ->
+        OamRefreshProgressPublisher(_uiState, resources) { progress ->
             notificationController.showProgress(
                 title = progress.title,
                 detail = progress.detail,
@@ -1036,6 +1036,7 @@ internal fun shouldKeepOamInstallationScreenOn(
 /** Keeps refresh UI state and its foreground-notification snapshot in the same ordering. */
 internal class OamRefreshProgressPublisher(
     private val uiState: MutableStateFlow<DownloadUiState>,
+    private val resources: Resources? = null,
     private val notify: (OamForegroundProgress) -> Unit,
 ) {
     @Synchronized
@@ -1070,9 +1071,9 @@ internal class OamRefreshProgressPublisher(
                     bytesDone = progress.bytesDone,
                     totalBytes = progress.totalBytes,
                     statusMessage =
-                        progress.phase
-                            .lowercase()
-                            .replaceFirstChar { char -> char.uppercase() },
+                        resources
+                            ?.let { localizedDownloadPhase(progress.phase, it) }
+                            ?: progress.phase.lowercase().replaceFirstChar { char -> char.uppercase() },
                     errorMessage = null,
                 )
             }

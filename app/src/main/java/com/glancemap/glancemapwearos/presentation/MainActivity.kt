@@ -43,6 +43,7 @@ import com.glancemap.glancemapwearos.core.service.location.model.isNonInteractiv
 import com.glancemap.glancemapwearos.core.service.location.model.resolveLocationScreenState
 import com.glancemap.glancemapwearos.core.service.location.policy.NavigationRuntimeInputs
 import com.glancemap.glancemapwearos.core.service.location.policy.navigationRuntimeDemand
+import com.glancemap.glancemapwearos.core.service.wifi.GpxWifiReceiveService
 import com.glancemap.glancemapwearos.data.repository.SettingsRepository
 import com.glancemap.glancemapwearos.domain.sensors.resolveCompassHardwareCapability
 import com.glancemap.glancemapwearos.domain.sensors.shouldShowCompassHardwareUnavailableNotice
@@ -138,6 +139,10 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         AppLanguageSettings.applyLegacy(this)
         super.onCreate(savedInstanceState)
+        ContextCompat.startForegroundService(
+            this,
+            Intent(this, GpxWifiReceiveService::class.java),
+        )
         AndroidGraphicFactory.createInstance(this.application)
         ambientState.refreshDeviceInteractive(fallback = true)
         oamNotificationDestination(intent.action)?.let { destination ->
@@ -1366,6 +1371,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        stopService(Intent(this, GpxWifiReceiveService::class.java))
         ambientState.onDestroy()
         runCatching { unregisterReceiver(screenStateReceiver) }
         thermalTelemetry.unregister()

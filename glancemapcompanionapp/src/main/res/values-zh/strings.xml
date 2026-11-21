@@ -1,0 +1,618 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Generated from the English source and reviewed translations. -->
+<resources>
+    <string name="app_name">GlanceMap</string>
+    <string name="common_back_to_home_content_description">返回主页</string>
+    <string name="common_quick_guide_content_description">快速指南</string>
+    <string name="home_title">GlanceMap 配套应用</string>
+    <string name="home_debug_capture_start_content_description">开始手机调试捕获</string>
+    <string name="home_debug_capture_stop_content_description">停止手机调试捕获</string>
+    <string name="whats_new_title">新功能</string>
+    <string name="whats_new_open_content_description">打开新功能</string>
+    <string name="whats_new_installed_version">已安装版本 %1$s</string>
+    <string name="whats_new_release_version">版本 %1$s</string>
+    <string name="whats_new_phone_section_title">手机应用</string>
+    <string name="whats_new_watch_section_title">手表应用</string>
+    <string name="whats_new_review_message">喜欢 GlanceMap 吗？请在 Play 商店留下简短评价——这真的很有帮助。</string>
+    <string name="whats_new_review_action">留下评价</string>
+    <string name="whats_new_feature_request_message">有想法？告诉我们你希望接下来看到什么。</string>
+    <string name="whats_new_feature_request_action">建议功能</string>
+    <string name="whats_new_feature_request_subject">GlanceMap 功能建议</string>
+    <string name="whats_new_feature_request_body">你好，GlanceMap 团队：\n\n我想建议：\n\n\n为什么有帮助：\n</string>
+    <string-array name="whats_new_1_3_0_phone">
+        <item>新增“新功能”界面，包含发布历史和功能建议。</item>
+        <item>新增向手表发送自定义 Mapsforge 主题的支持。</item>
+        <item>新增手表与手机间文件传输的完整性检查。</item>
+        <item>改进从手表接收文件和诊断信息时的通知。</item>
+    </string-array>
+    <string-array name="whats_new_1_3_0_watch">
+        <item>新增法语、德语、西班牙语、意大利语和波兰语，并支持语言选择。</item>
+        <item>新增全屏地图控件和自动重新居中快捷方式。</item>
+        <item>新增实验性 3D 地形和徒步主题。</item>
+        <item>新增对手机发送的自定义 Mapsforge 主题的支持。</item>
+        <item>改进记录连续性、GPS 中断处理和传感器恢复。</item>
+        <item>改进离线地图下载和解压。</item>
+    </string-array>
+    <string-array name="whats_new_1_2_3_phone">
+        <item>改进实时追踪的 GPS 精度，尤其是在更新间隔较长时。</item>
+        <item>改进网络信号弱或不可用时实时追踪的可靠性。</item>
+        <item>改进连接丢失或应用/服务重启后开始、暂停、继续和停止的恢复。</item>
+    </string-array>
+    <string-array name="whats_new_1_2_3_watch">
+        <item>改进地图启动、渲染和导航性能。</item>
+        <item>改进唤醒后及磁干扰时的指南针表现。</item>
+        <item>更流畅的指南针旋转和导航响应。</item>
+        <item>从菜单返回时保留地图位置。</item>
+        <item>改进兴趣点、GPX 和记录性能。</item>
+        <item>新增更清晰的启动、定位和无活动地图提示。</item>
+        <item>新增对搭载 Android 9 和 10 的旧款 Wear OS 手表的兼容性。</item>
+    </string-array>
+    <string-array name="whats_new_1_2_2_phone">
+        <item>更可靠的实时追踪、GPS 启动和信号报告。</item>
+        <item>更好的手表与手机传输、进度更新和重新连接。</item>
+        <item>熄屏时减少后台活动。</item>
+        <item>稳定性和性能改进。</item>
+    </string-array>
+    <string-array name="whats_new_1_2_2_watch">
+        <item>更可靠的指南针和转向指引，包括暂停后。</item>
+        <item>更流畅的记录以及更一致的距离和速度。</item>
+        <item>双指缩放、地图长按操作和更清晰的路线进度。</item>
+        <item>更好的地形处理，以及显示你所在位置的海拔剖面。</item>
+        <item>更可靠的手表与手机传输及地图/GPX 加载。</item>
+        <item>稳定性和性能改进。</item>
+    </string-array>
+    <string-array name="whats_new_1_2_1_phone">
+        <item>改进 GPX 导入和传输命名。</item>
+        <item>改进实时追踪可靠性。</item>
+        <item>改进 GPX 传输和导入处理。</item>
+    </string-array>
+    <string-array name="whats_new_1_2_1_watch">
+        <item>改进导航和记录期间的电池性能。</item>
+        <item>自动暂停现在默认启用。</item>
+        <item>更高效的 GPS 和指南针处理。</item>
+        <item>熄屏或手表空闲时表现更好。</item>
+        <item>更可靠的轨迹记录、距离和海拔。</item>
+        <item>改进手机断开时的 GPS 恢复和手表 GPS 回退。</item>
+        <item>改进离线地图下载和解压恢复。</item>
+        <item>改进地图缩放、山体阴影稳定性、转向导航和旋转控件。</item>
+    </string-array>
+    <string-array name="whats_new_1_2_0_phone">
+        <item>新增实时追踪的暂停和继续。</item>
+        <item>改进实时追踪启动的可靠性。</item>
+        <item>使静止提醒更清晰。</item>
+        <item>修复带重音符号的 GPX 文件名。</item>
+        <item>改进首次设置流程。</item>
+    </string-array>
+    <string-array name="whats_new_1_2_0_watch">
+        <item>新增记录活动。</item>
+        <item>新增转向导航。</item>
+        <item>新增对外部传感器的支持，包括心率带和 Stryd 传感器。</item>
+        <item>新增徒步和骑行活动配置。</item>
+        <item>改进记录和导航期间的 GPS 表现。</item>
+        <item>改进性能和地图响应速度。</item>
+        <item>改进电池效率，尤其是在长时间记录和导航时。</item>
+        <item>改进界面布局。</item>
+    </string-array>
+    <string-array name="whats_new_1_1_3_phone">
+        <item>新增实时追踪的暂停和继续。</item>
+        <item>改进实时追踪启动的可靠性。</item>
+        <item>使静止提醒更清晰。</item>
+        <item>修复带重音符号的 GPX 文件名。</item>
+        <item>改进首次设置流程。</item>
+    </string-array>
+    <string-array name="whats_new_1_1_3_watch">
+        <item>新增直接从手表创建记录活动。</item>
+        <item>新增直接从手表创建转向导航。</item>
+        <item>新增对外部传感器的支持，包括心率带和 Stryd 传感器。</item>
+        <item>新增徒步和骑行活动配置。</item>
+        <item>改进记录和导航期间的 GPS 表现。</item>
+        <item>改进性能和地图响应速度。</item>
+        <item>改进电池效率，尤其是在长时间记录和导航时。</item>
+        <item>改进界面布局。</item>
+    </string-array>
+    <string-array name="whats_new_1_1_2_phone">
+        <item>重新整理实时追踪界面。</item>
+        <item>更新快速指南。</item>
+        <item>更新兴趣点和路线规划功能的地图选择器。</item>
+    </string-array>
+    <string-array name="whats_new_1_1_2_watch">
+        <item>新增 GPX 轨迹方向箭头选项。</item>
+        <item>在兼容手表上新增返回按钮支持。</item>
+        <item>新增可调整的位置标记放置方式。</item>
+        <item>重新设计兴趣点图标、设置和导航。</item>
+        <item>新增更高质量的海拔数据。</item>
+        <item>新增从手表向手机导出 GPX 轨迹。</item>
+        <item>更新下载包，加入 Refuge.info 兴趣点，并改进下载包导航。</item>
+        <item>新增兴趣点、GPX 和地图快速指南，并改进电池、稳定性和性能。</item>
+    </string-array>
+    <string-array name="whats_new_1_1_0_phone">
+        <item>新增主界面。</item>
+        <item>新增由 Arkluz 提供的实时追踪。</item>
+        <item>改进兴趣点和路线规划的地图选择器和地图瓦片，并修复兴趣点问题。</item>
+    </string-array>
+    <string-array name="whats_new_1_1_0_watch">
+        <item>修复下载取消按钮及其他小问题。</item>
+        <item>新增从手表直接获取下载包。</item>
+        <item>新增主屏幕。</item>
+        <item>修复标记和兴趣点创建问题，并提升整体稳定性。</item>
+    </string-array>
+    <string-array name="whats_new_1_0_5_phone">
+        <item>新增兴趣点和路线规划的地图区域和瓦片选择。</item>
+        <item>改进 Wi-Fi 传输稳定性。</item>
+    </string-array>
+    <string-array name="whats_new_1_0_5_watch">
+        <item>修复三星手表上的指南针问题。</item>
+        <item>修复大地图上的缩放级别。</item>
+        <item>修复主题缓存问题。</item>
+        <item>修复小屏幕上的布局。</item>
+        <item>新增 OS Map 主题。</item>
+        <item>新增夜间模式主题的快捷方式。</item>
+    </string-array>
+    <string-array name="whats_new_1_0_4_phone">
+        <item>新增地图和 GPX 的说明。</item>
+        <item>修复配套应用的滚动问题并更新快速指南。</item>
+    </string-array>
+    <string-array name="whats_new_1_0_4_watch">
+        <item>修复部分区域的 DEM 下载。</item>
+    </string-array>
+    <string name="transfer_title_send_to_watch">发送到手表</string>
+    <string name="transfer_send_to_watch_description">地图、GPX、兴趣点和路线文件</string>
+    <string name="live_tracking_title">实时追踪</string>
+    <string name="live_tracking_title_development">实时追踪（开发）</string>
+    <string name="live_tracking_home_description">分享你的 GPS 位置</string>
+    <string name="map_legend_title">地图图例</string>
+    <string name="map_legend_home_description">打开主题图例和参考页面</string>
+    <string name="settings_credits_legal_title">鸣谢与法律</string>
+    <string name="settings_credits_legal_home_description">隐私、许可和致谢</string>
+    <string name="common_action_back">返回</string>
+    <string name="common_action_cancel">取消</string>
+    <string name="common_action_clear">清除</string>
+    <string name="common_action_close">关闭</string>
+    <string name="common_action_continue">继续</string>
+    <string name="common_action_discard">丢弃</string>
+    <string name="common_action_done">完成</string>
+    <string name="common_action_download">下载</string>
+    <string name="common_action_next">下一步</string>
+    <string name="common_action_pause">暂停</string>
+    <string name="common_action_resume">继续</string>
+    <string name="common_action_save">保存</string>
+    <string name="common_action_send">发送</string>
+    <string name="common_action_stop">停止</string>
+    <string name="common_status_waiting">等待中…</string>
+    <string name="common_content_description_back">返回</string>
+    <string name="common_refresh_watch_list_content_description">刷新手表列表</string>
+    <string name="transfer_section_download_title">1. 下载</string>
+    <string name="transfer_section_select_files_title">2. 选择文件（.gpx / .map / .poi / .rd5 / .hgt / .hgt.gz / 主题 .zip）</string>
+    <string name="transfer_section_select_watch_title">3. 选择手表</string>
+    <string name="transfer_section_transfer_title">4. 传输</string>
+    <string name="transfer_section_history_title">5. 历史</string>
+    <string name="transfer_action_select_files">选择文件</string>
+    <string name="transfer_no_watches_found">未找到手表。</string>
+    <string name="transfer_no_file_selected">未选择文件</string>
+    <plurals name="transfer_additional_files">
+        <item quantity="other">+%1$d 个其他文件</item>
+    </plurals>
+    <plurals name="transfer_selected_files_title">
+        <item quantity="other">已选择 %1$d 个文件</item>
+    </plurals>
+    <string name="transfer_selected_file_row">%1$d. %2$s</string>
+    <string name="transfer_history_empty">暂无传输历史。</string>
+    <string name="transfer_history_success">成功</string>
+    <string name="transfer_history_failure">失败</string>
+    <string name="transfer_action_cancel_transfer">取消传输？</string>
+    <string name="transfer_cancel_transfer_message">确定要停止发送文件吗？</string>
+    <string name="transfer_action_confirm_stop">是，停止</string>
+    <string name="transfer_action_continue_sending">否，继续</string>
+    <string name="transfer_action_stopping">正在停止…</string>
+    <string name="transfer_action_manage_downloads">管理已下载文件</string>
+    <string name="transfer_download_notifications_off">通知已关闭。传输仍可正常工作，但后台进度提醒可能会被隐藏。</string>
+    <string name="transfer_action_enable_notifications">启用通知</string>
+    <string name="transfer_download_poi_label">POI</string>
+    <string name="transfer_download_gpx_label">GPX</string>
+    <string name="transfer_download_maps_label">地图</string>
+    <string name="transfer_download_routing_label">路线规划</string>
+    <string name="transfer_download_poi_content_description">下载兴趣点</string>
+    <string name="transfer_download_gpx_content_description">下载 GPX</string>
+    <string name="transfer_import_poi_action">导入兴趣点（Refuges / OSM）</string>
+    <string name="transfer_refresh_last_import_action">刷新上次导入</string>
+    <string name="transfer_gpx_intro">GlanceMap 可以读取并显示 .gpx 轨迹。</string>
+    <string name="transfer_gpx_sources_intro">从你喜欢的网站下载 GPX，或创建自己的路线：</string>
+    <string name="transfer_gpx_route_planning_hint">将路线规划数据发送到手表，直接在手表应用中创建 GPX 路线。</string>
+    <string name="transfer_map_sources_content_description">地图来源</string>
+    <string name="transfer_routing_content_description">下载路线规划数据</string>
+    <string name="transfer_download_routing_action">下载路线规划数据</string>
+    <string name="transfer_refresh_last_download_action">刷新上次下载</string>
+    <string name="transfer_map_sources_title">推荐的地图下载网站</string>
+    <string name="map_sources_mapsforge_intro">GlanceMap 由 %1$s 提供支持。兼容的地图文件：.map（v3/v4/v5）。</string>
+    <string name="map_sources_category_topographic">地形图</string>
+    <string name="map_sources_category_non_topographic">非地形图</string>
+    <string name="map_sources_category_other">其他</string>
+    <string name="map_source_open_andro_maps">OpenAndroMaps（推荐，全球）</string>
+    <string name="map_source_open_andro_maps_guidance">地图下载 &gt; 选择你所在的区域 &gt; 下载 V5 地图：Karte/Map。</string>
+    <string name="map_source_open_hiking">OpenHiking（欧洲）</string>
+    <string name="map_source_bbbike">BBBike</string>
+    <string name="map_source_bbbike_guidance">为你的区域生成地图，然后选择格式：Mapsforge OSM。</string>
+    <string name="map_source_vector_city">Vector City</string>
+    <string name="map_source_alternativas_libres">Alternativas Libres</string>
+    <string name="map_legend_action_open_pdf">打开图例 PDF</string>
+    <string name="map_legend_action_open_website">打开主题网站</string>
+    <string name="map_legend_action_open_day_pdf">打开日间图例 PDF</string>
+    <string name="map_legend_action_open_night_pdf">打开夜间图例 PDF</string>
+    <string name="map_legend_action_open_discussion">打开主题讨论</string>
+    <string name="map_legend_intro">选择内置主题并打开其图例或参考页面。</string>
+    <string name="map_legend_theme_label">主题图例</string>
+    <string name="map_legend_select_theme_content_description">选择主题</string>
+    <string name="map_legend_no_public_link">尚未找到此主题的公开图例链接。</string>
+    <string name="transfer_manage_downloads_message">生成的兴趣点和路线文件会保留在配套应用中，直到你清除它们。</string>
+    <string name="transfer_manage_loading_phone_files">正在加载手机文件…</string>
+    <string name="transfer_manage_clearing_phone_files">正在清除手机文件…</string>
+    <string name="transfer_manage_imported_poi_label">已导入兴趣点</string>
+    <string name="transfer_manage_routing_packs_label">路线规划包（.rd5）</string>
+    <string name="transfer_manage_clear_poi">清除兴趣点</string>
+    <string name="transfer_manage_clear_routing">清除路线</string>
+    <string name="transfer_manage_clear_all">全部清除</string>
+    <string name="transfer_quick_guide_offline_hint">文件传输到手表后，GlanceMap 即可离线工作，无需手机。</string>
+    <string name="settings_privacy_policy_title">隐私政策</string>
+    <string name="settings_contact_contributions_title">联系与贡献</string>
+    <string name="settings_privacy_contact_action">发送隐私联系邮件</string>
+    <string name="settings_privacy_contact_email_subject">GlanceMap 隐私问题</string>
+    <string name="settings_legal_document_load_error">无法加载此文档。</string>
+    <string name="settings_version">版本 %1$s（%2$d）</string>
+    <string name="settings_version_unknown">版本未知</string>
+    <string name="settings_legal_privacy_policy_label">隐私政策</string>
+    <string name="settings_legal_privacy_policy_description">数据访问、共享和保留</string>
+    <string name="settings_legal_safety_limits_label">安全与限制</string>
+    <string name="settings_legal_safety_limitations_title">安全与限制</string>
+    <string name="settings_legal_safety_limits_description">地图/主题错误和个人责任</string>
+    <string name="settings_legal_credits_thanks_label">鸣谢与致谢</string>
+    <string name="settings_legal_credits_thanks_description">主要贡献者和项目</string>
+    <string name="settings_legal_ai_acknowledgment_label">AI 声明</string>
+    <string name="settings_legal_ai_acknowledgment_title">AI 与创作者声明</string>
+    <string name="settings_legal_ai_acknowledgment_description">人类创作者与透明度</string>
+    <string name="settings_legal_companion_sources_label">配套应用来源</string>
+    <string name="settings_legal_companion_sources_title">配套应用外部来源</string>
+    <string name="settings_legal_companion_sources_description">地图、GPX 和庇护所网站</string>
+    <string name="settings_legal_compliance_status_label">合规状态</string>
+    <string name="settings_legal_compliance_status_description">发布检查清单和待办事项</string>
+    <string name="settings_legal_open_source_notices_label">开源声明</string>
+    <string name="settings_legal_open_source_notices_description">库和开源许可证</string>
+    <string name="settings_legal_open_hiking_theme_label">OpenHiking 主题</string>
+    <string name="settings_legal_open_hiking_theme_description">内置徒步主题详情</string>
+    <string name="settings_legal_french_kiss_theme_label">French Kiss 主题</string>
+    <string name="settings_legal_french_kiss_theme_description">内置 IGN 风格主题详情</string>
+    <string name="settings_legal_tiramisu_theme_label">Tiramisu 主题</string>
+    <string name="settings_legal_tiramisu_theme_description">内置骑行/徒步主题详情</string>
+    <string name="settings_legal_hike_ride_sight_label">Hike, Ride &amp; Sight</string>
+    <string name="settings_legal_hike_ride_sight_title">Hike, Ride &amp; Sight 主题</string>
+    <string name="settings_legal_hike_ride_sight_description">内置叠加层丰富主题详情</string>
+    <string name="settings_legal_voluntary_theme_label">Voluntary 主题</string>
+    <string name="settings_legal_voluntary_theme_description">内置 OS 风格主题详情</string>
+    <string name="settings_legal_data_attribution_label">数据与资源归属</string>
+    <string name="settings_legal_data_attribution_description">OSM、Elevate、内置主题、DEM、图标</string>
+    <string name="settings_legal_service_terms_label">服务条款与 API 使用</string>
+    <string name="settings_legal_service_terms_description">提供商条款和使用限制</string>
+    <string name="live_tracking_setup_title">实时追踪设置</string>
+    <string name="live_tracking_privacy_intro">实时追踪为可选功能，使用 Arkluz。</string>
+    <string name="live_tracking_privacy_tracking_data">追踪启用时，GPS 位置、群组详情、参与者名称、电池电量以及可选的 GPX/评论会发送给 Arkluz。</string>
+    <string name="live_tracking_privacy_email_data">通知和提醒电子邮件会为方便起见保存在本地，仅在配置后才发送给 Arkluz。</string>
+    <string name="live_tracking_privacy_offline_data">如果网络不可用，GPS 点可能会存储在本地以便重试。Arkluz 轨迹预计会在 7 天后删除。</string>
+    <string name="live_tracking_contact_action">联系</string>
+    <string name="live_tracking_arkluz_website_action">Arkluz 网站</string>
+    <string name="live_tracking_contributions">贡献者：Jérôme Seydoux。</string>
+    <string name="live_tracking_setup_description">连接到现有群组或创建新的私人群组。</string>
+    <string name="live_tracking_private_group_title">私人群组</string>
+    <string name="live_tracking_group_label">群组</string>
+    <string name="live_tracking_password_label">密码</string>
+    <string name="live_tracking_create_group_title">创建群组？</string>
+    <string name="live_tracking_create_group_message">此群组尚不存在。请再次输入密码以创建。</string>
+    <string name="live_tracking_password_confirmation_label">确认密码</string>
+    <string name="live_tracking_action_create_group">创建群组</string>
+    <string name="live_tracking_action_checking">检查中</string>
+    <string name="live_tracking_action_connect">连接</string>
+    <string name="live_tracking_use_selected_gpx_title">使用选中的 GPX？</string>
+    <string name="live_tracking_last_selected_gpx">上次在“发送到手表”中选择的 GPX</string>
+    <string name="live_tracking_action_use_this_gpx">使用此 GPX</string>
+    <string name="live_tracking_action_choose_another">选择其他</string>
+    <string name="live_tracking_location_disclosure_title">实时追踪的位置</string>
+    <string name="live_tracking_location_disclosure_message">GlanceMap 会在实时追踪会话期间收集你的位置，以显示你的位置并向选定的追踪服务器以及拥有共享追踪链接的人发送更新。不会用于广告。</string>
+    <string name="live_tracking_notifications_off_title">通知已关闭</string>
+    <string name="live_tracking_notifications_off_message">实时追踪可以继续，但其持续状态通知可能不会显示。你可以稍后在 Android 设置中启用通知。</string>
+    <string name="live_tracking_action_start_anyway">仍然开始</string>
+    <string name="live_tracking_background_location_title">在后台保持 GPS 追踪</string>
+    <string name="live_tracking_background_location_message">GlanceMap 会在实时追踪会话期间收集并传输你的位置，即使应用已关闭或未在使用。这样可确保你在选定追踪服务器上共享的实时位置保持更新。不会用于广告。在 Android 11 及更高版本上，请在系统设置中选择“位置”，然后选择“始终允许”。</string>
+    <string name="live_tracking_action_open_location_settings">打开位置设置</string>
+    <string name="live_tracking_action_start_foreground_service">以前台服务启动</string>
+    <string name="live_tracking_battery_optimization_title">防止电池优化中断实时追踪</string>
+    <string name="live_tracking_battery_optimization_message">电池优化可能会停止长时间运行的追踪。请允许 GlanceMap 不受限制地使用电池。在三星设备上，还请确保该应用不在“休眠应用”或“深度休眠应用”中。</string>
+    <string name="live_tracking_action_open_battery_settings">打开电池设置</string>
+    <string name="live_tracking_change_group_title">更换群组？</string>
+    <string name="live_tracking_change_group_message">这将断开与%1$s的连接，并在实时追踪处于活动状态时将其停止。未保存的设置更改将被丢弃。</string>
+    <string name="live_tracking_current_group">当前群组</string>
+    <string name="live_tracking_action_change_group">更换群组</string>
+    <string name="live_tracking_save_settings_title">保存设置？</string>
+    <string name="live_tracking_save_settings_message">你有未保存的更改。离开设置前要保存吗？</string>
+    <string name="live_tracking_sms_alerts_title">短信提醒需要更新</string>
+    <string name="live_tracking_sms_alerts_message">%1$s 不再支持短信提醒。请在开始实时追踪之前更新或删除这些电话号码。</string>
+    <string name="live_tracking_action_update_alerts">更新提醒</string>
+    <string name="live_tracking_gps_update_frequency">GPS 更新频率：每 %1$s</string>
+    <string name="live_tracking_session_title">会话</string>
+    <string name="live_tracking_action_starting">正在启动</string>
+    <string name="live_tracking_action_start">开始</string>
+    <string name="live_tracking_planned_route_title">计划路线和评论（可选）</string>
+    <string name="live_tracking_selected_gpx_name">GPX 名称：%1$s</string>
+    <string name="live_tracking_selected_gpx_fallback">选中的 GPX</string>
+    <string name="live_tracking_no_gpx_selected">未选择 GPX</string>
+    <string name="live_tracking_action_sending">正在发送</string>
+    <string name="live_tracking_action_comment_sent">评论已发送</string>
+    <string name="live_tracking_action_send_update">发送更新</string>
+    <string name="live_tracking_tracks_title">查看和分享轨迹</string>
+    <string name="live_tracking_participant_fallback">参与者</string>
+    <string name="live_tracking_group">群组</string>
+    <string name="live_tracking_action_downloading">正在下载</string>
+    <string name="live_tracking_action_download_my_gpx">下载我的 GPX</string>
+    <string name="live_tracking_action_deleting">正在删除</string>
+    <string name="live_tracking_action_delete_recorded_tracks">删除已记录轨迹</string>
+    <string name="live_tracking_action_edit_setup">编辑实时追踪设置</string>
+    <string name="live_tracking_action_set_up">设置实时追踪</string>
+    <string name="live_tracking_guide_content_description">实时追踪指南</string>
+    <string name="live_tracking_participant_panel_title">参与者：</string>
+    <string name="live_tracking_notifications_title">通知</string>
+    <string name="live_tracking_notification_recipients_label">将追踪通知和安全提醒发送至：</string>
+    <string name="live_tracking_alert_recipients_label">同时将安全提醒发送至：</string>
+    <string name="live_tracking_action_saving">正在保存</string>
+    <string name="live_tracking_action_save_return">保存并返回</string>
+    <string name="live_tracking_hide_password_content_description">隐藏密码</string>
+    <string name="live_tracking_show_password_content_description">显示密码</string>
+    <string name="live_tracking_action_add">添加</string>
+    <string name="live_tracking_diagnostics_title">调试诊断</string>
+    <string name="live_tracking_diagnostics_description">本地脱敏历史记录。应用进程停止后会被清除。</string>
+    <string name="live_tracking_diagnostics_show">显示（%1$d）</string>
+    <string name="live_tracking_diagnostics_hide">隐藏（%1$d）</string>
+    <string name="live_tracking_diagnostics_empty">尚未记录任何 Arkluz 请求。</string>
+    <string name="home_debug_capture_active_title">手机调试记录</string>
+    <string name="home_debug_capture_start_title">开始手机调试记录？</string>
+    <string name="home_debug_capture_stop_email_action">停止并发送邮件</string>
+    <string name="home_debug_capture_send_last_action">发送上次记录</string>
+    <string name="home_debug_capture_start_action">开始记录</string>
+    <string name="home_debug_capture_keep_recording">继续记录</string>
+    <string name="live_tracking_no_movement_minimum">至少 10 分钟</string>
+    <string name="live_tracking_invalid_email_error">请输入有效的电子邮件地址</string>
+    <string name="live_tracking_email_already_added_error">该邮箱已添加</string>
+    <string name="live_tracking_invalid_recipient_error">请输入有效的电子邮件地址或以 + 开头的电话号码</string>
+    <string name="live_tracking_recipient_already_added_error">该收件人已添加</string>
+    <string name="live_tracking_arkluz_pending_message">尚未通知 Arkluz。无移动警报仍可能被触发。</string>
+    <string name="live_tracking_action_email_arkluz">向 Arkluz 发送邮件</string>
+    <string name="live_tracking_plan_optional_hint">仅在希望随追踪一并发送时，才添加 GPX 路线或备注。</string>
+    <string name="live_tracking_action_select_gpx">选择 GPX</string>
+    <string name="live_tracking_clear_gpx_content_description">清除已选 GPX</string>
+    <string name="live_tracking_update_planned_route_hint">可随时选择其他 GPX，然后点按“发送更新”以更新计划路线。</string>
+    <string name="live_tracking_comments_label">备注</string>
+    <string name="live_tracking_comments_placeholder">预计到达时间</string>
+    <string name="live_tracking_active_update_hint">追踪已开启。你可以更改 GPX 或备注，然后点按“发送更新”。</string>
+    <string name="live_tracking_tracks_retention_hint">轨迹每 7 天会从服务器自动删除。</string>
+    <string name="live_tracking_connected_to_group">已连接到 %1$s</string>
+    <string name="live_tracking_private_group">私密群组</string>
+    <string name="live_tracking_view_track_content_description">查看 %1$s 轨迹</string>
+    <string name="live_tracking_share_track_content_description">分享 %1$s 轨迹</string>
+    <string name="live_tracking_setup_group_options_hint">你的追踪链接和选项与此群组关联。</string>
+    <string name="live_tracking_participant_name_label">参与者名称</string>
+    <string name="live_tracking_enable_no_movement_alerts">启用无移动警报</string>
+    <string name="live_tracking_no_movement_alert_time">静止多久后发送安全警报：</string>
+    <string name="live_tracking_minutes_label">分钟</string>
+    <string name="live_tracking_email_placeholder">email@example.com</string>
+    <string name="live_tracking_email_or_phone_placeholder">email@example.com 或 +33612345678</string>
+    <string name="live_tracking_pick_email_content_description">从联系人中选择邮箱</string>
+    <string name="live_tracking_pick_phone_content_description">从联系人中选择电话号码</string>
+    <string name="live_tracking_remove_email_content_description">移除 %1$s</string>
+    <string name="refuges_import_title">导入兴趣点</string>
+    <string name="refuges_select_watch_label">选择手表</string>
+    <string name="refuges_select_watch_hint">点按以选择手表</string>
+    <string name="refuges_watch_disconnected">%1$s（已断开连接）</string>
+    <string name="refuges_select_watch_first">请先选择手表</string>
+    <string name="refuges_reconnect_watch_first">请先重新连接手表</string>
+    <string name="refuges_select_map_hint">点按以选择地图</string>
+    <string name="refuges_select_region_hint">点按以选择区域</string>
+    <string name="refuges_custom_region">自定义</string>
+    <string name="refuges_watch_disconnected_hint">%1$s 你也可以切换到手动 BBox 或 refuges.info 区域。</string>
+    <string name="refuges_no_watches_hint">未找到手表。请保持手表应用打开并点按刷新。</string>
+    <string name="refuges_select_watch_hint_for_map">如需使用“自动从手表地图获取”，请先选择手表。</string>
+    <string name="refuges_source_label">来源</string>
+    <string name="refuges_source_description">法国、阿尔卑斯山和比利牛斯山的 refuges.info 兴趣点。</string>
+    <string name="refuges_enrich_with_osm">使用 OSM 补充</string>
+    <string name="refuges_area_method_watch_map">自动从手表地图获取</string>
+    <string name="refuges_area_method_region">选择 refuges.info 区域</string>
+    <string name="refuges_area_method_map_picker">在地图上选择</string>
+    <string name="refuges_area_method_manual_bbox">手动输入 BBox</string>
+    <string name="refuges_area_method_watch_map_description">使用手表上的 .map 文件自动检测区域（BBox）。</string>
+    <string name="refuges_area_method_region_description">选择 refuges.info 区域预设以自动填充区域。</string>
+    <string name="refuges_area_method_map_picker_description">平移和缩放在线地图以选择导入矩形区域。</string>
+    <string name="refuges_area_method_manual_bbox_description">以 west,south,east,north 格式输入自定义区域矩形。</string>
+    <string name="refuges_select_area_source_label">选择区域来源</string>
+    <string name="refuges_select_map_on_watch_label">在手表上选择地图</string>
+    <string name="refuges_select_type_error">请至少选择一种类型。</string>
+    <string name="refuges_watch_map_disconnected_hint">%1$s 手表断开连接时，请使用手动 BBox 或 refuges.info 区域。</string>
+    <string name="refuges_loading_watch_maps">正在加载手表地图…</string>
+    <string name="refuges_no_watch_maps_hint">手表上未找到 .map 文件。请先传输地图，或切换区域方式。</string>
+    <string name="refuges_area_bbox">区域 BBox：%1$s</string>
+    <string name="refuges_region_preset_label">区域预设</string>
+    <string name="refuges_detailed_massifs">详细山群列表</string>
+    <string name="refuges_compact_zones">精简区域列表（推荐）</string>
+    <string name="refuges_manual_bbox_hint">以 west,south,east,north（minLon,minLat,maxLon,maxLat）格式输入 BBox（矩形）。示例：1.40,42.43,1.79,42.66</string>
+    <string name="refuges_action_open_map_picker">打开地图选择器</string>
+    <string name="refuges_action_edit_map_picker">编辑所选区域</string>
+    <string name="refuges_no_area_selected">尚未选择区域。</string>
+    <string name="refuges_types_label">类型</string>
+    <string name="refuges_osm_categories_label">OSM 类别</string>
+    <string name="refuges_osm_categories_hint">下方显示所有 OSM 类别。基础项 = 山屋、水源、山峰。</string>
+    <string name="refuges_osm_category_error">请至少选择一个 OSM 类别。</string>
+    <string name="refuges_point_types_label">点位类型</string>
+    <string name="refuges_detailed_massifs_hint">大型列表（约 490 个山群）</string>
+    <string name="refuges_compact_zones_hint">较小的官方列表（约 25 个区域，推荐）</string>
+    <string name="refuges_select_preset_hint">选择预设以定义区域。</string>
+    <string name="refuges_action_edit_area_map">在地图上编辑区域</string>
+    <string name="refuges_no_map_area_selected">尚未选择地图区域。</string>
+    <string name="refuges_importing_status">正在导入兴趣点…</string>
+    <string name="refuges_import_finished_status">导入完成。</string>
+    <string name="refuges_import_complete_hint">导入完成。你可以保存到手机或发送到手表。</string>
+    <string name="refuges_preset_huts_only">仅山屋</string>
+    <string name="refuges_preset_huts_water">山屋+水源</string>
+    <string name="refuges_preset_all">全部</string>
+    <string name="refuges_action_import">导入</string>
+    <string name="refuges_action_importing">正在导入…</string>
+    <string name="routing_select_watch_label">选择手表</string>
+    <string name="routing_select_watch_hint">点按以选择手表</string>
+    <string name="routing_watch_disconnected">%1$s（已断开连接）</string>
+    <string name="routing_select_area_source_label">选择区域来源</string>
+    <string name="routing_select_map_on_watch_label">在手表上选择地图</string>
+    <string name="routing_watch_disconnected_hint">%1$s 手表断开连接时，请使用瓦片选择器或手动 BBox。</string>
+    <string name="routing_no_watches_hint">未找到手表。请保持手表应用打开并点按刷新。</string>
+    <string name="routing_select_watch_hint_for_map">如需使用“自动从手表地图获取”，请先选择手表。</string>
+    <string name="routing_loading_watch_maps">正在加载手表地图…</string>
+    <string name="routing_no_watch_maps_hint">手表上未找到 .map 文件。请先传输地图，或切换区域方式。</string>
+    <string name="routing_area_bbox">区域 BBox：%1$s</string>
+    <string name="routing_action_open_tile_picker">打开瓦片选择器</string>
+    <string name="routing_action_edit_tiles">编辑路线规划瓦片</string>
+    <string name="routing_no_tiles_selected">尚未选择路线规划瓦片。</string>
+    <string name="routing_tile_bbox">瓦片 BBox：%1$s</string>
+    <string name="routing_manual_bbox_hint">以 west,south,east,north（minLon,minLat,maxLon,maxLat）格式输入 BBox（矩形）。示例：1.40,42.43,1.79,42.66</string>
+    <plurals name="routing_packs_title">
+        <item quantity="other">路线规划包（%1$d）</item>
+    </plurals>
+    <string name="routing_download_complete_hint">下载完成。你可以将路线规划文件保存到手机或发送到手表。</string>
+    <string name="routing_action_downloading">正在下载…</string>
+    <string name="refuges_refresh_watch_maps_content_description">刷新手表地图</string>
+    <string name="refuges_bbox_label">BBox</string>
+    <string name="refuges_file_name_label">文件名（.poi）</string>
+    <string name="refuges_action_save_on_phone">保存到手机</string>
+    <string name="routing_download_title">离线规划路线</string>
+    <string name="routing_update_watch_list_content_description">更新手表列表</string>
+    <string name="routing_update_watch_maps_content_description">更新手表地图</string>
+    <string name="routing_area_method_watch_map">自动从手表地图获取</string>
+    <string name="routing_area_method_tile_picker">选择路线规划瓦片</string>
+    <string name="routing_area_method_manual_bbox">手动输入 BBox</string>
+    <string name="routing_area_method_watch_map_description">使用手表上已有 .map 文件的 BBox。</string>
+    <string name="routing_area_method_tile_picker_description">在地图上点按固定的 5° BRouter 瓦片。</string>
+    <string name="routing_area_method_manual_bbox_description">手动输入 west,south,east,north。</string>
+    <string name="routing_no_watch_found">未找到手表</string>
+    <string name="routing_select_watch">选择手表</string>
+    <string name="routing_select_watch_first">请先选择手表</string>
+    <string name="routing_reconnect_watch_first">请先重新连接手表</string>
+    <string name="routing_download_intro">下载你常用区域的数据，以便直接在手表上创建 GPX 路线，即使没有网络连接。</string>
+    <string name="routing_download_files_hint">文件会下载到手机。在第 2 部分中，选择要发送到手表的内容。</string>
+    <string name="routing_downloading_status">正在下载路线规划包…</string>
+    <string name="routing_download_finished_status">路线规划下载完成。</string>
+    <plurals name="home_debug_capture_active_message">
+        <item quantity="other">手机上的记录已开启。完成后停止，将打开一封发往 %2$s 的邮件草稿。\n\n已捕获行数：%1$d</item>
+    </plurals>
+    <string name="home_debug_capture_start_message">此功能会在手机上记录经过脱敏的配套应用传输和实时追踪日志。请在复现问题前启动，然后停止以打开一封发往 %1$s 的邮件草稿。</string>
+    <string name="home_debug_capture_start_message_saved">此功能会在手机上记录经过脱敏的配套应用传输和实时追踪日志。请在复现问题前启动，然后停止以打开一封发往 %1$s 的邮件草稿。\n\n已保存的手机记录可用，可以重新发送。</string>
+    <string name="quick_guide_dialog_title_general">快速指南</string>
+    <string name="quick_guide_dialog_title_transfer">发送到手表指南</string>
+    <string name="quick_guide_dialog_title_live_tracking">实时追踪</string>
+    <string name="quick_guide_dialog_title_map_legend">地图图例指南</string>
+    <string name="quick_guide_step">第 %1$d 步，共 %2$d 步</string>
+    <string name="quick_guide_bullet_line">• %1$s</string>
+    <string name="quick_guide_general_title">欢迎使用 GlanceMap 配套应用</string>
+    <string name="quick_guide_welcome_download_intro">在手表上开始，并使用 %1$s 下载离线地图。</string>
+    <string name="quick_guide_welcome_send_to_watch">%1$s 使用手机配套应用将 GPX 路线发送到手表。你还可以发送地图、兴趣点、路线规划数据和海拔文件。</string>
+    <string name="quick_guide_welcome_live_tracking">%1$s 从手机启动实时追踪，将你的 GPS 位置分享给亲友。</string>
+    <string name="quick_guide_welcome_book_icon">点按各区域右上角的 %1$s 书本图标，可再次打开其快速指南。</string>
+    <string name="quick_guide_stay_open">• 点按 %1$s 工具，然后点按 %2$s 保持。你也可以启用常亮显示。</string>
+    <string name="quick_guide_transfer_files_title">准备文件</string>
+    <string name="quick_guide_transfer_files_download">使用 1. 下载 获取 Mapsforge OSM .map、兴趣点、GPX 或路线规划文件。</string>
+    <string name="quick_guide_transfer_files_select">点按 2. 选择文件 以从手机添加文件：</string>
+    <string name="quick_guide_transfer_files_map">.map = 离线地图</string>
+    <string name="quick_guide_transfer_files_poi">.poi = 兴趣点</string>
+    <string name="quick_guide_transfer_files_gpx">.gpx = 路线/轨迹</string>
+    <string name="quick_guide_transfer_files_routing">.rd5 = 离线路线规划瓦片</string>
+    <string name="quick_guide_transfer_files_elevation">.hgt / .hgt.zip / .hgt.gz = 用于山体阴影/坡度的海拔数据</string>
+    <string name="quick_guide_transfer_watch_title">准备手表</string>
+    <string name="quick_guide_transfer_watch_open">在手表上打开 GlanceMap，并将其靠近手机。</string>
+    <string name="quick_guide_transfer_watch_large_files">传输大文件时，请为手表充电，并使用同一 Wi-Fi 或手机热点。</string>
+    <string name="quick_guide_transfer_watch_bluetooth">没有 Wi-Fi 时，蓝牙可发送最大 50 MB 的文件。</string>
+    <string name="quick_guide_transfer_areas_title">兴趣点与路线规划区域</string>
+    <string name="quick_guide_transfer_areas_choose">下载兴趣点和路线规划时，请先选择所需区域。</string>
+    <string name="quick_guide_transfer_areas_poi">兴趣点会下载 OSM 兴趣点。</string>
+    <string name="quick_guide_transfer_areas_routing">路线规划会下载用于在手表上离线创建 GPX 路线的数据。</string>
+    <string name="quick_guide_transfer_areas_map">你可以在地图上选择区域，或选取一个地区。</string>
+    <string name="quick_guide_transfer_areas_refresh">刷新上次导入 会重复上一次的区域。</string>
+    <string name="quick_guide_transfer_send_title">发送</string>
+    <string name="quick_guide_transfer_send_close">点按发送，并保持手机与手表靠近，直到完成。</string>
+    <string name="quick_guide_transfer_send_resume">如果中断，请再次发送同一文件；通常会从手表上已有的部分文件继续。</string>
+    <string name="quick_guide_transfer_send_history">历史记录会显示每次传输的状态。</string>
+    <string name="quick_guide_live_tracking_start_title">开始使用</string>
+    <string name="quick_guide_live_tracking_start_intro">实时追踪由 Arkluz 提供。GlanceMap 作为手机端界面进行配置。</string>
+    <string name="quick_guide_live_tracking_start_setup">点按设置实时追踪。</string>
+    <string name="quick_guide_live_tracking_start_group">连接到现有私密群组或创建一个新群组。</string>
+    <string name="quick_guide_live_tracking_start_options">添加你的姓名、GPS 更新频率和安全警报。</string>
+    <string name="quick_guide_live_tracking_updates_title">分享更新</string>
+    <string name="quick_guide_live_tracking_updates_plan">可选上传 GPX 路线或添加备注，发送给联系人。</string>
+    <string name="quick_guide_live_tracking_updates_start">开始追踪。</string>
+    <string name="quick_guide_live_tracking_updates_change">追踪期间，你可以修改 GPX，并通过点击“发送更新”分享新备注。</string>
+    <string name="quick_guide_live_tracking_links_title">轨迹链接</string>
+    <string name="quick_guide_live_tracking_links_participant">参与者链接会打开你自己的实时轨迹。</string>
+    <string name="quick_guide_live_tracking_links_group">群组链接会打开共享的群组地图。</string>
+    <string name="quick_guide_live_tracking_links_share">使用“查看与分享”打开或分享你的实时追踪链接。</string>
+    <string name="quick_guide_map_legend_title">地图图例</string>
+    <string name="quick_guide_map_legend_intro">使用此区域打开 GlanceMap 所用地图主题的参考资料。</string>
+    <string name="quick_guide_map_legend_select">选择你在手表上使用的主题。</string>
+    <string name="quick_guide_map_legend_reference">打开图例 PDF 或参考页面，了解符号、颜色和路径。</string>
+    <string name="quick_guide_map_legend_external">这些链接为外部参考，可能会在浏览器中打开。</string>
+    <string name="quick_guide_download_icon_content_description">下载</string>
+    <string name="quick_guide_send_to_watch_icon_content_description">发送到手表</string>
+    <string name="quick_guide_live_tracking_icon_content_description">实时追踪</string>
+    <string name="quick_guide_book_icon_content_description">快速指南</string>
+    <string name="quick_guide_tools_icon_content_description">工具</string>
+    <string name="quick_guide_stay_icon_content_description">保持</string>
+    <plurals name="live_tracking_duration_seconds">
+        <item quantity="other">%1$d 秒</item>
+    </plurals>
+    <string name="live_tracking_duration_minutes">%1$d min</string>
+    <string name="live_tracking_duration_minutes_seconds">%1$d min %2$d s</string>
+    <string name="live_tracking_duration_seconds_compact">%1$ds</string>
+    <string name="live_tracking_duration_minutes_compact">%1$d min</string>
+    <string name="routing_bbox_label">BBox</string>
+    <string name="routing_action_save_on_phone">保存到手机</string>
+    <string name="transfer_wifi_gpx_only">Wi-Fi 传输仅支持 GPX 文件。</string>
+    <string name="transfer_wifi_skipped_non_gpx">已跳过（Wi-Fi 传输仅支持 GPX）</string>
+    <string name="transfer_wifi_required">请先将手机连接到 Wi-Fi 或热点。</string>
+    <string name="transfer_status_preparing">正在准备…</string>
+    <string name="transfer_status_starting">正在开始…</string>
+    <string name="transfer_status_checking_existing">正在检查手表上的文件…</string>
+    <string name="transfer_status_no_watches">未发现手表。请先在手表上打开 GlanceMap，并确认两台设备在同一 Wi-Fi。</string>
+    <string name="transfer_status_select_watch">请选择手表</string>
+    <string name="transfer_status_skipped_exists">已跳过（已存在）</string>
+    <string name="transfer_status_already_exists_one">“%1$s”已存在于手表上，无需传输。</string>
+    <string name="transfer_status_already_exists_many">%1$d 个文件已存在于手表上，无需传输。</string>
+    <string name="transfer_status_skipped_count">已跳过 %1$d 个文件，正在传输 %2$d 个…</string>
+    <string name="transfer_status_checking_watch_wifi">正在检查手表 Wi-Fi…</string>
+    <string name="transfer_status_watch_wifi_off">手表 Wi-Fi 未开启，将尽量使用蓝牙…</string>
+    <string name="transfer_status_preparing_checksum">正在准备校验值…</string>
+    <string name="transfer_status_complete">传输完成（发送 %1$d 个，跳过 %2$d 个）</string>
+    <string name="transfer_status_complete_simple">传输完成（%1$d 个文件）</string>
+    <string name="transfer_status_cancelling">正在取消…</string>
+    <string name="transfer_status_stopping">正在停止当前传输…</string>
+    <string name="transfer_status_cancelled">已取消</string>
+    <string name="transfer_status_paused">已暂停</string>
+    <string name="transfer_status_paused_by_user">用户已暂停</string>
+    <string name="transfer_status_resuming">正在继续…</string>
+    <string name="transfer_status_error">错误：%1$s</string>
+    <string name="transfer_status_no_compatible_files">没有选择兼容的文件（.gpx、.map、.poi、.rd5、.hgt、.hgt.gz）。</string>
+    <string name="transfer_status_selected_files">已选择 %1$d 个文件</string>
+    <string name="transfer_status_selected_files_skipped">已选择 %1$d 个文件；跳过 %2$d 个不支持的文件。</string>
+    <string name="transfer_status_transfer_complete_file">传输完成</string>
+    <string name="transfer_status_waiting_for_reconnect">等待手表重新连接…</string>
+    <string name="transfer_status_waiting_for_network">已暂停（等待网络）</string>
+    <string name="transfer_notification_complete">%1$d 个文件</string>
+    <string name="transfer_notification_complete_skipped">已发送 %1$d 个，跳过 %2$d 个</string>
+    <string name="transfer_history_transfer">传输</string>
+    <string name="transfer_history_batch">批量传输</string>
+    <string name="transfer_history_failed">失败：%1$s</string>
+    <string name="transfer_error_unknown">未知的传输错误</string>
+    <string name="transfer_file_prefix">文件 %1$d/%2$d：%3$s</string>
+    <string name="transfer_status_in_progress">传输进行中，请等待或取消。</string>
+    <string name="transfer_status_connect_watch">请先连接手表。</string>
+    <string name="transfer_action_send">发送</string>
+    <string name="transfer_action_sending">正在发送…</string>
+    <string name="transfer_action_waiting">等待中…</string>
+</resources>

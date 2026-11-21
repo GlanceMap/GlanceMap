@@ -495,10 +495,10 @@ internal fun FilePickerTransferSection(
             ) {
                 Text(
                     when {
-                        !transferSessionActive -> "Send"
-                        cancellingTransfer -> "Stopping..."
-                        waitingForReconnect -> "Waiting..."
-                        else -> "Sending..."
+                        !transferSessionActive -> stringResource(R.string.transfer_action_send)
+                        cancellingTransfer -> stringResource(R.string.transfer_action_stopping)
+                        waitingForReconnect -> stringResource(R.string.transfer_action_waiting)
+                        else -> stringResource(R.string.transfer_action_sending)
                     },
                 )
             }
@@ -518,16 +518,16 @@ internal fun FilePickerTransferSection(
                                 pauseReason.isNotBlank() &&
                                     detail.isNotBlank() &&
                                     !detail.equals(pauseReason, ignoreCase = true) ->
-                                    "Paused • $pauseReason\n$detail"
+                                    "${stringResource(R.string.transfer_status_paused)} • $pauseReason\n$detail"
 
                                 pauseReason.isNotBlank() ->
-                                    "Paused • $pauseReason"
+                                    "${stringResource(R.string.transfer_status_paused)} • $pauseReason"
 
                                 detail.isNotBlank() ->
-                                    "Paused\n$detail"
+                                    "${stringResource(R.string.transfer_status_paused)}\n$detail"
 
                                 else ->
-                                    "Paused"
+                                    stringResource(R.string.transfer_status_paused)
                             }
                         }
 

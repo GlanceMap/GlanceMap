@@ -431,6 +431,19 @@
     <string name="download_download_paused">"Download paused"</string>
     <string name="download_download_selected_areas">"Download selected areas"</string>
     <string name="download_downloading_offline_bundle">"Downloading offline bundle"</string>
+    <string name="download_downloading_dem">"Downloading..."</string>
+    <string name="download_phase_starting">"Starting"</string>
+    <string name="download_phase_preparing">"Preparing"</string>
+    <string name="download_phase_downloading">"Downloading"</string>
+    <string name="download_phase_extracting">"Extracting"</string>
+    <string name="download_phase_reconnecting">"Reconnecting"</string>
+    <string name="download_phase_ready">"Ready"</string>
+    <string name="download_phase_paused">"Paused"</string>
+    <string name="download_phase_pausing">"Pausing"</string>
+    <string name="download_phase_canceling">"Canceling"</string>
+    <string name="download_phase_canceled">"Canceled"</string>
+    <string name="download_phase_failed">"Failed"</string>
+    <string name="download_phase_skipped">"Skipped"</string>
     <string name="download_installing_offline_bundle">"Installing offline bundle"</string>
     <string name="download_elevation">"%1$s elevation"</string>
     <string name="download_elevation_adds_altitude_slope_and_terrain_shading">"Elevation adds altitude, slope, and terrain shading capability."</string>
@@ -2000,6 +2013,7 @@
     <string name="settings_zoom_buttons">"Zoom buttons"</string>
     <string name="settings_language">Language</string>
     <string name="settings_language_system">System</string>
+    <string name="language_chinese" translatable="false">简体中文</string>
     <string name="language_english" translatable="false">English</string>
     <string name="language_french" translatable="false">Français</string>
     <string name="language_spanish" translatable="false">Español</string>
@@ -2045,4 +2059,9 @@
     <string name="map_terrain_3d_experimental">3D - Beta</string>
     <string name="map_terrain_3d_hiking_theme">3D hiking theme</string>
     <string name="map_3d_viewing_angle">3D viewing angle</string>
+    <string name="gpx_wifi_channel">GPX Wi-Fi receive</string>
+    <string name="gpx_wifi_notification_title">GlanceMap receive</string>
+    <string name="gpx_wifi_waiting_for_wifi">Waiting for Wi-Fi. Connect to the same network as the phone to receive GPX.</string>
+    <string name="gpx_wifi_ready">Ready to receive GPX: %1$s</string>
+    <string name="gpx_wifi_open_wifi_settings">Open Wi-Fi settings</string>
 </resources>
